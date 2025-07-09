@@ -48,41 +48,40 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* === Zera tudo do chat_input === */
-
-/* Remove tudo do wrapper principal */
-section[data-testid="stChatInput"] * {
-    all: unset;
-    background-color: transparent !important;
+/* Remove bordas de containers genéricos */
+section[data-testid="stChatInput"] div {
+    border: none !important;
     box-shadow: none !important;
+    outline: none !important;
+    background: transparent !important;
 }
 
-/* Remove botão de envio */
-section[data-testid="stChatInput"] button {
-    display: none !important;
-}
-
-/* Estiliza diretamente a div do input */
-section[data-testid="stChatInput"] textarea {
-    all: unset;
-    display: block;
-    width: 100% !important;
+/* Estilo padrão do campo */
+textarea {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
     border-radius: 999px !important;
-    padding: 12px 20px !important;
+    padding: 10px 16px !important;
     background-color: #1e1e1e !important;
     color: white !important;
-    font-size: 1rem !important;
-    border: 2px solid transparent !important;
-    transition: border 0.3s ease, box-shadow 0.3s ease;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Foco azul com aura */
-section[data-testid="stChatInput"] textarea:focus {
+/* Estilo apenas ao focar */
+textarea:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.25) !important;
+}
+
+/* Remove possível borda padrão do componente geral */
+section[data-testid="stChatInput"] {
+    border: none !important;
+    box-shadow: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 
