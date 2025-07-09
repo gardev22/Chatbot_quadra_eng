@@ -48,7 +48,14 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove bordas e outline do container mais externo (fieldset do st.chat_input) */
+/* Remove qualquer borda de containers externos do chat_input */
+section[data-testid="stChatInput"] div {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Remove o fieldset padrão */
 section[data-testid="stChatInput"] fieldset {
     border: none !important;
     outline: none !important;
@@ -56,14 +63,14 @@ section[data-testid="stChatInput"] fieldset {
     padding: 0 !important;
 }
 
-/* Remove o título do fieldset, se existir */
+/* Remove o título do fieldset */
 section[data-testid="stChatInput"] legend {
     display: none !important;
 }
 
-/* Estilo do input */
+/* Estilo do input do usuário */
 textarea {
-    border: none !important;
+    border: 2px solid transparent !important;
     outline: none !important;
     box-shadow: none !important;
     border-radius: 999px !important;
@@ -73,13 +80,14 @@ textarea {
     transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Ao focar: apenas borda azul */
+/* Ao focar: borda azul e aura */
 textarea:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 2px rgba(30,144,255,0.25) !important;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 
