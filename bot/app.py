@@ -48,8 +48,8 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove qualquer borda de containers externos do chat_input */
-section[data-testid="stChatInput"] div {
+/* Remove a borda vermelha do wrapper externo (padrão do Streamlit/BaseWeb) */
+section[data-testid="stChatInput"] div[data-baseweb="input"] {
     border: none !important;
     box-shadow: none !important;
     outline: none !important;
@@ -68,7 +68,7 @@ section[data-testid="stChatInput"] legend {
     display: none !important;
 }
 
-/* Estilo do input do usuário */
+/* Estilo do campo de texto */
 textarea {
     border: 2px solid transparent !important;
     outline: none !important;
@@ -80,13 +80,14 @@ textarea {
     transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Ao focar: borda azul e aura */
+/* Foco com borda azul e leve aura */
 textarea:focus {
     border: 2px solid #1E90FF !important;
     box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 
