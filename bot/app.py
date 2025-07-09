@@ -48,37 +48,42 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Zera todos os elementos dentro do stChatInput */
+/* === Zera tudo do chat_input === */
+
+/* Remove tudo do wrapper principal */
 section[data-testid="stChatInput"] * {
-    all: unset !important;
+    all: unset;
+    background-color: transparent !important;
+    box-shadow: none !important;
 }
 
-/* Estilo seguro e reconstruído para o textarea */
+/* Remove botão de envio */
+section[data-testid="stChatInput"] button {
+    display: none !important;
+}
+
+/* Estiliza diretamente a div do input */
 section[data-testid="stChatInput"] textarea {
-    all: unset !important;
+    all: unset;
     display: block;
-    width: 100%;
-    padding: 10px 16px;
-    background-color: #1e1e1e;
-    border: 2px solid transparent;
-    border-radius: 999px;
-    color: white;
-    font-size: 1rem;
-    transition: border 0.2s ease, box-shadow 0.2s ease;
+    width: 100% !important;
+    border-radius: 999px !important;
+    padding: 12px 20px !important;
+    background-color: #1e1e1e !important;
+    color: white !important;
+    font-size: 1rem !important;
+    border: 2px solid transparent !important;
+    transition: border 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* Somente foco azul */
+/* Foco azul com aura */
 section[data-testid="stChatInput"] textarea:focus {
-    border: 2px solid #1E90FF;
-    box-shadow: 0 0 0 2px rgba(30,144,255,0.3);
-}
-
-/* Garante que containers externos não herdem estilo residual */
-section[data-testid="stChatInput"] {
-    all: unset !important;
+    border: 2px solid #1E90FF !important;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 
