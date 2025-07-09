@@ -48,25 +48,26 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
     <style>
-    /* === Estilo do input do chat === */
+    /* Estilo base do textarea */
     textarea {
-        border: none !important;  /* Remove qualquer borda padrão */
-        outline: none !important; /* Remove contorno de foco nativo */
+        border: none !important;
+        outline: none !important;
         box-shadow: none !important;
         border-radius: 999px !important;
         padding: 10px 16px !important;
         color: white !important;
         background-color: #1e1e1e !important;
-        transition: border 0.2s ease, box-shadow 0.2s ease;
+        transition: all 0.3s ease !important;
     }
 
+    /* Quando focado, aplica aura azul ao container pai */
     textarea:focus {
-        border: 2px solid #1E90FF !important; /* Azul no foco */
-        box-shadow: 0 0 0 2px rgba(30,144,255,0.35) !important; /* Aura azul */
+        border: 2px solid #1E90FF !important;
+        box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
     }
 
-    /* Remove qualquer borda de container externo do input */
-    .stChatInputContainer {
+    /* Remove borda do container externo do chat_input */
+    div[data-testid="stChatInput"] {
         border: none !important;
         box-shadow: none !important;
     }
