@@ -45,29 +45,33 @@ for pergunta, resposta in st.session_state.historico:
 
 
 # === ESTILO DO INPUT CHAT ===
+
 st.markdown("""
     <style>
-    /* Contêiner do chat_input (remove borda vermelha) */
-    section.main div:has(textarea) {
-        border: none !important;
-    }
-
-    /* Estiliza o campo de texto */
+    /* Estiliza diretamente o textarea do chat_input */
     textarea {
         border: 2px solid transparent !important;
         box-shadow: none !important;
         outline: none !important;
-        border-radius: 12px !important; /* Aumenta arredondamento */
-        padding: 8px !important;        /* Espaço interno */
+        border-radius: 12px !important;
+        padding: 8px !important;
+        color: white !important;
+        background-color: #1e1e1e !important;
     }
 
-    /* Foco: borda azul */
+    /* Estilo ao focar */
     textarea:focus {
         border: 2px solid #1E90FF !important;
         box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
     }
+
+    /* Remove borda padrão de containers Streamlit */
+    .stChatInputContainer {
+        border: none !important;
+    }
     </style>
 """, unsafe_allow_html=True)
+
 
 # === INPUT DO USUÁRIO ===
 pergunta = st.chat_input("Digite sua pergunta")
