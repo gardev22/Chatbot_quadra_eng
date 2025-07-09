@@ -48,39 +48,37 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove bordas de containers genéricos */
-section[data-testid="stChatInput"] div {
-    border: none !important;
-    box-shadow: none !important;
-    outline: none !important;
-    background: transparent !important;
-}
-
 /* Estilo padrão do campo */
 textarea {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
+    border: 2px solid transparent !important;
     border-radius: 999px !important;
     padding: 10px 16px !important;
     background-color: #1e1e1e !important;
     color: white !important;
-    transition: border 0.2s ease, box-shadow 0.2s ease;
+    transition: all 0.3s ease-in-out;
 }
 
-/* Estilo apenas ao focar */
+/* Foco azul */
 textarea:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 3px rgba(30,144,255,0.25) !important;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
 }
 
-/* Remove possível borda padrão do componente geral */
-section[data-testid="stChatInput"] {
-    border: none !important;
+/* Remove borda vermelha padrão de navegador HTML5 */
+textarea:invalid {
     box-shadow: none !important;
+    border: 2px solid transparent !important;
+}
+
+/* Remove todos os contornos e box-shadow de pais */
+section[data-testid="stChatInput"], section[data-testid="stChatInput"] * {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
+
 
 
 
