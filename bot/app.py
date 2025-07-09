@@ -48,44 +48,34 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove qualquer borda ou sombra visível de containers pais */
+/* Zera todos os elementos dentro do stChatInput */
 section[data-testid="stChatInput"] * {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
+    all: unset !important;
 }
 
-/* Remove borda de elementos tipo form, div, fieldset etc */
-section[data-testid="stChatInput"] div,
-section[data-testid="stChatInput"] form,
-section[data-testid="stChatInput"] fieldset {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
+/* Estilo seguro e reconstruído para o textarea */
+section[data-testid="stChatInput"] textarea {
+    all: unset !important;
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background-color: #1e1e1e;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    color: white;
+    font-size: 1rem;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Remove legend (às vezes Streamlit coloca título oculto) */
-section[data-testid="stChatInput"] legend {
-    display: none !important;
+/* Somente foco azul */
+section[data-testid="stChatInput"] textarea:focus {
+    border: 2px solid #1E90FF;
+    box-shadow: 0 0 0 2px rgba(30,144,255,0.3);
 }
 
-/* Estiliza o textarea do chat */
-textarea {
-    border: 2px solid transparent !important;
-    border-radius: 999px !important;
-    background-color: #1e1e1e !important;
-    padding: 10px 16px !important;
-    color: white !important;
-    outline: none !important;
-    box-shadow: none !important;
-    transition: all 0.2s ease-in-out;
-}
-
-/* Apenas azul ao focar */
-textarea:focus {
-    border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 2px rgba(30,144,255,0.35) !important;
+/* Garante que containers externos não herdem estilo residual */
+section[data-testid="stChatInput"] {
+    all: unset !important;
 }
 </style>
 """, unsafe_allow_html=True)
