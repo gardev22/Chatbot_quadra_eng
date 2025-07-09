@@ -48,34 +48,43 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove a borda vermelha do grupo inteiro */
-div[role="group"] {
+/* REMOVE A BORDA DO FIELDSET PAI DO INPUT */
+div[role="group"] > fieldset {
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
-    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
-/* Estilo da área de input (interna) */
+/* GARANTE QUE QUALQUER FIELDSET DENTRO DO st.chat_input SEJA ZERADO */
+section[data-testid="stChatInput"] fieldset {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* ESTILO VISUAL DO TEXTAREA */
 textarea {
     border: 2px solid transparent !important;
-    outline: none !important;
     border-radius: 999px !important;
     background-color: #1e1e1e !important;
     padding: 10px 16px !important;
     color: white !important;
+    outline: none !important;
+    box-shadow: none !important;
     transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Apenas borda azul ao focar */
+/* FOCO COM BORDA AZUL */
 textarea:focus {
     border: 2px solid #1E90FF !important;
     box-shadow: 0 0 0 3px rgba(30,144,255,0.25) !important;
 }
 </style>
 """, unsafe_allow_html=True)
-
-
 
 
 # === INPUT DO USUÁRIO ===
