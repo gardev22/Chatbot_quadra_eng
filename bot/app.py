@@ -48,14 +48,15 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove borda vermelha do fieldset que envolve o chat_input */
-.st-bq {
+/* Remove a borda vermelha do grupo inteiro */
+div[role="group"] {
     border: none !important;
-    box-shadow: none !important;
     outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
 }
 
-/* Estilo do input */
+/* Estilo da área de input (interna) */
 textarea {
     border: 2px solid transparent !important;
     outline: none !important;
@@ -66,7 +67,7 @@ textarea {
     transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Foco azul somente */
+/* Apenas borda azul ao focar */
 textarea:focus {
     border: 2px solid #1E90FF !important;
     box-shadow: 0 0 0 3px rgba(30,144,255,0.25) !important;
