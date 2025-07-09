@@ -47,32 +47,40 @@ for pergunta, resposta in st.session_state.historico:
 # === ESTILO DO INPUT CHAT ===
 
 st.markdown("""
-    <style>
-    /* Remove bordas do container externo do input */
-    div[data-testid="stChatInput"] {
-        border: none !important;
-        box-shadow: none !important;
-    }
+<style>
+/* Remove bordas e outline do container mais externo (fieldset do st.chat_input) */
+section[data-testid="stChatInput"] fieldset {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
 
-    /* Estilo base do input */
-    textarea {
-        border: none !important;
-        outline: none !important;
-        box-shadow: none !important;
-        border-radius: 999px !important;
-        padding: 10px 16px !important;
-        color: white !important;
-        background-color: #1e1e1e !important;
-        transition: border 0.2s ease, box-shadow 0.2s ease;
-    }
+/* Remove o título do fieldset, se existir */
+section[data-testid="stChatInput"] legend {
+    display: none !important;
+}
 
-    /* Estilo ao focar */
-    textarea:focus {
-        border: 2px solid #1E90FF !important;  /* azul */
-        box-shadow: 0 0 0 2px rgba(30,144,255,0.35) !important;  /* aura */
-    }
-    </style>
+/* Estilo do input */
+textarea {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    border-radius: 999px !important;
+    padding: 10px 16px !important;
+    color: white !important;
+    background-color: #1e1e1e !important;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Ao focar: apenas borda azul */
+textarea:focus {
+    border: 2px solid #1E90FF !important;
+    box-shadow: 0 0 0 2px rgba(30,144,255,0.25) !important;
+}
+</style>
 """, unsafe_allow_html=True)
+
 
 
 # === INPUT DO USUÁRIO ===
