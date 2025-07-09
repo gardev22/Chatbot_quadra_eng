@@ -48,47 +48,47 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* Remove a borda vermelha do wrapper externo (padrão do Streamlit/BaseWeb) */
-section[data-testid="stChatInput"] div[data-baseweb="input"] {
+/* Remove qualquer borda ou sombra visível de containers pais */
+section[data-testid="stChatInput"] * {
     border: none !important;
-    box-shadow: none !important;
     outline: none !important;
+    box-shadow: none !important;
 }
 
-/* Remove o fieldset padrão */
+/* Remove borda de elementos tipo form, div, fieldset etc */
+section[data-testid="stChatInput"] div,
+section[data-testid="stChatInput"] form,
 section[data-testid="stChatInput"] fieldset {
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
+    background: transparent !important;
 }
 
-/* Remove o título do fieldset */
+/* Remove legend (às vezes Streamlit coloca título oculto) */
 section[data-testid="stChatInput"] legend {
     display: none !important;
 }
 
-/* Estilo do campo de texto */
+/* Estiliza o textarea do chat */
 textarea {
     border: 2px solid transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
     border-radius: 999px !important;
+    background-color: #1e1e1e !important;
     padding: 10px 16px !important;
     color: white !important;
-    background-color: #1e1e1e !important;
-    transition: border 0.2s ease, box-shadow 0.2s ease;
+    outline: none !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease-in-out;
 }
 
-/* Foco com borda azul e leve aura */
+/* Apenas azul ao focar */
 textarea:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
+    box-shadow: 0 0 0 2px rgba(30,144,255,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)
-
-
 
 
 
