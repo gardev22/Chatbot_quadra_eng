@@ -48,7 +48,13 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
     <style>
-    /* Estilo base do textarea */
+    /* Remove bordas do container externo do input */
+    div[data-testid="stChatInput"] {
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Estilo base do input */
     textarea {
         border: none !important;
         outline: none !important;
@@ -57,19 +63,13 @@ st.markdown("""
         padding: 10px 16px !important;
         color: white !important;
         background-color: #1e1e1e !important;
-        transition: all 0.3s ease !important;
+        transition: border 0.2s ease, box-shadow 0.2s ease;
     }
 
-    /* Quando focado, aplica aura azul ao container pai */
+    /* Estilo ao focar */
     textarea:focus {
-        border: 2px solid #1E90FF !important;
-        box-shadow: 0 0 0 3px rgba(30,144,255,0.35) !important;
-    }
-
-    /* Remove borda do container externo do chat_input */
-    div[data-testid="stChatInput"] {
-        border: none !important;
-        box-shadow: none !important;
+        border: 2px solid #1E90FF !important;  /* azul */
+        box-shadow: 0 0 0 2px rgba(30,144,255,0.35) !important;  /* aura */
     }
     </style>
 """, unsafe_allow_html=True)
