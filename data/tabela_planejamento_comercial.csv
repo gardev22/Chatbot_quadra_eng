@@ -1,0 +1,200 @@
+1
+Etapa: Início
+Setor Responsável: Backoffice Comercial
+Responsável Direto: Backoffice Comercial
+"Ação/Atividade: Realizar análise de mercado, mapeamento de concorrentes, condições de mercado e oportunidades"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+2
+Etapa: Cliente
+Setor Responsável: Experiência do Cliente
+Responsável Direto: Experiência do Cliente
+Ação/Atividade: Mapear perfil do cliente e apresentar
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+3
+Etapa: Contratar
+Setor Responsável: Arquitetura (Produtos)
+Responsável Direto: Experiência do Cliente
+Ação/Atividade: Contratar e executar memorial de incorporação
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+                                                                                                                                                                                                                             3.1
+Etapa: Viabilidade
+Setor Responsável: Diretoria Comercial
+Responsável Direto: Diretoria Comercial
+Ação/Atividade: Elaborar cronograma e viabilidade do projeto
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+4
+Etapa: Marketing
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Definir e contratar agência de publicidade responsável pelo produto
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+5
+Etapa: Imagens
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+"Ação/Atividade: Escolher, contratar e produzir as imagens do produto"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+6
+Etapa: Campanha
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+"Ação/Atividade: Definir campanha de lançamento (conceito, cronograma, premiação, campanha publicitária)"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+                                                                                                                                                                                                                             6.1
+Etapa: Imagens
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+"Ação/Atividade: Escolher, contratar e produzir as imagens do produto"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+7
+Etapa: Campanha
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Aprovar conceito da campanha de publicidade
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+8
+Etapa: Apresentação
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Apresentar o produto para parceiros de vendas e outros envolvidos
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+9
+Etapa: Maquete?
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Contratar e executar maquete
+Condicional?: Sim
+Decisão Tomada: Sim
+Observação: -
+10
+Etapa: PDV?
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Definir pontos e executar obras do ponto de venda
+Condicional?: Sim
+Decisão Tomada: Sim
+Observação: -
+11
+Etapa: Personalização?
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Definir e executar unidades decoradas
+Condicional?: Sim
+Decisão Tomada: Sim
+Observação: -
+12
+Etapa: Comissão e vendas
+Setor Responsável: Diretoria Comercial
+Responsável Direto: Diretoria Comercial
+"Ação/Atividade: Definir comissão de vendas, escolher imobiliárias parceiras"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+13
+Etapa: Tabela
+Setor Responsável: Diretoria Comercial
+Responsável Direto: Diretoria Comercial
+"Ação/Atividade: Definir metas de vendas, cronograma de vendas e condições de pagamento"
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+14
+Etapa: Comunicação Visual
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Aprovar e executar comunicação visual da loja e entorno de obra
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+15
+Etapa: Evento
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Executar evento de lançamento oficial do produto
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+16
+Etapa: Treinamento
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Elaborar e ministrar treinamento do produto com as equipes
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+17
+Etapa: Acompanhamento
+Setor Responsável: Diretoria Comercial
+Responsável Direto: Diretoria Comercial
+Ação/Atividade: Estudar e acompanhar o desempenho das equipes de vendas
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+18
+Etapa: Retorno de Mídia
+Setor Responsável: Marketing
+Responsável Direto: Marketing
+Ação/Atividade: Apresentar resultado do estudo de retorno de mídia
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+19
+Etapa: Jurídico
+Setor Responsável: Coordenação Comercial
+Responsável Direto: Coordenação Comercial
+Ação/Atividade: Elaborar a minuta e aprovar os modelos de contrato
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+20
+Etapa: Sistema
+Setor Responsável: Coordenação Comercial
+Responsável Direto: Coordenação Comercial
+Ação/Atividade: Cadastrar os parâmetros comerciais no sistema
+Condicional?: Não
+Decisão Tomada: -
+Observação: -
+21
+Etapa: Maquete? (alternativa)
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Ignorar etapa de maquete
+Condicional?: Sim
+Decisão Tomada: Não
+Observação: -
+22
+Etapa: PDV? (alternativa)
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Prosseguir sem ponto de venda
+Condicional?: Sim
+Decisão Tomada: Não
+Observação: -
+23
+Etapa: Personalização? (alternativa)
+Setor Responsável: Decisão
+Responsável Direto: A definir (após decisão)
+Ação/Atividade: Seguir sem unidades decoradas
+Condicional?: Sim
+Decisão Tomada: Não
+Observação: -

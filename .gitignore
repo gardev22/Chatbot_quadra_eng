@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.DS_Store
+.env
+.streamlit/secrets.toml
+desktop.ini
+Thumbs.db
+.DS_Store
+.data/desktop.ini
+.bot/desktop.ini
