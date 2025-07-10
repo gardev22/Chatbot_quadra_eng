@@ -44,12 +44,10 @@ for pergunta, resposta in st.session_state.historico:
     st.chat_message("assistant").markdown(resposta)
 
 
-
-
-# === ESTILO DO INPUT CHAT ===
+# === ESTILO DO CHAT INPUT ===
 st.markdown("""
     <style>
-    /* Remove sombras e bordas do contêiner */
+    /* Remove sombra padrão do Streamlit */
     section:has(input) * {
         box-shadow: none !important;
         border: none !important;
@@ -60,7 +58,7 @@ st.markdown("""
         border: 2px solid transparent !important;
         outline: none !important;
         border-radius: 12px !important;
-        padding: 10px !important;
+        padding: 12px !important;
         background-color: #1e1e1e !important;
         color: #fff !important;
         width: 100% !important;
@@ -73,32 +71,38 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Remove a mensagem "Press Enter to submit form" */
-    .stForm > div > div:nth-child(2) {
+    /* Remove mensagem "Press Enter to submit form" */
+    .stFormSubmitLabel {
         display: none !important;
     }
 
-    /* Esconde o botão "Enviar" */
-    .stForm button {
+    /* Esconde botão */
+    button[kind="secondary"] {
         display: none !important;
     }
 
-    /* Centraliza melhor o input, sem causar rolagem */
+    /* Fixa o form no rodapé da tela */
     div[data-testid="stForm"] {
-        margin-top: 20vh;
-        margin-bottom: 2vh;
+        position: fixed !important;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 1rem 2rem;
+        background-color: #0e0e0e; /* fundo do rodapé */
+        z-index: 999;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# === INPUT DO USUÁRIO (customizado) ===
+# === INPUT DO USUÁRIO ===
 with st.form("chat_form", clear_on_submit=True):
     user_input = st.text_input(
-        label="", 
-        placeholder="Digite sua pergunta", 
+        label="",
+        placeholder="Digite sua pergunta",
         label_visibility="collapsed"
     )
-    st.form_submit_button("Enviar")  # será ocultado via CSS
+    st.form_submit_button("Enviar")  # escondido via CSS
+
 
 
 # === SIDEBAR COM HISTÓRICO ===
