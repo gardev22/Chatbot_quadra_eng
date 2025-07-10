@@ -47,13 +47,13 @@ for pergunta, resposta in st.session_state.historico:
 # === ESTILO DO CHAT INPUT ===
 st.markdown("""
     <style>
-    /* Remove sombra padrão do Streamlit */
+    /* Remove sombra e borda do container externo */
     section:has(input) * {
         box-shadow: none !important;
         border: none !important;
     }
 
-    /* Estilização do input */
+    /* Estilo do input */
     input[type="text"] {
         border: 2px solid transparent !important;
         outline: none !important;
@@ -71,37 +71,52 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Remove mensagem "Press Enter to submit form" */
+    /* Esconde mensagem "Press Enter to submit form" */
     .stFormSubmitLabel {
         display: none !important;
     }
 
-    /* Esconde botão */
-    button[kind="secondary"] {
+    /* Esconde o botão "Enviar" */
+    .stForm button {
         display: none !important;
     }
 
-    /* Fixa o form no rodapé da tela */
-    div[data-testid="stForm"] {
-        position: fixed !important;
+    /* Fixa o formulário no rodapé */
+    #chat_form_container {
+        position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         padding: 1rem 2rem;
-        background-color: #0e0e0e; /* fundo do rodapé */
+        background-color: #0e0e0e;
         z-index: 999;
+    }
+
+    /* Espaço no final para evitar sobreposição do input */
+    .chat-spacer {
+        height: 100px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# === INPUT DO USUÁRIO ===
-with st.form("chat_form", clear_on_submit=True):
-    user_input = st.text_input(
-        label="",
-        placeholder="Digite sua pergunta",
-        label_visibility="collapsed"
-    )
-    st.form_submit_button("Enviar")  # escondido via CSS
+# === EXEMPLO DE CONTEÚDO DE CIMA ===
+st.title("Histórico de Sessão")
+st.markdown("Nenhuma pergunta feita ainda.")
+
+# espaço invisível no final para evitar o "bug visual"
+st.markdown('<div class="chat-spacer"></div>', unsafe_allow_html=True)
+
+# === FORMULARIO FIXO ===
+with st.container():
+    st.markdown('<div id="chat_form_container">', unsafe_allow_html=True)
+    with st.form("chat_form", clear_on_submit=True):
+        user_input = st.text_input(
+            label="", 
+            placeholder="Digite sua pergunta", 
+            label_visibility="collapsed"
+        )
+        st.form_submit_button("Enviar")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 
