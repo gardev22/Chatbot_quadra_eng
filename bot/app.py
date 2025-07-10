@@ -1,127 +1,117 @@
 import streamlit as st
 import base64
-import pandas as pd
-import numpy as np
-import faiss
-from sentence_transformers import SentenceTransformer
 from openai_backend import responder_pergunta
-import requests
 
-# === CONFIGURAÇÕES FIXAS ===
+# === CONFIGURAÇÃO DA PÁGINA ===
+st.set_page_config(
+    page_title="Chatbot da Quadra Engenharia",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-LOGO_PATH = "data/logo_quadra.png"
-EMOJI_PATH = "data/emoji_bot.png"
+# === ESCONDE MENU, FOOTER E SIDEBAR PADRÃO ===
+st.markdown("""
+<style>
+#MainMenu, footer, header {visibility: hidden;}
+[data-testid="stSidebar"] {display: none;}
+</style>
+""", unsafe_allow_html=True)
 
-
-# === FUNÇÃO PARA CARREGAR IMAGENS ===
-def carregar_imagem(path):
+# === CARREGA IMAGENS ===
+@st.cache(allow_output_mutation=True)
+def carrega_img(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-logo = carregar_imagem(LOGO_PATH)
-emoji = carregar_imagem(EMOJI_PATH)
+LOGO = carrega_img("data/logo_quadra.png")
+EMOJI = carrega_img("data/emoji_bot.png")
 
-# === CONFIGURAÇÃO DA PÁGINA ===
-st.set_page_config(page_title="Chatbot Quadra", layout="wide")
+# === TOPO TIPO “APP BAR” ===
+st.markdown(f"""
+<div style="
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 30px;
+    background: var(--bg-color);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+">
+  <div style="display:flex; align-items:center;">
+    <img src="data:image/png;base64,{LOGO}" style="height:36px; margin-right:12px;" />
+    <div>
+      <div style="font-size:1.25rem; font-weight:600; color:var(--text-color);">
+        Chatbot da Quadra Engenharia
+      </div>
+      <div style="font-size:0.9rem; color:var(--secondary-text-color);">
+        Assistente Inteligente
+      </div>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center;">
+    <button style="all:unset; cursor:pointer; font-size:1.2rem; margin-right:20px;">⚙️</button>
+    <div style="
+      width:32px; height:32px; border-radius:50%;
+      background: var(--sidebar-background-color);
+      display:flex; align-items:center; justify-content:center;
+      font-weight:600; color:var(--text-color); margin-right:20px;
+    ">U</div>
+    <button style="all:unset; cursor:pointer; font-size:1.2rem;">⏻</button>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
+# === HISTÓRICO DE MENSAGENS ===
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-# === CABEÇALHO CENTRAL ===
-st.markdown(f"""
-    <div style='text-align: center;'>
-        <img src='data:image/png;base64,{logo}' style='width: 150px; margin-bottom: 10px;'>
-        <h2 style='font-size: 2rem; font-weight: 600;'>
-            <img src='data:image/png;base64,{emoji}' style='width: 44px; vertical-align: middle; margin-right: 8px;'>
-            Bem-vindo ao CHATBOT da QUADRA ENGENHARIA
-        </h2>
+# splash de boas-vindas
+if not st.session_state.historico:
+    st.markdown(f"""
+    <div style="
+      max-width:800px;
+      margin:60px auto 30px;
+      background: var(--secondary-background-color);
+      border-radius:12px;
+      padding:30px;
+      text-align:center;
+    ">
+      <img src="data:image/png;base64,{EMOJI}" style="height:36px; margin-bottom:12px;" />
+      <div style="font-size:1.1rem; font-weight:500; margin-bottom:4px; color:var(--text-color);">
+        Comece uma conversa
+      </div>
+      <div style="color:var(--secondary-text-color);">
+        Digite sua mensagem abaixo para começar a interagir com o assistente
+      </div>
     </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# === EXIBIR HISTÓRICO DE MENSAGENS ===
 for pergunta, resposta in st.session_state.historico:
     st.chat_message("user").markdown(pergunta)
     st.chat_message("assistant").markdown(resposta)
 
-
-# === ESTILO DO INPUT CHAT ===
-
+# === ESTILO DO INPUT (SEM FORÇAR CORES, HERDA DO TEMA) ===
 st.markdown("""
 <style>
-/* 1) Wrapper externo: fundo escuro, contorno azul, altura fixa e flex */
+/* apenas shape, margem e padding — cores vêm do tema do Streamlit */
 div[data-testid="stChatInput"] > div {
-  display: flex !important;
-  align-items: center !important;
-  width: 100% !important;
-  height: 56px !important;               /* ajuste pra altura desejada */
-  padding: 0 16px !important;            /* 16px nas laterais */
-  box-sizing: border-box !important;
-  background: #1e1e1e !important;        /* fundo geral */
-  border: 2px solid #1E90FF !important;  /* contorno azul */
-  border-radius: 12px !important;
+  max-width: 800px;
+  margin: 20px auto 40px;
+  border-radius: 30px !important;
+  padding: 8px 16px !important;
 }
 
-/* 2) Limpa TUDO abaixo do wrapper (backgrounds, sombras, paddings) */
-div[data-testid="stChatInput"] > div > div,
-div[data-testid="stChatInput"] > div > div * {
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-/* 3) Textarea puro: sem bordas, sem fundo, flexível e centralizado */
+/* ajusta tamanho de fonte e espaçamento do botão */
 div[data-testid="stChatInput"] textarea {
-  flex: 1 1 auto !important;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  color: #fff !important;
   font-size: 16px !important;
-  line-height: 1.5 !important;
-  height: auto !important;
-  resize: none !important;
 }
-
-/* 4) Centraliza verticalmente o conteúdo do textarea */
-div[data-testid="stChatInput"] > div > div {
-  display: flex !important;
-  align-items: center !important;
-  height: 100% !important;
-}
-
-/* 5) Placeholder suavizado */
-div[data-testid="stChatInput"] textarea::placeholder {
-  color: #777 !important;
-}
-
-/* 6) Espaçamento do botão de enviar */
 div[data-testid="stChatInput"] button {
   margin-left: 12px !important;
-}
-
-/* 7) Remove qualquer foco extra no wrapper */
-div[data-testid="stChatInput"] > div:focus-within {
-  box-shadow: none !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# === INPUT DO USUÁRIO ===
-pergunta = st.chat_input("Digite sua pergunta")
+# === CAMPO DE INPUT ===
+pergunta = st.chat_input("Digite sua mensagem…")
 if pergunta:
     resposta = responder_pergunta(pergunta)
     st.session_state.historico.append((pergunta, resposta))
-    st.rerun()
-
-# === SIDEBAR COM HISTÓRICO ===
-st.sidebar.markdown("## 📄 Histórico de Sessão")
-if st.session_state.historico:
-    for i, (p, _) in enumerate(reversed(st.session_state.historico)):
-        st.sidebar.markdown(f"{len(st.session_state.historico) - i}. **{p}**")
-else:
-    st.sidebar.markdown(
-        "<span style='color: #ccc; font-style: normal;'>Nenhuma pergunta feita ainda.</span>",
-        unsafe_allow_html=True
-    )
-
