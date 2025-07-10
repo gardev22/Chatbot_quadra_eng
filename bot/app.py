@@ -47,34 +47,48 @@ for pergunta, resposta in st.session_state.historico:
 # === ESTILO DO INPUT CHAT ===
 st.markdown("""
     <style>
-    /* Contêiner do chat_input (remove borda vermelha) */
-    section.main div:has(textarea) {
+    /* Remove todas as bordas e sombras do input e do contêiner */
+    section:has(input) * {
+        box-shadow: none !important;
         border: none !important;
     }
 
-    /* Estiliza o campo de texto */
-    textarea {
+    /* Estilização padrão do input */
+    input[type="text"] {
         border: 2px solid transparent !important;
-        box-shadow: none !important;
         outline: none !important;
-        border-radius: 12px !important; /* Aumenta arredondamento */
-        padding: 8px !important;        /* Espaço interno */
+        border-radius: 12px !important;
+        padding: 10px !important;
+        background-color: #1e1e1e !important;
+        color: #fff !important;
+        width: 100% !important;
+        font-size: 16px !important;
+        box-shadow: none !important;
     }
 
-    /* Foco: borda azul */
-    textarea:focus {
+    /* Estilo ao focar: apenas borda azul */
+    input[type="text"]:focus {
         border: 2px solid #1E90FF !important;
-        box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
+        box-shadow: none !important;
+    }
+
+    /* Botão customizado */
+    button[kind="secondary"] {
+        background-color: #1E90FF !important;
+        color: white !important;
+        border-radius: 12px !important;
+        padding: 0.5rem 1rem !important;
+        font-size: 16px !important;
+        border: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# === INPUT DO USUÁRIO ===
-pergunta = st.chat_input("Digite sua pergunta")
-if pergunta:
-    resposta = responder_pergunta(pergunta)
-    st.session_state.historico.append((pergunta, resposta))
-    st.rerun()
+
+# === INPUT DO USUÁRIO (customizado) ===
+with st.form("chat_form", clear_on_submit=True):
+    user_input = st.text_input("Digite sua pergunta", label_visibility="collapsed")
+    enviar = st.form_submit_button("Enviar")
 
 # === SIDEBAR COM HISTÓRICO ===
 st.sidebar.markdown("## 📄 Histórico de Sessão")
