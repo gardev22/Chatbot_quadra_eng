@@ -48,45 +48,51 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* 1) Wrapper completo, contorno azul e padding generoso */
-div[data-testid="stChatInput"] > div {
-  display: flex !important;
-  align-items: center !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
-  border: 2px solid #1E90FF !important;
-  border-radius: 12px !important;
-  background-color: #1e1e1e !important;
-  padding: 12px 16px !important;  /* 12px topo/baixo e 16px lados */
-}
+  /* 1) Wrapper externo: contorno azul e padding */
+  div[data-testid="stChatInput"] > div {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border: 2px solid #1E90FF !important;
+    border-radius: 12px !important;
+    background-color: #1e1e1e !important;
+    padding: 12px 16px !important;  /* ajuste topo/baixo e lados */
+  }
 
-/* 2) Textarea sem bordas internas e ocupa todo o espaço disponível */
-div[data-testid="stChatInput"] textarea {
-  flex-grow: 1 !important;
-  border: none !important;
-  outline: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  color: #fff !important;
-  font-size: 16px !important;
-  line-height: 1.5 !important;    /* aumenta espaçamento entre linhas */
-}
+  /* 2) Remove o fundo/sombra do container interno que vem do Streamlit */
+  div[data-testid="stChatInput"] > div > div {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
 
-/* 3) Placeholder mais suave e afundado */
-div[data-testid="stChatInput"] textarea::placeholder {
-  color: #777 !important;
-}
+  /* 3) Textarea sem bordas, com altura auto e centralizado verticalmente */
+  div[data-testid="stChatInput"] textarea {
+    flex: 1 1 auto !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: #fff !important;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    height: auto !important;
+    min-height: 1.5em !important;
+    resize: none !important;
+  }
 
-/* 4) Espaçamento do botão de envio (seta) */
-div[data-testid="stChatInput"] button {
-  margin-left: 12px !important;
-}
+  /* 4) Placeholder mais suave */
+  div[data-testid="stChatInput"] textarea::placeholder {
+    color: #777 !important;
+  }
 
-/* 5) Remove qualquer sobra/vermelho extra que ainda estivesse vindo */
-div[data-testid="stChatInput"] > div:focus-within {
-  box-shadow: none !important;
-}
+  /* 5) Espaçamento do botão de envio (seta) */
+  div[data-testid="stChatInput"] button {
+    margin-left: 12px !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
