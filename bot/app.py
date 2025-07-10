@@ -45,7 +45,7 @@ for pergunta, resposta in st.session_state.historico:
 
 
 # === ESTILO FINAL DO CHAT INPUT ===
-# === ESTILO DO INPUT CHAT ===
+
 st.markdown("""
     <style>
     /* Remove sombras e bordas do contêiner */
@@ -54,7 +54,7 @@ st.markdown("""
         border: none !important;
     }
 
-    /* Estilização do input */
+    /* Estilo do input */
     input[type="text"] {
         border: 2px solid transparent !important;
         outline: none !important;
@@ -72,9 +72,17 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Remove a mensagem "Press Enter to submit form" */
-    .stForm > div > div:nth-child(2) {
+    /* Remove a mensagem via classe */
+    .stFormSubmitLabel {
         display: none !important;
+    }
+
+    /* Remove qualquer parágrafo no form (mensagem escondida extra) */
+    form p {
+        visibility: hidden !important;
+        height: 0px !important;
+        margin: 0px !important;
+        padding: 0px !important;
     }
 
     /* Esconde o botão "Enviar" */
@@ -82,22 +90,31 @@ st.markdown("""
         display: none !important;
     }
 
-    /* Centraliza melhor o input, sem causar rolagem */
+    /* Posiciona o input verticalmente mais abaixo */
     div[data-testid="stForm"] {
         margin-top: 40vh;
         margin-bottom: 2vh;
     }
     </style>
+
+    <script>
+    const labels = window.parent.document.querySelectorAll("form p");
+    labels.forEach(el => {
+        if (el.textContent.includes("Press Enter to submit form")) {
+            el.style.display = "none";
+        }
+    });
+    </script>
 """, unsafe_allow_html=True)
 
-# === INPUT DO USUÁRIO (customizado) ===
+# === CAMPO DE INPUT (SEM BOTÃO E SEM MENSAGEM) ===
 with st.form("chat_form", clear_on_submit=True):
     user_input = st.text_input(
-        label="", 
-        placeholder="Digite sua pergunta", 
+        label="",
+        placeholder="Digite sua pergunta",
         label_visibility="collapsed"
     )
-    st.form_submit_button("Enviar")  # será ocultado via CSS
+    st.form_submit_button("Enviar")  # escondido via CSS
 
 
 
