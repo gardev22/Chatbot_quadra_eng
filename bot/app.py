@@ -84,7 +84,7 @@ st.markdown("""
 
     /* Centraliza melhor o input, sem causar rolagem */
     div[data-testid="stForm"] {
-        margin-top: 10vh;
+        margin-top: 25vh;
         margin-bottom: 2vh;
     }
     </style>
