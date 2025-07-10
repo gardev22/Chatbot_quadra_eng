@@ -48,56 +48,62 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* === 1) Wrapper externo: contorno azul + fundo escuro === */
-  div[data-testid="stChatInput"] > div {
-    border: 2px solid #1E90FF !important;
-    border-radius: 12px !important;
-    background-color: #1e1e1e !important;
-    display: flex !important;
-    align-items: center !important;
-    padding: 0 16px !important;   /* padding só nas laterais */
-    height: 56px !important;      /* controle aqui a altura total */
-    box-sizing: border-box !important;
-  }
+/* 1) Wrapper externo: fundo escuro, contorno azul, altura fixa e flex */
+div[data-testid="stChatInput"] > div {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 56px !important;               /* ajuste pra altura desejada */
+  padding: 0 16px !important;            /* 16px nas laterais */
+  box-sizing: border-box !important;
+  background: #1e1e1e !important;        /* fundo geral */
+  border: 2px solid #1E90FF !important;  /* contorno azul */
+  border-radius: 12px !important;
+}
 
-  /* === 2) Zera qualquer fundo ou sombra nas camadas abaixo === */
-  div[data-testid="stChatInput"] > div > div,
-  div[data-testid="stChatInput"] > div > div * {
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
+/* 2) Limpa TUDO abaixo do wrapper (backgrounds, sombras, paddings) */
+div[data-testid="stChatInput"] > div > div,
+div[data-testid="stChatInput"] > div > div * {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
 
-  /* === 3) Textarea puro, ocupa tudo e centraliza texto === */
-  div[data-testid="stChatInput"] textarea {
-    flex: 1 1 auto !important;
-    background: transparent !important;
-    border: none !important;
-    outline: none !important;
-    color: #fff !important;
-    font-size: 16px !important;
-    line-height: 1.5 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    height: auto !important;
-    resize: none !important;
-  }
+/* 3) Textarea puro: sem bordas, sem fundo, flexível e centralizado */
+div[data-testid="stChatInput"] textarea {
+  flex: 1 1 auto !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  line-height: 1.5 !important;
+  height: auto !important;
+  resize: none !important;
+}
 
-  /* === 4) Placeholder suavizado === */
-  div[data-testid="stChatInput"] textarea::placeholder {
-    color: #777 !important;
-  }
+/* 4) Centraliza verticalmente o conteúdo do textarea */
+div[data-testid="stChatInput"] > div > div {
+  display: flex !important;
+  align-items: center !important;
+  height: 100% !important;
+}
 
-  /* === 5) Espaço entre o textarea e o botão === */
-  div[data-testid="stChatInput"] button {
-    margin-left: 12px !important;
-  }
+/* 5) Placeholder suavizado */
+div[data-testid="stChatInput"] textarea::placeholder {
+  color: #777 !important;
+}
 
-  /* === 6) Garante que foco não gere sombra extra === */
-  div[data-testid="stChatInput"] > div:focus-within {
-    box-shadow: none !important;
-  }
+/* 6) Espaçamento do botão de enviar */
+div[data-testid="stChatInput"] button {
+  margin-left: 12px !important;
+}
+
+/* 7) Remove qualquer foco extra no wrapper */
+div[data-testid="stChatInput"] > div:focus-within {
+  box-shadow: none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
