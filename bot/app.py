@@ -44,11 +44,9 @@ for pergunta, resposta in st.session_state.historico:
     st.chat_message("assistant").markdown(resposta)
 
 
-# === ESTILO DO INPUT CHAT ===
-import streamlit as st
+
 
 # === ESTILO DO INPUT CHAT ===
-
 st.markdown("""
     <style>
     /* Remove sombras e bordas do contêiner */
@@ -76,18 +74,19 @@ st.markdown("""
     }
 
     /* Remove a mensagem "Press Enter to submit form" */
-    .stFormSubmitLabel {
+    .stForm > div > div:nth-child(2) {
         display: none !important;
     }
 
     /* Esconde o botão "Enviar" */
-    button[data-testid="baseButton-secondary"] {
+    .stForm button {
         display: none !important;
     }
 
-    /* Coloca o input mais embaixo da tela */
+    /* Centraliza melhor o input, sem causar rolagem */
     div[data-testid="stForm"] {
-        margin-top: 400px;  /* Aumente esse valor se quiser mais embaixo ainda */
+        margin-top: 20vh;
+        margin-bottom: 2vh;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -99,7 +98,7 @@ with st.form("chat_form", clear_on_submit=True):
         placeholder="Digite sua pergunta", 
         label_visibility="collapsed"
     )
-    st.form_submit_button("Enviar")
+    st.form_submit_button("Enviar")  # será ocultado via CSS
 
 
 # === SIDEBAR COM HISTÓRICO ===
