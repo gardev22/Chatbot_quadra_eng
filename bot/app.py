@@ -1,6 +1,7 @@
 import streamlit as st
 import base64
 from openai_backend import responder_pergunta
+import pandas as pd
 
 # === CONFIGURAÇÃO DA PÁGINA ===
 st.set_page_config(
