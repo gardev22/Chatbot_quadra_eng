@@ -48,35 +48,45 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* 1) Estiliza o WRAPPER do chat_input (substitui o vermelho) */
-  div[data-testid="stChatInput"] > div {
-      /* azul no lugar do vermelho */
-      border: 2px solid #1E90FF !important;
-      border-radius: 12px !important;
-      background-color: #1e1e1e !important;  /* mesmo fundo do seu textarea */
-      padding: 8px !important;               /* espaçamento interno */
-      box-shadow: none !important;
-  }
+/* 1) Wrapper completo, contorno azul e padding generoso */
+div[data-testid="stChatInput"] > div {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  border: 2px solid #1E90FF !important;
+  border-radius: 12px !important;
+  background-color: #1e1e1e !important;
+  padding: 12px 16px !important;  /* 12px topo/baixo e 16px lados */
+}
 
-  /* 2) Remove TODO contorno/borda interno do textarea */
-  div[data-testid="stChatInput"] textarea {
-      border: none !important;
-      outline: none !important;
-      background-color: transparent !important;
-      box-shadow: none !important;
-      width: 100% !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      resize: none !important;
-      color: #fff !important;
-      font-size: 16px !important;
-  }
+/* 2) Textarea sem bordas internas e ocupa todo o espaço disponível */
+div[data-testid="stChatInput"] textarea {
+  flex-grow: 1 !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  line-height: 1.5 !important;    /* aumenta espaçamento entre linhas */
+}
 
-  /* 3) Opcional: força o foco no textarea sem criar sombra extra */
-  div[data-testid="stChatInput"] textarea:focus {
-      outline: none !important;
-      box-shadow: none !important;
-  }
+/* 3) Placeholder mais suave e afundado */
+div[data-testid="stChatInput"] textarea::placeholder {
+  color: #777 !important;
+}
+
+/* 4) Espaçamento do botão de envio (seta) */
+div[data-testid="stChatInput"] button {
+  margin-left: 12px !important;
+}
+
+/* 5) Remove qualquer sobra/vermelho extra que ainda estivesse vindo */
+div[data-testid="stChatInput"] > div:focus-within {
+  box-shadow: none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
