@@ -45,29 +45,31 @@ for pergunta, resposta in st.session_state.historico:
 
 
 # === ESTILO DO INPUT CHAT ===
+
 st.markdown("""
-    <style>
-    /* Contêiner do chat_input (remove borda vermelha) */
-    section.main div:has(textarea) {
-        border: none !important;
-    }
+<style>
+  /* 1) Remove a borda/vermelho que aparece no container ao focar */
+  section.main div:focus-within {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
 
-    /* Estiliza o campo de texto */
-    textarea {
-        border: 2px solid transparent !important;
-        box-shadow: none !important;
-        outline: none !important;
-        border-radius: 12px !important; /* Aumenta arredondamento */
-        padding: 8px !important;        /* Espaço interno */
-    }
-
-    /* Foco: borda azul */
-    textarea:focus {
-        border: 2px solid #1E90FF !important;
-        box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
-    }
-    </style>
+  /* 2) Continua estilizando só o textarea como você já tem */
+  textarea {
+    border: 2px solid transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    border-radius: 12px !important;
+    padding: 8px !important;
+  }
+  textarea:focus {
+    border: 2px solid #1E90FF !important;
+    box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
+  }
+</style>
 """, unsafe_allow_html=True)
+
 
 # === INPUT DO USUÁRIO ===
 pergunta = st.chat_input("Digite sua pergunta")
