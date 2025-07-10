@@ -48,14 +48,14 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* Remove sombra e borda */
+  /* Remove sombra e borda globais */
   section:has(input) * {
     box-shadow: none !important;
     border: none !important;
   }
 
-  /* Input estilizado */
-  input[type="text"] {
+  /* Estilização do input */
+  input[type="text"].st-bd {
     border: 2px solid transparent !important;
     outline: none !important;
     border-radius: 12px !important;
@@ -66,51 +66,70 @@ st.markdown("""
     font-size: 16px !important;
     box-shadow: none !important;
   }
-  input[type="text"]:focus {
+  input[type="text"].st-bd:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: none !important;
   }
 
-  /* Esconde todo label e parágrafo dentro do form */
-  form p, form label {
+  /* Esconde hints/labels que o Streamlit injeta dinamicamente */
+  [role="status"], form p, form label {
     display: none !important;
   }
 
-  /* Esconde botão enviar */
-  .stForm button {
-    display: none !important;
-  }
-
-  /* Posiciona input */
-  div[data-testid="stForm"] {
-    margin-top: 40vh;
-    margin-bottom: 2vh;
+  /* Posiciona o text_input (muda aqui) */
+  div[data-testid="stTextInput"] {
+    margin-top: 40vh;    /* ajuste vertical */
+    margin-bottom: 2vh;  /* ajuste conforme quiser */
   }
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // Desliga autocomplete/autocorrect/spellcheck
-    const inp = document.querySelector('input[type="text"]');
-    if (inp) {
-      inp.setAttribute('autocomplete', 'off');
-      inp.setAttribute('autocorrect', 'off');
-      inp.setAttribute('autocapitalize', 'off');
-      inp.setAttribute('spellcheck', 'false');
-    }
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.querySelector('input[type="text"].st-bd');
+  if (inp) {
+    // Desliga autofill/autocorrect/spellcheck
+    inp.setAttribute('autocomplete', 'off');
+    inp.setAttribute('autocorrect', 'off');
+    inp.setAttribute('autocapitalize', 'off');
+    inp.setAttribute('spellcheck', 'false');
+  }
+
+  // MutationObserver para remover o hint "Press Enter..."
+  const observer = new MutationObserver(() => {
+    document.querySelectorAll('[role="status"]').forEach(el => {
+      if (el.textContent.includes('Press Enter')) {
+        el.style.display = 'none';
+      }
+    });
   });
+  observer.observe(document.body, { childList: true, subtree: true });
+});
 </script>
 """, unsafe_allow_html=True)
 
 
 
-with st.form("chat_form", clear_on_submit=True):
-    user_input = st.text_input(
-        label="",
-        placeholder="Digite sua pergunta",
-        label_visibility="collapsed"
-    )
-    st.form_submit_button("Enviar")  # já escondido por CSS
+# === Input sem form, dispara no Enter ===
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+
+def on_enter():
+    st.session_state.submitted = True
+
+user_input = st.text_input(
+    label="",
+    placeholder="Digite sua pergunta",
+    label_visibility="collapsed",
+    key="user_input",
+    on_change=on_enter,
+    autocomplete="off"
+)
+
+if st.session_state.submitted:
+    pergunta = st.session_state.user_input
+    st.write(f"Você perguntou: **{pergunta}**")
+    # reseta para próxima pergunta
+    st.session_state.submitted = False
+    st.session_state.user_input = ""
 
 
 # === SIDEBAR COM HISTÓRICO ===
