@@ -45,47 +45,29 @@ for pergunta, resposta in st.session_state.historico:
 
 
 # === ESTILO DO INPUT CHAT ===
-
 st.markdown("""
-<style>
-/* REMOVE A BORDA DO FIELDSET PAI DO INPUT */
-div[role="group"] > fieldset {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
+    <style>
+    /* Contêiner do chat_input (remove borda vermelha) */
+    section.main div:has(textarea) {
+        border: none !important;
+    }
 
-/* GARANTE QUE QUALQUER FIELDSET DENTRO DO st.chat_input SEJA ZERADO */
-section[data-testid="stChatInput"] fieldset {
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
+    /* Estiliza o campo de texto */
+    textarea {
+        border: 2px solid transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+        border-radius: 12px !important; /* Aumenta arredondamento */
+        padding: 8px !important;        /* Espaço interno */
+    }
 
-/* ESTILO VISUAL DO TEXTAREA */
-textarea {
-    border: 2px solid transparent !important;
-    border-radius: 999px !important;
-    background-color: #1e1e1e !important;
-    padding: 10px 16px !important;
-    color: white !important;
-    outline: none !important;
-    box-shadow: none !important;
-    transition: border 0.2s ease, box-shadow 0.2s ease;
-}
-
-/* FOCO COM BORDA AZUL */
-textarea:focus {
-    border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 3px rgba(30,144,255,0.25) !important;
-}
-</style>
+    /* Foco: borda azul */
+    textarea:focus {
+        border: 2px solid #1E90FF !important;
+        box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
+    }
+    </style>
 """, unsafe_allow_html=True)
-
 
 # === INPUT DO USUÁRIO ===
 pergunta = st.chat_input("Digite sua pergunta")
