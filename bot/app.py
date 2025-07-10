@@ -48,27 +48,34 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* mata o container vermelho do chat_input */
+  /* 1) Estiliza o WRAPPER do chat_input (substitui o vermelho) */
   div[data-testid="stChatInput"] > div {
-      border: none !important;
-      box-shadow: none !important;
-  }
-  div[data-testid="stChatInput"] > div:focus-within {
-      border: none !important;
+      /* azul no lugar do vermelho */
+      border: 2px solid #1E90FF !important;
+      border-radius: 12px !important;
+      background-color: #1e1e1e !important;  /* mesmo fundo do seu textarea */
+      padding: 8px !important;               /* espaçamento interno */
       box-shadow: none !important;
   }
 
-  /* seu textarea estilizado normalmente */
-  textarea {
-      border: 2px solid transparent !important;
-      box-shadow: none !important;
+  /* 2) Remove TODO contorno/borda interno do textarea */
+  div[data-testid="stChatInput"] textarea {
+      border: none !important;
       outline: none !important;
-      border-radius: 12px !important;
-      padding: 8px !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+      width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      resize: none !important;
+      color: #fff !important;
+      font-size: 16px !important;
   }
-  textarea:focus {
-      border: 2px solid #1E90FF !important;
-      box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
+
+  /* 3) Opcional: força o foco no textarea sem criar sombra extra */
+  div[data-testid="stChatInput"] textarea:focus {
+      outline: none !important;
+      box-shadow: none !important;
   }
 </style>
 """, unsafe_allow_html=True)
