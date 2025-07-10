@@ -47,14 +47,13 @@ for pergunta, resposta in st.session_state.historico:
 # === ESTILO FINAL DO CHAT INPUT ===
 
 st.markdown("""
-    <style>
-    /* Remove sombras e bordas do contêiner */
+<style>
+    /* Remove sombra e borda */
     section:has(input) * {
         box-shadow: none !important;
         border: none !important;
     }
 
-    /* Estilo do input */
     input[type="text"] {
         border: 2px solid transparent !important;
         outline: none !important;
@@ -72,39 +71,34 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Remove a mensagem via classe */
-    .stFormSubmitLabel {
+    /* Esconde todos os parágrafos dentro do formulário */
+    form p {
         display: none !important;
     }
 
-    /* Remove qualquer parágrafo no form (mensagem escondida extra) */
-    form p {
-        visibility: hidden !important;
-        height: 0px !important;
-        margin: 0px !important;
-        padding: 0px !important;
-    }
-
-    /* Esconde o botão "Enviar" */
+    /* Esconde botão enviar */
     .stForm button {
         display: none !important;
     }
 
-    /* Posiciona o input verticalmente mais abaixo */
+    /* Posiciona input */
     div[data-testid="stForm"] {
         margin-top: 40vh;
         margin-bottom: 2vh;
     }
-    </style>
+</style>
 
-    <script>
-    const labels = window.parent.document.querySelectorAll("form p");
-    labels.forEach(el => {
-        if (el.textContent.includes("Press Enter to submit form")) {
-            el.style.display = "none";
-        }
-    });
-    </script>
+<script>
+    // Executa quando a página carregar para esconder mensagens indesejadas
+    window.onload = function() {
+        const labels = document.querySelectorAll("form p");
+        labels.forEach(el => {
+            if (el.textContent.includes("Press Enter to submit form")) {
+                el.style.display = "none";
+            }
+        });
+    }
+</script>
 """, unsafe_allow_html=True)
 
 # === CAMPO DE INPUT (SEM BOTÃO E SEM MENSAGEM) ===
@@ -115,7 +109,6 @@ with st.form("chat_form", clear_on_submit=True):
         label_visibility="collapsed"
     )
     st.form_submit_button("Enviar")  # escondido via CSS
-
 
 
 # === SIDEBAR COM HISTÓRICO ===
