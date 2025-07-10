@@ -48,13 +48,9 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* Remove sombra e borda */
-  section:has(input) * {
-    box-shadow: none !important;
-    border: none !important;
-  }
-
-  /* Input estilizado */
+  /* ========================
+     Estilo do input
+     ======================== */
   input[type="text"] {
     border: 2px solid transparent !important;
     outline: none !important;
@@ -68,20 +64,33 @@ st.markdown("""
   }
   input[type="text"]:focus {
     border: 2px solid #1E90FF !important;
-    box-shadow: none !important;
   }
 
-  /* Esconde todo label e parágrafo dentro do form */
-  form p, form label {
+  /* ========================
+     Esconde tudo no form 
+     exceto o input
+     ======================== */
+  form > *:not(input) {
     display: none !important;
   }
 
-  /* Esconde botão enviar */
+  /* ========================
+     Força form sem autocomplete
+     ======================== */
+  form {
+    autocomplete: off !important;
+  }
+
+  /* ========================
+     Garante que o botão continue escondido
+     ======================== */
   .stForm button {
     display: none !important;
   }
 
-  /* Posiciona input */
+  /* ========================
+     Posicionamento
+     ======================== */
   div[data-testid="stForm"] {
     margin-top: 40vh;
     margin-bottom: 2vh;
@@ -89,16 +98,28 @@ st.markdown("""
 </style>
 
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    // Desliga autocomplete/autocorrect/spellcheck
-    const inp = document.querySelector('input[type="text"]');
-    if (inp) {
-      inp.setAttribute('autocomplete', 'off');
-      inp.setAttribute('autocorrect', 'off');
-      inp.setAttribute('autocapitalize', 'off');
-      inp.setAttribute('spellcheck', 'false');
+window.addEventListener('DOMContentLoaded', () => {
+  const form = document.querySelector('form');
+  if (!form) return;
+
+  // burlar autofill
+  form.setAttribute('autocomplete', 'off');
+  const inp = form.querySelector('input[type="text"]');
+  if (inp) {
+    // nome randomizado para não casar com histórico do navegador
+    inp.setAttribute('name', 'inp-'+Date.now());
+    inp.setAttribute('autocomplete', 'new-password');
+    inp.setAttribute('autocorrect', 'off');
+    inp.setAttribute('spellcheck', 'false');
+  }
+
+  // ocultar qualquer hint contendo "Press Enter"
+  form.querySelectorAll('*').forEach(el => {
+    if (el.textContent.includes('Press Enter')) {
+      el.style.display = 'none';
     }
   });
+});
 </script>
 """, unsafe_allow_html=True)
 
@@ -108,9 +129,11 @@ with st.form("chat_form", clear_on_submit=True):
     user_input = st.text_input(
         label="",
         placeholder="Digite sua pergunta",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        # se sua versão de Streamlit suportar, garanta:
+        autocomplete="off",
     )
-    st.form_submit_button("Enviar")  # já escondido por CSS
+    st.form_submit_button("Enviar")  # já escondido pelo CSS
 
 
 # === SIDEBAR COM HISTÓRICO ===
