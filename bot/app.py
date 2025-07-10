@@ -48,24 +48,27 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-  /* 1) Remove a borda/vermelho que aparece no container ao focar */
-  section.main div:focus-within {
-    border: none !important;
-    box-shadow: none !important;
-    outline: none !important;
+  /* mata o container vermelho do chat_input */
+  div[data-testid="stChatInput"] > div {
+      border: none !important;
+      box-shadow: none !important;
+  }
+  div[data-testid="stChatInput"] > div:focus-within {
+      border: none !important;
+      box-shadow: none !important;
   }
 
-  /* 2) Continua estilizando só o textarea como você já tem */
+  /* seu textarea estilizado normalmente */
   textarea {
-    border: 2px solid transparent !important;
-    box-shadow: none !important;
-    outline: none !important;
-    border-radius: 12px !important;
-    padding: 8px !important;
+      border: 2px solid transparent !important;
+      box-shadow: none !important;
+      outline: none !important;
+      border-radius: 12px !important;
+      padding: 8px !important;
   }
   textarea:focus {
-    border: 2px solid #1E90FF !important;
-    box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
+      border: 2px solid #1E90FF !important;
+      box-shadow: 0 0 0 0.15rem rgba(30,144,255,0.25) !important;
   }
 </style>
 """, unsafe_allow_html=True)
