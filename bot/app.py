@@ -104,13 +104,29 @@ st.markdown("""
 
 # === INPUT DO USUÁRIO ===
 
-with st.form("chat_form", clear_on_submit=True):
-    user_input = st.text_input(
-        label="",
-        placeholder="Digite sua pergunta",
-        label_visibility="collapsed"
-    )
-    st.form_submit_button("Enviar")  # já escondido por CSS
+# inicializa flag
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+
+def on_enter():
+    st.session_state.submitted = True
+
+# === AQUI é onde você altera ===
+user_input = st.text_input(
+    label="",
+    placeholder="Digite sua pergunta",
+    label_visibility="collapsed",
+    key="user_input",
+    on_change=on_enter,
+    autocomplete="off"    # <- garante que o navegador não mostre autofill
+)
+
+if st.session_state.submitted:
+    pergunta = st.session_state.user_input
+    st.write(f"Você perguntou: **{pergunta}**")
+    # limpa tudo pra próxima
+    st.session_state.submitted = False
+    st.session_state.user_input = ""
 
 
 # === SIDEBAR COM HISTÓRICO ===
