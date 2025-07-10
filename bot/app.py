@@ -47,13 +47,13 @@ for pergunta, resposta in st.session_state.historico:
 # === ESTILO DO INPUT CHAT ===
 st.markdown("""
     <style>
-    /* Remove todas as bordas e sombras do input e do contêiner */
+    /* Remove sombras e bordas do contêiner */
     section:has(input) * {
         box-shadow: none !important;
         border: none !important;
     }
 
-    /* Estilização padrão do input */
+    /* Estilização do input */
     input[type="text"] {
         border: 2px solid transparent !important;
         outline: none !important;
@@ -66,29 +66,32 @@ st.markdown("""
         box-shadow: none !important;
     }
 
-    /* Estilo ao focar: apenas borda azul */
     input[type="text"]:focus {
         border: 2px solid #1E90FF !important;
         box-shadow: none !important;
     }
 
-    /* Botão customizado */
+    /* Remove a mensagem "Press Enter to submit form" */
+    .stMarkdown p {
+        display: none;
+    }
+
+    /* Coloca o input mais para baixo */
+    div[data-testid="stForm"] {
+        margin-top: 200px; /* ajuste conforme preferir */
+    }
+
+    /* Esconde o botão "Enviar" */
     button[kind="secondary"] {
-        background-color: #1E90FF !important;
-        color: white !important;
-        border-radius: 12px !important;
-        padding: 0.5rem 1rem !important;
-        font-size: 16px !important;
-        border: none !important;
+        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-
 # === INPUT DO USUÁRIO (customizado) ===
 with st.form("chat_form", clear_on_submit=True):
-    user_input = st.text_input("Digite sua pergunta", label_visibility="collapsed")
-    enviar = st.form_submit_button("Enviar")
+    user_input = st.text_input("", placeholder="Digite sua pergunta", label_visibility="collapsed")
+    st.form_submit_button("Enviar")
 
 # === SIDEBAR COM HISTÓRICO ===
 st.sidebar.markdown("## 📄 Histórico de Sessão")
