@@ -48,67 +48,69 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-    /* Remove sombra e borda */
-    section:has(input) * {
-        box-shadow: none !important;
-        border: none !important;
-    }
+  /* Remove sombra e borda */
+  section:has(input) * {
+    box-shadow: none !important;
+    border: none !important;
+  }
 
-    input[type="text"] {
-        border: 2px solid transparent !important;
-        outline: none !important;
-        border-radius: 12px !important;
-        padding: 10px !important;
-        background-color: #1e1e1e !important;
-        color: #fff !important;
-        width: 100% !important;
-        font-size: 16px !important;
-        box-shadow: none !important;
-    }
+  /* Input estilizado */
+  input[type="text"] {
+    border: 2px solid transparent !important;
+    outline: none !important;
+    border-radius: 12px !important;
+    padding: 10px !important;
+    background-color: #1e1e1e !important;
+    color: #fff !important;
+    width: 100% !important;
+    font-size: 16px !important;
+    box-shadow: none !important;
+  }
+  input[type="text"]:focus {
+    border: 2px solid #1E90FF !important;
+    box-shadow: none !important;
+  }
 
-    input[type="text"]:focus {
-        border: 2px solid #1E90FF !important;
-        box-shadow: none !important;
-    }
+  /* Esconde todo label e parágrafo dentro do form */
+  form p, form label {
+    display: none !important;
+  }
 
-    /* Esconde todos os parágrafos dentro do formulário */
-    form p {
-        display: none !important;
-    }
+  /* Esconde botão enviar */
+  .stForm button {
+    display: none !important;
+  }
 
-    /* Esconde botão enviar */
-    .stForm button {
-        display: none !important;
-    }
-
-    /* Posiciona input */
-    div[data-testid="stForm"] {
-        margin-top: 40vh;
-        margin-bottom: 2vh;
-    }
+  /* Posiciona input */
+  div[data-testid="stForm"] {
+    margin-top: 40vh;
+    margin-bottom: 2vh;
+  }
 </style>
 
 <script>
-    // Executa quando a página carregar para esconder mensagens indesejadas
-    window.onload = function() {
-        const labels = document.querySelectorAll("form p");
-        labels.forEach(el => {
-            if (el.textContent.includes("Press Enter to submit form")) {
-                el.style.display = "none";
-            }
-        });
+  document.addEventListener('DOMContentLoaded', () => {
+    // Desliga autocomplete/autocorrect/spellcheck
+    const inp = document.querySelector('input[type="text"]');
+    if (inp) {
+      inp.setAttribute('autocomplete', 'off');
+      inp.setAttribute('autocorrect', 'off');
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('spellcheck', 'false');
     }
+  });
 </script>
 """, unsafe_allow_html=True)
 
-# === CAMPO DE INPUT (SEM BOTÃO E SEM MENSAGEM) ===
+# === INPUT DO USUÁRIO ===
+
 with st.form("chat_form", clear_on_submit=True):
     user_input = st.text_input(
         label="",
         placeholder="Digite sua pergunta",
         label_visibility="collapsed"
     )
-    st.form_submit_button("Enviar")  # escondido via CSS
+    st.form_submit_button("Enviar")  # já escondido por CSS
 
 
 # === SIDEBAR COM HISTÓRICO ===
