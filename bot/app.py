@@ -83,7 +83,7 @@ st.markdown("""
 
   /* Posiciona input */
   div[data-testid="stForm"] {
-    margin-top: 40vh;
+    margin-top: 80vh;
     margin-bottom: 2vh;
   }
 </style>
