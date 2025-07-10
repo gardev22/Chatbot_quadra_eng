@@ -48,55 +48,58 @@ for pergunta, resposta in st.session_state.historico:
 
 st.markdown("""
 <style>
-/* 1) Cria um wrapper de altura fixa e contorno azul */
-div[data-testid="stChatInput"] > div {
-  border: 2px solid #1E90FF !important;
-  border-radius: 12px !important;
-  background: #1e1e1e !important;
-  height: 56px !important;         /* altura do seu input */
-  box-sizing: border-box !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;  /* centraliza verticalmente */
-}
+  /* === 1) Wrapper externo: contorno azul + fundo escuro === */
+  div[data-testid="stChatInput"] > div {
+    border: 2px solid #1E90FF !important;
+    border-radius: 12px !important;
+    background-color: #1e1e1e !important;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 16px !important;   /* padding só nas laterais */
+    height: 56px !important;      /* controle aqui a altura total */
+    box-sizing: border-box !important;
+  }
 
-/* 2) Remove todo background/sombra que o Streamlit injeta dentro */
-div[data-testid="stChatInput"] > div > div {
-  background: transparent !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  display: flex !important;
-  align-items: center !important;  /* reforça centralização */
-  height: 100% !important;
-}
+  /* === 2) Zera qualquer fundo ou sombra nas camadas abaixo === */
+  div[data-testid="stChatInput"] > div > div,
+  div[data-testid="stChatInput"] > div > div * {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
 
-/* 3) Textarea “bruta”: sem bordas, ocupa o espaço todo, com placeholder central */
-div[data-testid="stChatInput"] textarea {
-  flex: 1 1 auto !important;
-  background: transparent !important;
-  border: none !important;
-  outline: none !important;
-  color: #fff !important;
-  font-size: 16px !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  height: auto !important;
-  line-height: 1.5 !important;
-}
+  /* === 3) Textarea puro, ocupa tudo e centraliza texto === */
+  div[data-testid="stChatInput"] textarea {
+    flex: 1 1 auto !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    color: #fff !important;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    resize: none !important;
+  }
 
-/* 4) Placeholder suave */
-div[data-testid="stChatInput"] textarea::placeholder {
-  color: #777 !important;
-}
+  /* === 4) Placeholder suavizado === */
+  div[data-testid="stChatInput"] textarea::placeholder {
+    color: #777 !important;
+  }
 
-/* 5) Espaçamento do botão de enviar (seta) */
-div[data-testid="stChatInput"] button {
-  margin-right: 16px !important;
-}
+  /* === 5) Espaço entre o textarea e o botão === */
+  div[data-testid="stChatInput"] button {
+    margin-left: 12px !important;
+  }
+
+  /* === 6) Garante que foco não gere sombra extra === */
+  div[data-testid="stChatInput"] > div:focus-within {
+    box-shadow: none !important;
+  }
 </style>
 """, unsafe_allow_html=True)
-
 
 # === INPUT DO USUÁRIO ===
 pergunta = st.chat_input("Digite sua pergunta")
