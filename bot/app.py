@@ -34,24 +34,19 @@ if "historico" not in st.session_state:
 if st.session_state.user is None:
     st.markdown(f"""
     <style>
-      /* Esconde menu/header/footer padrão */
-      #MainMenu, header, footer {{ visibility: hidden; margin:0; padding:0; }}
-
-      /* Container full-screen com gradiente */
+      #MainMenu, header, footer {{ visibility: hidden; }}
       .login-page {{
         position: fixed; inset: 0;
         background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #000000 100%);
         display: flex; align-items: center; justify-content: center;
         padding: 1rem;
       }}
-      /* Card central */
       .login-card {{
         width: 360px; background: #F8FAFC;
         border-radius: 12px; padding: 2rem;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         text-align: center; position: relative;
       }}
-      /* Logo sobresaliente */
       .login-card::before {{
         content: '';
         position: absolute; top: -36px; left: 50%; transform: translateX(-50%);
@@ -63,14 +58,13 @@ if st.session_state.user is None:
       .login-card h1 {{ margin: 44px 0 0.25rem; font-size:1.5rem; font-weight:600; color:#1F2937; }}
       .login-card .subtitle {{ margin-bottom:0.5rem; font-size:1rem; color:#4B5563; }}
       .login-card .description {{ margin-bottom:1.5rem; font-size:0.875rem; color:#4B5563; }}
-      .google-btn {{
-        display:flex; align-items:center; justify-content:center;
-        gap:0.5rem; width:100%; height:3rem;
+      .stButton > button {{
+        display:flex; align-items:center; justify-content:center; gap:0.5rem;
+        width:100%; height:3rem;
         background:#FFF; border:1px solid #D1D5DB; border-radius:8px;
-        font-size:1rem; color:#374151; cursor:pointer;
-        transition:background .2s;
+        font-size:1rem; color:#374151; cursor:pointer; transition:background .2s;
       }}
-      .google-btn:hover {{ background:#F3F4F6; }}
+      .stButton > button:hover {{ background:#F3F4F6; }}
       .login-card .terms {{ margin-top:1.5rem; font-size:0.75rem; color:#6B7280; }}
     </style>
     <div class="login-page">
@@ -78,27 +72,28 @@ if st.session_state.user is None:
         <h1>Quadra Engenharia</h1>
         <p class="subtitle">Faça login para acessar nosso assistente virtual</p>
         <p class="description">Entre com sua conta Google para começar a conversar com nosso assistente</p>
-        <button class="google-btn" onclick="handleLogin()">Entrar com Google</button>
+    """, unsafe_allow_html=True)
+
+    if st.button("Entrar com Google"):
+        st.session_state.user = {'name': 'Usuário Demo', 'email': 'demo@quadra.com'}
+        st.experimental_rerun()
+
+    st.markdown("""
         <p class="terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade</p>
       </div>
     </div>
-    <script>
-      function handleLogin() {{
-        // Dispara o botão invisível do Streamlit
-        const btn = window.parent.document.querySelector('button[data-baseweb="button"]');
-        if(btn) btn.click();
-      }}
-    </script>
     """, unsafe_allow_html=True)
-
-    # Botão invisível para capturar clique via JS
-    if st.button('login-btn', key='login-btn', help=''):  # invisível
-        st.session_state.user = {{'name':'Usuário Demo','email':'demo@quadra.com'}}
-        st.experimental_rerun()
     st.stop()
 
 # --- Chat após login ---
 user = st.session_state.user
+
+# Insere mensagem inicial se não existir
+if not st.session_state.historico:
+    st.session_state.historico.append((
+        f"Olá, {user['name']}! Bem-vindo ao chat da Quadra Engenharia. Como posso ajudá-lo hoje?",
+        None
+    ))
 
 st.markdown(f"""
 <style>
@@ -143,29 +138,20 @@ st.markdown(f"""
 <div class="chat-container"><div class="chat-box">
 """, unsafe_allow_html=True)
 
-# Mensagens iniciais se vazio
-if not st.session_state.historico:
-    st.session_state.historico.append((
-        f"Olá, {user['name']}! Bem-vindo ao chat da Quadra Engenharia. Como posso ajudá-lo hoje?",
-        ''
-    ))
-
-# Renderiza histórico
+# Render histórico
 for pergunta, resposta in st.session_state.historico:
     ts = datetime.now().strftime("%H:%M")
+    bot_html = f"<div class=\"message bot\"><div class=\"bubble bot\">{resposta}<span class=\"ts\">{ts}</span></div></div>" if resposta else ""
     st.markdown(f"""
-    <div class="message user">
-      <div class="bubble user">{pergunta}<span class="ts">{ts}</span></div>
-    </div>
-    {f"<div class='message bot'><div class='bubble bot'>{resposta}<span class='ts'>{ts}</span></div></div>" if resposta else ""}
+    <div class=\"message user\"><div class=\"bubble user\">{pergunta}<span class=\"ts\">{ts}</span></div></div>
+    {bot_html}
     """, unsafe_allow_html=True)
 
 st.markdown("""
 </div>
-<div class="chat-input">
-""", unsafe_allow_html=True)
+<div class=\"chat-input\">""", unsafe_allow_html=True)
 
-# Input
+# Input e envio
 mensagem = st.chat_input("Digite sua mensagem…")
 if mensagem:
     resp = responder_pergunta(mensagem)
@@ -173,6 +159,6 @@ if mensagem:
     st.experimental_rerun()
 
 st.markdown("""
-<button onclick="document.querySelector('button[title=\"Send message\"]').click()">✈️</button>
+<button onclick=\"document.querySelector('button[title=\\\"Send message\\\"]').click()\">✈️</button>
 </div></div>
 """, unsafe_allow_html=True)
