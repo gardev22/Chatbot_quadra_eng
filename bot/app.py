@@ -2,15 +2,26 @@ import streamlit as st
 import base64
 import os
 
-# --- Função para carregar imagem em Base64 ---
+from pathlib import Path
+
 @st.cache_data
 def load_image(path: str) -> str:
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# caminhos
-BASE = os.path.dirname(__file__)
-LOGO_ICON = load_image(os.path.join(BASE, "data", "logo_quadra.png"))
+# __file__ -> .../bot/app.py
+BASE = os.path.dirname(__file__)              
+# .. sobe para .../chatbot_quadra_eng
+ROOT = os.path.abspath(os.path.join(BASE, os.pardir))
+# monta o caminho correto
+LOGO_PATH = os.path.join(ROOT, "data", "logo_quadra.png")
+
+# só pra garantir
+if not os.path.exists(LOGO_PATH):
+    st.error(f"❌ Não achei o logo em {LOGO_PATH}")
+    st.stop()
+
+LOGO_ICON = load_image(LOGO_PATH)
 
 # --- Configura página ---
 st.set_page_config(
