@@ -9,7 +9,7 @@ def load_image(path: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 # Use o seu logo quadradinho com fundo transparente (ex: 512×512)  
-LOGO = load_image("data/logo_quadra_circle.png")
+LOGO = load_image("data/logo_quadra.png")
 
 # --- 2) Configura página e remove chrome/padding ---
 st.set_page_config(
