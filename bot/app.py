@@ -23,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- 4) Inicializa usuário e histórico ---
+# --- 4) Estado inicial ---
 if "user" not in st.session_state:
     st.session_state.user = None
 if "historico" not in st.session_state:
@@ -33,7 +33,7 @@ if "historico" not in st.session_state:
 if st.session_state.user is None:
     st.markdown(f"""
     <style>
-      /* Esconde menu/header/footer */
+      /* Esconde menu/header/footer padrão */
       #MainMenu, header, footer {{ visibility: hidden; margin:0; padding:0; }}
 
       /* Fullscreen com gradiente */
@@ -108,24 +108,24 @@ if st.session_state.user is None:
       </div>
     </div>
     <script>
-      function streamlitAuthentication() {{
+      function streamlitAuthentication() {
         const url = new URL(window.location);
         url.searchParams.set("login", "1");
         window.history.replaceState(null, "", url);
         window.location.reload();
-      }}
+      }
     </script>
     """, unsafe_allow_html=True)
 
-    # Detecta query param ?login=1
-    if st.experimental_get_query_params().get("login") == ["1"]:
+    # Agora LÊ com st.query_params em vez de experimental_get_query_params
+    if st.query_params.get("login") == ["1"]:
         st.session_state.user = {"name": "Usuário Demo", "email": "demo@quadra.com"}
-        st.experimental_set_query_params()
+        st.experimental_set_query_params()  # limpa todos os params
         st.experimental_rerun()
 
     st.stop()
 
-# --- 6) Chat – layout Lovable ---
+# --- 6) Chat – layout Lovable usando o mesmo LOGO_B64 ---
 user = st.session_state.user
 
 st.markdown(f"""
@@ -273,7 +273,7 @@ if mensagem:
 
 # Botão de envio
 st.markdown("""
-  <button onclick="document.querySelector('button[title=\"Send message\"]').click()">✈️</button>
+  <button onclick="document.querySelector('button[title=\\"Send message\\"]').click()">✈️</button>
   </div>
 </div>
 """, unsafe_allow_html=True)
