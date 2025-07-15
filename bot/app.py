@@ -4,94 +4,107 @@ from pathlib import Path
 from datetime import datetime
 from openai_backend import responder_pergunta
 
-# --- Helpers ----------------------------------------------------------------
+# --- Função para carregar PNG como Base64 ---
 @st.cache_data
 def load_base64(path: Path) -> str:
     return base64.b64encode(path.read_bytes()).decode()
 
-# --- Paths ------------------------------------------------------------------
-ROOT      = Path.cwd()
+# --- Caminhos ---
+ROOT = Path.cwd()
 LOGO_PATH = ROOT / "data" / "logo_quadra.png"
 if not LOGO_PATH.exists():
     st.error(f"Logo não encontrado em: {LOGO_PATH}")
     st.stop()
 LOGO_B64 = load_base64(LOGO_PATH)
 
-# --- Page config ------------------------------------------------------------
+# --- Configuração de página ---
 st.set_page_config(
     page_title="Chatbot da Quadra Engenharia",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# --- Session state ---------------------------------------------------------
+# --- Estado de sessão ---
 if "user" not in st.session_state:
     st.session_state.user = None
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-# --- Login Screen ----------------------------------------------------------
+# --- Tela de Login ---
 if st.session_state.user is None:
     st.markdown(f"""
     <style>
+      /* Esconde menu/header/footer padrão */
       #MainMenu, header, footer {{ visibility: hidden; margin:0; padding:0; }}
-      .login-wrapper {{
+
+      /* Container full-screen com gradiente */
+      .login-page {{
         position: fixed; inset: 0;
         background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #000000 100%);
         display: flex; align-items: center; justify-content: center;
+        padding: 1rem;
       }}
+      /* Card central */
       .login-card {{
-        position: relative; width: 360px;
-        background: #F8FAFC; border-radius: 12px;
-        padding: 48px 24px 24px;
+        width: 360px; background: #F8FAFC;
+        border-radius: 12px; padding: 2rem;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        text-align: center;
+        text-align: center; position: relative;
       }}
+      /* Logo sobresaliente */
       .login-card::before {{
-        content: "";
+        content: '';
         position: absolute; top: -36px; left: 50%; transform: translateX(-50%);
         width: 72px; height: 72px;
         background: #FFF url('data:image/png;base64,{LOGO_B64}') center/48px no-repeat;
         border-radius: 16px;
-        box-shadow:0 4px 12px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       }}
-      .login-card h1 {{ margin:0.5rem 0 0.25rem; font-size:1.5rem; font-weight:600; color:#1F2937; }}
+      .login-card h1 {{ margin: 44px 0 0.25rem; font-size:1.5rem; font-weight:600; color:#1F2937; }}
       .login-card .subtitle {{ margin-bottom:0.5rem; font-size:1rem; color:#4B5563; }}
       .login-card .description {{ margin-bottom:1.5rem; font-size:0.875rem; color:#4B5563; }}
-      .stButton > button {{
-        display:flex; align-items:center; justify-content:center; gap:0.5rem;
-        width:100%; height:3rem;
+      .google-btn {{
+        display:flex; align-items:center; justify-content:center;
+        gap:0.5rem; width:100%; height:3rem;
         background:#FFF; border:1px solid #D1D5DB; border-radius:8px;
-        font-size:1rem; color:#374151; cursor:pointer; transition:background .2s;
+        font-size:1rem; color:#374151; cursor:pointer;
+        transition:background .2s;
       }}
-      .stButton > button:hover {{ background:#F3F4F6; }}
+      .google-btn:hover {{ background:#F3F4F6; }}
       .login-card .terms {{ margin-top:1.5rem; font-size:0.75rem; color:#6B7280; }}
     </style>
-    <div class="login-wrapper">
+    <div class="login-page">
       <div class="login-card">
         <h1>Quadra Engenharia</h1>
         <p class="subtitle">Faça login para acessar nosso assistente virtual</p>
-        <p class="description">Entre com sua conta Google para conversar com nosso assistente</p>
-    """, unsafe_allow_html=True)
-
-    if st.button("Entrar com Google"):
-        st.session_state.user = {"name": "Usuário Demo", "email": "demo@quadra.com"}
-        st.experimental_rerun()
-
-    st.markdown("""
+        <p class="description">Entre com sua conta Google para começar a conversar com nosso assistente</p>
+        <button class="google-btn" onclick="handleLogin()">Entrar com Google</button>
         <p class="terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade</p>
       </div>
     </div>
+    <script>
+      function handleLogin() {{
+        // Dispara o botão invisível do Streamlit
+        const btn = window.parent.document.querySelector('button[data-baseweb="button"]');
+        if(btn) btn.click();
+      }}
+    </script>
     """, unsafe_allow_html=True)
+
+    # Botão invisível para capturar clique via JS
+    if st.button('login-btn', key='login-btn', help=''):  # invisível
+        st.session_state.user = {{'name':'Usuário Demo','email':'demo@quadra.com'}}
+        st.experimental_rerun()
     st.stop()
 
-# --- Chat Screen -----------------------------------------------------------
+# --- Chat após login ---
 user = st.session_state.user
+
 st.markdown(f"""
 <style>
   .stApp {{ background: linear-gradient(to bottom right, #EFF6FF, #BFDBFE); }}
-  .chat-header {{ width:100%; background:#fff; border-bottom:1px solid #DBEAFE; box-shadow:0 1px 2px rgba(0,0,0,0.05); padding:12px 0; }}
-  .chat-header .inner {{ max-width:800px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; }}
+  .chat-header {{ background:#fff; border-bottom:1px solid #DBEAFE; box-shadow:0 1px 2px rgba(0,0,0,0.05); padding:12px 0; }}
+  .inner {{ max-width:800px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; }}
   .logo img {{ width:40px; height:40px; border-radius:8px; }}
   .logo .texts h1 {{ margin:0; font-size:1.25rem; color:#1E3A8A; }}
   .logo .texts p {{ margin:0; font-size:0.875rem; color:#2563EB; }}
@@ -102,8 +115,8 @@ st.markdown(f"""
   .user-info button {{ all:unset; cursor:pointer; font-size:1.125rem; color:#2563EB; }}
   .chat-container {{ max-width:800px; margin:24px auto; display:flex; flex-direction:column; height:calc(100vh - 100px); padding:0 8px; }}
   .chat-box {{ flex:1; background:rgba(255,255,255,0.8); backdrop-filter:blur(6px); border:1px solid #DBEAFE; border-radius:8px; overflow-y:auto; padding:16px; }}
-  .message.user {{ display:flex; justify-content:flex-end; margin-bottom:12px; }}
-  .message.bot {{ display:flex; justify-content:flex-start; margin-bottom:12px; }}
+  .message.user {{ justify-content:flex-end; display:flex; margin-bottom:12px; }}
+  .message.bot {{ justify-content:flex-start; display:flex; margin-bottom:12px; }}
   .bubble {{ max-width:70%; padding:8px 12px; border-radius:9999px; font-size:0.875rem; line-height:1.2; }}
   .bubble.user {{ background:#2563EB; color:#fff; border-bottom-right-radius:0; }}
   .bubble.bot {{ background:#F3F4F6; color:#1F2937; border-bottom-left-radius:0; }}
@@ -114,52 +127,52 @@ st.markdown(f"""
 </style>
 
 <!-- HEADER -->
-<div class="chat-header">
-  <div class="inner">
-    <div class="logo">
-      <img src="data:image/png;base64,{LOGO_B64}" alt="Quadra Engenharia" />
-      <div class="texts"><h1>Quadra Engenharia</h1><p>Assistente Virtual</p></div>
-    </div>
-    <div class="user-info">
-      <div class="name-email"><p>{user['name']}</p><p>{user['email']}</p></div>
-      <div class="avatar">{user['name'][0].upper()}</div>
-      <button onclick="window.location.reload()">↩️</button>
-    </div>
+<div class="chat-header"><div class="inner">
+  <div class="logo">
+    <img src="data:image/png;base64,{LOGO_B64}" alt="Quadra Engenharia"/>
+    <div class="texts"><h1>Quadra Engenharia</h1><p>Assistente Virtual</p></div>
   </div>
-</div>
+  <div class="user-info">
+    <div class="name-email"><p>{user['name']}</p><p>{user['email']}</p></div>
+    <div class="avatar">{user['name'][0].upper()}</div>
+    <button onclick="window.location.reload()">↩️</button>
+  </div>
+</div></div>
 
 <!-- CHAT BOX -->
-<div class="chat-container">
-  <div class="chat-box">
+<div class="chat-container"><div class="chat-box">
 """, unsafe_allow_html=True)
+
+# Mensagens iniciais se vazio
+if not st.session_state.historico:
+    st.session_state.historico.append((
+        f"Olá, {user['name']}! Bem-vindo ao chat da Quadra Engenharia. Como posso ajudá-lo hoje?",
+        ''
+    ))
 
 # Renderiza histórico
 for pergunta, resposta in st.session_state.historico:
-    timestamp = datetime.now().strftime("%H:%M")
+    ts = datetime.now().strftime("%H:%M")
     st.markdown(f"""
     <div class="message user">
-      <div class="bubble user">{pergunta}<span class="ts">{timestamp}</span></div>
+      <div class="bubble user">{pergunta}<span class="ts">{ts}</span></div>
     </div>
-    <div class="message bot">
-      <div class="bubble bot">{resposta}<span class="ts">{timestamp}</span></div>
-    </div>
+    {f"<div class='message bot'><div class='bubble bot'>{resposta}<span class='ts'>{ts}</span></div></div>" if resposta else ""}
     """, unsafe_allow_html=True)
 
-# Fecha chat-box e abre footer
 st.markdown("""
-  </div>
-  <div class="chat-input">
+</div>
+<div class="chat-input">
 """, unsafe_allow_html=True)
 
-# Campo de input + envio
+# Input
 mensagem = st.chat_input("Digite sua mensagem…")
 if mensagem:
-    st.session_state.historico.append((mensagem, responder_pergunta(mensagem)))
+    resp = responder_pergunta(mensagem)
+    st.session_state.historico.append((mensagem, resp))
     st.experimental_rerun()
 
-# Botão de envio
 st.markdown("""
-  <button onclick="document.querySelector('button[title="Send message"]').click()">✈️</button>
-  </div>
-</div>
+<button onclick="document.querySelector('button[title=\"Send message\"]').click()">✈️</button>
+</div></div>
 """, unsafe_allow_html=True)
