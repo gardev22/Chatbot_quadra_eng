@@ -10,7 +10,7 @@ def load_image(path: str) -> str:
 
 # caminhos
 BASE = os.path.dirname(__file__)
-LOGO_ICON = load_image(os.path.join(BASE, "data", "logo_quadra_circle.png"))
+LOGO_ICON = load_image(os.path.join(BASE, "data", "logo_quadra.png"))
 
 # --- Configura página ---
 st.set_page_config(
