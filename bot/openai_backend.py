@@ -19,8 +19,10 @@ FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 
 # === 0. Autenticação Google Drive ===
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-creds = service_account.Credentials.from_service_account_file(
-    "chatbot_quadra.json", scopes=SCOPES
+
+# usa o bloco [gcp_service_account] do secrets TOML
+creds = service_account.Credentials.from_service_account_info(
+    dict(st.secrets["gcp_service_account"]), scopes=SCOPES
 )
 drive_service = build('drive', 'v3', credentials=creds)
 
