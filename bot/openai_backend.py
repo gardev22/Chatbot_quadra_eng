@@ -1,217 +1,310 @@
 import os
-import re
 import io
+import re
+import time
+import json
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-from sentence_transformers import CrossEncoder
+from html import escape
 from docx import Document
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
-# === CONFIGURAÇÕES ===
+# ========= CONFIG =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o"
-TOP_K = 5  # menos blocos para reduzir tokens
+MODEL_ID = "gpt-4o"              # você pode testar "gpt-4o-mini" para ainda mais velocidade
+TOP_K = 5                        # blocos finais enviados ao LLM
+TOP_N_ANN = 80                   # candidatos do estágio 1 (ANN) antes do reranker
+MAX_TOKENS = 500                 # resposta menor tende a ser mais rápida
+TEMPERATURE = 0.2
+REQUEST_TIMEOUT = 40             # segundos
 
-# Id da Pasta do Google Drive (substitua pelo seu)
+# Pasta do Google Drive
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 
-# === 0. Autenticação Google Drive ===
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# usa o bloco [gcp_service_account] do secrets TOML
-creds = service_account.Credentials.from_service_account_info(
-    dict(st.secrets["gcp_service_account"]), scopes=SCOPES
-)
-drive_service = build('drive', 'v3', credentials=creds)
+# ========= CLIENTES E MODELOS (CACHEADOS) =========
+@st.cache_resource(show_spinner=False)
+def get_drive_client():
+    creds = service_account.Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]), scopes=SCOPES
+    )
+    return build('drive', 'v3', credentials=creds)
 
+@st.cache_resource(show_spinner=False)
+def get_sbert_model():
+    from sentence_transformers import SentenceTransformer
+    # modelo pequeno e rápido; ótimo custo/benefício
+    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    return model
 
-# === 1. Funções para carregar DOCX do Drive em blocos menores ===
-def dividir_texto_em_blocos(texto, max_palavras=200):
-    palavras = texto.split()
-    blocos = []
-    for i in range(0, len(palavras), max_palavras):
-        bloco = " ".join(palavras[i:i+max_palavras])
-        blocos.append(bloco)
-    return blocos
+@st.cache_resource(show_spinner=False)
+def get_cross_encoder():
+    import torch
+    from sentence_transformers import CrossEncoder
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    ce = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
+    return ce
 
-def carregar_docx_drive(file_id, file_name):
-    """Lê o conteúdo de um DOCX do Drive sem salvar em disco, quebrando em blocos de 200 palavras"""
+# ========= CARREGAMENTO DOS DOCX (CACHE) =========
+def _list_docx_metadata(drive_service, folder_id):
+    query = (
+        f"'{folder_id}' in parents and "
+        "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
+    )
+    fields = "files(id, name, md5Checksum, modifiedTime)"
+    results = drive_service.files().list(q=query, fields=fields).execute()
+    return results.get("files", [])
+
+def _download_docx_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id)
-    downloader = request.execute()
-    doc = Document(io.BytesIO(downloader))
+    return request.execute()
 
-    texto = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    blocos_divididos = dividir_texto_em_blocos(texto, max_palavras=200)
+def _split_text_blocks(text, max_words=200):
+    words = text.split()
+    blocks = []
+    for i in range(0, len(words), max_words):
+        blocks.append(" ".join(words[i:i + max_words]))
+    return blocks
 
-    blocos = []
-    for trecho in blocos_divididos:
-        blocos.append({
-            "pagina": file_name,
-            "texto": trecho,
-            "file_id": file_id
-        })
-    return blocos
+def _docx_to_blocks(file_bytes, file_name, file_id, max_words=200):
+    doc = Document(io.BytesIO(file_bytes))
+    text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+    small_blocks = _split_text_blocks(text, max_words=max_words)
+    out = []
+    for chunk in small_blocks:
+        if chunk.strip():
+            out.append({"pagina": file_name, "texto": chunk, "file_id": file_id})
+    return out
 
-def carregar_docx_pasta_drive(folder_id):
-    """Carrega todos os DOCX de uma pasta do Drive em memória"""
-    query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
-    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-    files = results.get('files', [])
+@st.cache_data(show_spinner=False)
+def load_all_blocks_cached(folder_id: str):
+    """
+    Lê a pasta do Drive, baixa os DOCX e devolve:
+      - blocks_raw: lista de pequenos blocos
+      - meta_digest: string com hash da listagem para invalidar cache quando houver mudança
+    O cache invalida automaticamente quando id/name/checksum/modifiedTime mudarem.
+    """
+    drive = get_drive_client()
+    files = _list_docx_metadata(drive, folder_id)
+    # gera uma "assinatura" do estado da pasta para invalidar o cache se algo mudar
+    signature = json.dumps(
+        sorted([{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in files], key=lambda x: x["id"]),
+        ensure_ascii=False
+    )
 
-    blocos = []
-    for file in files:
-        blocos.extend(carregar_docx_drive(file["id"], file["name"]))
-    return blocos
+    all_blocks = []
+    for f in files:
+        bytes_ = _download_docx_bytes(drive, f["id"])
+        all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
+    return all_blocks, signature
 
-
-# === 2. Agrupa blocos em janelas deslizantes (para contexto) ===
+# ========= AGRUPAMENTO EM JANELA DESLIZANTE =========
 def agrupar_blocos(blocos, janela=3):
-    blocos_agrupados = []
+    grouped = []
     for i in range(len(blocos)):
-        grupo = blocos[i:i+janela]
-        texto_agregado = " ".join([b["texto"] for b in grupo])
-        pagina = grupo[0].get("pagina", "?")
-        file_id = grupo[0].get("file_id", None)
-        blocos_agrupados.append({
-            "pagina": pagina,
+        group = blocos[i:i+janela]
+        if not group:
+            continue
+        texto_agregado = " ".join([b["texto"] for b in group])
+        grouped.append({
+            "pagina": group[0].get("pagina", "?"),
             "texto": texto_agregado,
-            "file_id": file_id
+            "file_id": group[0].get("file_id")
         })
-    return blocos_agrupados
+    return grouped
 
+# ========= ÍNDICE VETORIAL (FAISS se disponível) =========
+def try_import_faiss():
+    try:
+        import faiss  # type: ignore
+        return faiss
+    except Exception:
+        return None
 
-# === 3. Inicializa reranker ===
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+@st.cache_resource(show_spinner=False)
+def build_vector_index():
+    """
+    1) Carrega blocos do Drive (cacheados)
+    2) Agrupa em janelas (contexto)
+    3) Calcula embeddings (cacheados)
+    4) Cria índice FAISS (ou numpy fallback)
+    Retorna um dicionário com tudo que precisamos na consulta.
+    """
+    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
+    grouped = agrupar_blocos(blocks_raw, janela=3)
+    if not grouped:
+        return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
+    sbert = get_sbert_model()
+    texts = [b["texto"] for b in grouped]
 
-# === 4. Prepara os blocos (docx da pasta) ===
-blocos_raw = carregar_docx_pasta_drive(FOLDER_ID)
-blocos_contexto = agrupar_blocos(blocos_raw, janela=3)
+    @st.cache_data(show_spinner=False)
+    def _embed_texts_cached(texts_):
+        # embeddings de todos os blocos (cacheados)
+        return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
 
+    emb = _embed_texts_cached(texts)
 
-# === 5. Reranking semântico ===
-def consultar_com_reranking(pergunta, top_k=TOP_K):
-    pergunta = pergunta.strip().replace("\n", " ")
-    pares = [(pergunta, bloco["texto"]) for bloco in blocos_contexto if bloco["texto"].strip()]
-    scores = reranker.predict(pares)
-    blocos_filtrados = [b for b in blocos_contexto if b["texto"].strip()]
-    resultados = sorted(zip(blocos_filtrados, scores), key=lambda x: x[1], reverse=True)[:top_k]
-    return [r[0] for r in resultados]
+    faiss = try_import_faiss()
+    use_faiss = False
+    index = None
+    if faiss is not None:
+        dim = emb.shape[1]
+        index = faiss.IndexFlatIP(dim)  # inner product com vetores normalizados = cos sim
+        index.add(emb.astype(np.float32))
+        use_faiss = True
 
+    return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
-# === 6. Pergunta de ordem/sequência ===
-def responder_etapa_seguinte(pergunta, blocos):
+def ann_search(query_text: str, top_n: int):
+    """Busca ANN top_n com FAISS (se houver) ou NumPy fallback."""
+    vecdb = build_vector_index()
+    blocks = vecdb["blocks"]
+    if not blocks:
+        return []
+
+    sbert = get_sbert_model()
+    q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
+
+    if vecdb["use_faiss"]:
+        import faiss  # type: ignore
+        D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
+        idxs = I[0].tolist()
+        scores = D[0].tolist()
+    else:
+        emb = vecdb["emb"]  # (N, d)
+        scores = (emb @ q)          # cos sim com embeddings normalizados
+        idxs = np.argsort(-scores)[:top_n].tolist()
+        scores = scores[idxs].tolist()
+
+    candidates = [{"idx": i, "score": s, "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
+    return candidates
+
+# ========= RERANKING =========
+def crossencoder_rerank(query: str, candidates, top_k: int):
+    """
+    Recebe candidatos do ANN e reranqueia via CrossEncoder.
+    """
+    if not candidates:
+        return []
+
+    ce = get_cross_encoder()
+    pairs = [(query, c["block"]["texto"]) for c in candidates]
+
+    # Batch interno do CrossEncoder
+    scores = ce.predict(pairs, batch_size=64)  # 64 geralmente é ok
+    reranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)[:top_k]
+    final_blocks = [c[0]["block"] for c in reranked]
+    return final_blocks
+
+# ========= DETECÇÃO DE ETAPA SEGUINTE (mesma lógica, rápida) =========
+def responder_etapa_seguinte(pergunta, blocos_raw):
     if not any(x in pergunta.lower() for x in ["após", "depois de", "seguinte a"]):
         return None
 
-    trecho = pergunta.lower().split("após")[-1].strip()
-    trecho = trecho.split("depois de")[-1].strip() if "depois de" in pergunta.lower() else trecho
-    trecho = trecho.split("seguinte a")[-1].strip() if "seguinte a" in pergunta.lower() else trecho
+    trecho = pergunta.lower()
+    for token in ["após", "depois de", "seguinte a"]:
+        if token in trecho:
+            trecho = trecho.split(token, 1)[-1].strip()
+    if not trecho:
+        return None
 
-    for i, bloco in enumerate(blocos):
-        if trecho.lower() in bloco["texto"].lower():
-            if i + 1 < len(blocos):
-                return f"A etapa após \"{trecho}\" é \"{blocos[i+1]['texto'].splitlines()[0]}\"."
+    for i, b in enumerate(blocos_raw):
+        if trecho.lower() in b["texto"].lower():
+            if i + 1 < len(blocos_raw):
+                prox = blocos_raw[i+1]['texto'].splitlines()[0]
+                return f'A etapa após "{trecho}" é "{prox}".'
             else:
-                return f"A etapa \"{trecho}\" é a última registrada."
+                return f'A etapa "{trecho}" é a última registrada.'
     return "Essa etapa não foi encontrada no conteúdo."
 
-
-# === 7. Monta o prompt refinado ===
-
+# ========= PROMPT =========
 def montar_prompt_rag(pergunta, blocos):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
-
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
-        "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
-        "### Regras de resposta:\n"
-        "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
-        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, você deve apresentar a dedução de forma clara.\n"
-        "   - Exemplo: se o documento lista várias responsabilidades e não menciona ASO, você pode responder: 'O documento não cita ASO como responsabilidade do departamento pessoal.'\n"
-        "3. Se realmente não houver nenhuma evidência, diga exatamente:\n"
-        "   'Essa informação não está disponível nos documentos fornecidos.'\n"
-        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes entre aspas sempre que possível.\n\n"
+        "Responda SOMENTE com base nos documentos abaixo. Se não houver evidência, diga exatamente:\n"
+        "'Essa informação não está disponível nos documentos fornecidos.'\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
 
-
-# === 8. Requisição ao modelo (com link do documento mais relevante) ===
-def responder_pergunta(pergunta, blocos=blocos_contexto, api_key=API_KEY, model_id=MODEL_ID, top_k=TOP_K):
+# ========= FUNÇÃO PRINCIPAL =========
+def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     try:
-        pergunta = pergunta.strip().replace("\n", " ").replace("\r", " ")
+        pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # checa perguntas de sequência
-        resposta_seq = responder_etapa_seguinte(pergunta, blocos_raw)
-        if resposta_seq:
-            return resposta_seq
+        # 0) checa pergunta de sequência (rápido e direto no conteúdo bruto)
+        blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
+        seq = responder_etapa_seguinte(pergunta, blocks_raw)
+        if seq:
+            return seq
 
-        # reranking e montagem do prompt
-        blocos_relevantes = consultar_com_reranking(pergunta, top_k)
+        # 1) busca ANN rápida
+        candidates = ann_search(pergunta, top_n=TOP_N_ANN)
+
+        # fallback: se por algum motivo não vier nada
+        if not candidates:
+            return "Não encontrei contexto relevante nos documentos."
+
+        # 2) reranking apenas nos candidatos
+        blocos_relevantes = crossencoder_rerank(pergunta, candidates, top_k=top_k)
+
+        # 3) prompt e chamada ao modelo
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key.strip()}",
-            "Content-Type": "application/json"
-        }
+        headers = {"Authorization": f"Bearer {api_key.strip()}", "Content-Type": "application/json"}
         payload = {
             "model": model_id,
             "messages": [
                 {"role": "system", "content": "Você é um assistente que responde com base somente no conteúdo fornecido."},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 600,
-            "temperature": 0.3
+            "max_tokens": MAX_TOKENS,
+            "temperature": TEMPERATURE
         }
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+        if not resp.ok:
+            return f"❌ Erro na API: {resp.status_code} - {resp.text}"
 
-        if response.ok:
-            resultado = response.json()
-            escolhas = resultado.get("choices", [])
+        data = resp.json()
+        escolhas = data.get("choices", [])
+        if not escolhas or "message" not in escolhas[0]:
+            return "⚠️ A resposta da API veio vazia ou incompleta."
 
-            if escolhas and "message" in escolhas[0]:
-                resposta = escolhas[0]["message"]["content"]
+        resposta = escolhas[0]["message"]["content"]
 
-                # link do documento mais relevante
-                if blocos_relevantes:
-                    primeiro = blocos_relevantes[0]
-                    doc_id = primeiro.get("file_id")
-                    doc_nome = primeiro.get("pagina", "?")
-                    if doc_id:
-                        link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
-                        resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
+        # anexa link do documento mais relevante
+        if blocos_relevantes:
+            primeiro = blocos_relevantes[0]
+            doc_id = primeiro.get("file_id")
+            doc_nome = primeiro.get("pagina", "?")
+            if doc_id:
+                link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
+                resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
-                return resposta
-            else:
-                return "⚠️ A resposta da API veio vazia ou incompleta."
-        else:
-            return f"❌ Erro na chamada à API: {response.status_code} - {response.text}"
+        return resposta
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
 
 
-# === 9. Teste manual ===
+# ========= CLI de teste =========
 if __name__ == "__main__":
-    print("\nDigite sua pergunta com base no conteúdo dos DOCX do Google Drive. Digite 'sair' para encerrar.\n")
+    print("\nDigite sua pergunta (ou 'sair'):\n")
     while True:
-        pergunta = input("Pergunta: ").strip()
-        if pergunta.lower() in ["sair", "exit", "quit"]:
-            print("\nEncerrando...")
+        q = input("Pergunta: ").strip()
+        if q.lower() in ("sair", "exit", "quit"):
             break
-        elif not pergunta or len(pergunta) < 3:
-            print("⚠️ Pergunta muito curta.")
-            continue
-
-        resposta = responder_pergunta(pergunta)
-        print("\nResposta:\n", resposta, "\n")
+        print(responder_pergunta(q))
