@@ -6,7 +6,7 @@ torch
 transformers
 python-docx
 faiss-cpu
-
+openai>=1.30.0
 google-api-python-client
 google-auth
 google-auth-httplib2
