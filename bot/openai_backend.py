@@ -14,7 +14,7 @@ from google.oauth2 import service_account
 
 # ========= CONFIG =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o"              # você pode testar "gpt-4o-mini" para ainda mais velocidade
+MODEL_ID = "gpt-4o-mini"              # você pode testar "gpt-4o-mini" para ainda mais velocidade
 TOP_K = 5                        # blocos finais enviados ao LLM
 TOP_N_ANN = 80                   # candidatos do estágio 1 (ANN) antes do reranker
 MAX_TOKENS = 500                 # resposta menor tende a ser mais rápida
