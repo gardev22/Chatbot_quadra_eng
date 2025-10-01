@@ -5,6 +5,7 @@ sentence-transformers
 torch
 transformers
 python-docx
+faiss-cpu
 
 google-api-python-client
 google-auth
