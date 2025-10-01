@@ -1,26 +1,27 @@
 import os
-import re
 import io
-import pandas as pd
+import numpy as np
 import requests
 import streamlit as st
-from sentence_transformers import CrossEncoder
+import faiss
 from docx import Document
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from openai import OpenAI
 
 # === CONFIGURAÇÕES ===
 API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o"
+EMBED_MODEL = "text-embedding-3-small"
 TOP_K = 5  # menos blocos para reduzir tokens
 
 # Id da Pasta do Google Drive (substitua pelo seu)
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 
+client = OpenAI(api_key=API_KEY)
+
 # === 0. Autenticação Google Drive ===
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-
-# usa o bloco [gcp_service_account] do secrets TOML
 creds = service_account.Credentials.from_service_account_info(
     dict(st.secrets["gcp_service_account"]), scopes=SCOPES
 )
@@ -54,6 +55,7 @@ def carregar_docx_drive(file_id, file_name):
         })
     return blocos
 
+@st.cache_data
 def carregar_docx_pasta_drive(folder_id):
     """Carrega todos os DOCX de uma pasta do Drive em memória"""
     query = f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
@@ -82,23 +84,40 @@ def agrupar_blocos(blocos, janela=3):
     return blocos_agrupados
 
 
-# === 3. Inicializa reranker ===
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+# === 3. Embeddings e FAISS ===
+def embed_text(texto):
+    resp = client.embeddings.create(model=EMBED_MODEL, input=texto)
+    return np.array(resp.data[0].embedding, dtype="float32")
+
+@st.cache_resource
+def preparar_index(blocos):
+    """Cria índice FAISS em memória"""
+    blocos_com_embeds = []
+    embeddings = []
+    for b in blocos:
+        vec = embed_text(b["texto"])
+        embeddings.append(vec)
+        blocos_com_embeds.append(b)
+
+    dim = len(embeddings[0])
+    index = faiss.IndexFlatIP(dim)
+    faiss.normalize_L2(np.array(embeddings))
+    index.add(np.array(embeddings))
+    return index, np.array(embeddings), blocos_com_embeds
 
 
-# === 4. Prepara os blocos (docx da pasta) ===
+# === 4. Prepara os blocos e índice ===
 blocos_raw = carregar_docx_pasta_drive(FOLDER_ID)
 blocos_contexto = agrupar_blocos(blocos_raw, janela=3)
+index, embeddings, blocos_com_embeds = preparar_index(blocos_contexto)
 
 
-# === 5. Reranking semântico ===
-def consultar_com_reranking(pergunta, top_k=TOP_K):
-    pergunta = pergunta.strip().replace("\n", " ")
-    pares = [(pergunta, bloco["texto"]) for bloco in blocos_contexto if bloco["texto"].strip()]
-    scores = reranker.predict(pares)
-    blocos_filtrados = [b for b in blocos_contexto if b["texto"].strip()]
-    resultados = sorted(zip(blocos_filtrados, scores), key=lambda x: x[1], reverse=True)[:top_k]
-    return [r[0] for r in resultados]
+# === 5. Consulta com FAISS ===
+def consultar_com_embeddings(pergunta, top_k=TOP_K):
+    vec = embed_text(pergunta)
+    faiss.normalize_L2(vec.reshape(1, -1))
+    scores, idxs = index.search(vec.reshape(1, -1), top_k)
+    return [blocos_com_embeds[i] for i in idxs[0] if i < len(blocos_com_embeds)]
 
 
 # === 6. Pergunta de ordem/sequência ===
@@ -120,7 +139,6 @@ def responder_etapa_seguinte(pergunta, blocos):
 
 
 # === 7. Monta o prompt refinado ===
-
 def montar_prompt_rag(pergunta, blocos):
     contexto = ""
     for b in blocos:
@@ -142,7 +160,7 @@ def montar_prompt_rag(pergunta, blocos):
     )
 
 
-# === 8. Requisição ao modelo (com link do documento mais relevante) ===
+# === 8. Requisição ao modelo (com streaming) ===
 def responder_pergunta(pergunta, blocos=blocos_contexto, api_key=API_KEY, model_id=MODEL_ID, top_k=TOP_K):
     try:
         pergunta = pergunta.strip().replace("\n", " ").replace("\r", " ")
@@ -154,51 +172,38 @@ def responder_pergunta(pergunta, blocos=blocos_contexto, api_key=API_KEY, model_
         if resposta_seq:
             return resposta_seq
 
-        # reranking e montagem do prompt
-        blocos_relevantes = consultar_com_reranking(pergunta, top_k)
+        # consulta via embeddings
+        blocos_relevantes = consultar_com_embeddings(pergunta, top_k)
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key.strip()}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": model_id,
-            "messages": [
+        resposta = ""
+        for chunk in client.chat.completions.create(
+            model=model_id,
+            messages=[
                 {"role": "system", "content": "Você é um assistente que responde com base somente no conteúdo fornecido."},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 600,
-            "temperature": 0.3
-        }
+            max_tokens=600,
+            temperature=0.3,
+            stream=True
+        ):
+            delta = chunk.choices[0].delta.get("content", "")
+            resposta += delta
+            yield delta  # streaming para exibição no frontend
 
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        # link do documento mais relevante
+        if blocos_relevantes:
+            primeiro = blocos_relevantes[0]
+            doc_id = primeiro.get("file_id")
+            doc_nome = primeiro.get("pagina", "?")
+            if doc_id:
+                link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
+                resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
-        if response.ok:
-            resultado = response.json()
-            escolhas = resultado.get("choices", [])
-
-            if escolhas and "message" in escolhas[0]:
-                resposta = escolhas[0]["message"]["content"]
-
-                # link do documento mais relevante
-                if blocos_relevantes:
-                    primeiro = blocos_relevantes[0]
-                    doc_id = primeiro.get("file_id")
-                    doc_nome = primeiro.get("pagina", "?")
-                    if doc_id:
-                        link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
-                        resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
-
-                return resposta
-            else:
-                return "⚠️ A resposta da API veio vazia ou incompleta."
-        else:
-            return f"❌ Erro na chamada à API: {response.status_code} - {response.text}"
+        yield resposta
 
     except Exception as e:
-        return f"❌ Erro interno: {e}"
+        yield f"❌ Erro interno: {e}"
 
 
 # === 9. Teste manual ===
@@ -213,5 +218,8 @@ if __name__ == "__main__":
             print("⚠️ Pergunta muito curta.")
             continue
 
-        resposta = responder_pergunta(pergunta)
-        print("\nResposta:\n", resposta, "\n")
+        resposta_final = ""
+        for parte in responder_pergunta(pergunta):
+            print(parte, end="", flush=True)
+            resposta_final += parte
+        print("\n")
