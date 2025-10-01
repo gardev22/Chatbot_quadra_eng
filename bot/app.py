@@ -321,6 +321,3 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     st.session_state.pending_index = None
     st.session_state.pending_question = None
     do_rerun()
-
-
-
