@@ -1,4 +1,4 @@
-# app.py
+# bibliotecas
 
 import streamlit as st
 import base64
@@ -10,7 +10,8 @@ from openai_backend import responder_pergunta  # seu backend
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-st.set_page_config(page_title="Chatbot Quadra", layout="wide", initial_sidebar_state="collapsed")
+# 🔹 Sidebar precisa ficar visível (como escondemos o header, não há botão nativo para abrir)
+st.set_page_config(page_title="Chatbot Quadra", layout="wide", initial_sidebar_state="expanded")
 
 def do_rerun():
     if hasattr(st, "rerun"):
@@ -43,6 +44,18 @@ _url_re = re.compile(r'(https?://[^\s<>"\]]+)', re.IGNORECASE)
 def linkify(text: str) -> str:
     safe = escape(text).replace("\n", "<br>")
     return _url_re.sub(r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', safe)
+
+def reenviar_pergunta(q: str):
+    """Enfileira uma pergunta para o mesmo fluxo de 3 etapas já existente."""
+    q = (q or "").strip()
+    if not q:
+        return
+    st.session_state.historico.append((q, "")) 
+    st.session_state.pending_index = len(st.session_state.historico) - 1
+    st.session_state.pending_question = q
+    st.session_state.awaiting_answer = True
+    st.session_state.answering_started = False
+    do_rerun()
 
 # ====== CSS ======
 st.markdown(
@@ -81,6 +94,46 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 
 /* laterais AZUL SÓLIDO (sem degradê) */
 .stApp{ background: var(--side-blue) !important; }
+
+/* ===== Sidebar (scroll próprio) ===== */
+section[data-testid="stSidebar"]{
+  background:#ffffff !important;
+  border-right:1px solid rgba(59,130,246,.10);
+}
+section[data-testid="stSidebar"] > div{
+  height:100dvh !important;
+  overflow-y:auto !important;
+  padding:14px 10px 18px 10px !important;
+}
+.sidebar-header{
+  font-size:0.95rem;
+  font-weight:700;
+  letter-spacing:.02em;
+  color:#1f2937;
+  margin:6px 6px 12px 6px;
+}
+.sidebar-sub{
+  font-size:.78rem;
+  color:#6b7280;
+  margin:-6px 6px 12px 6px;
+}
+
+/* Botões de histórico */
+.hist-btn > button{
+  justify-content:flex-start !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  border-radius:10px !important;
+  border:1px solid rgba(37,99,235,0.12) !important;
+  background:#f8fafc !important;
+  box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
+}
+.hist-empty{
+  color:#9ca3af;
+  font-size:.9rem;
+  padding:8px 10px;
+}
 
 /* ===== Header fixo ===== */
 .header{
@@ -173,7 +226,7 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
 
-/* ===== SKIRT (agora AZUL SÓLIDO pra casar com as laterais) ===== */
+/* ===== SKIRT (rodapé sólido azul) ===== */
 .bottom-gradient-fix{
   position: fixed;
   left: 0; right: 0; bottom: 0;
@@ -219,6 +272,32 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
+# ====== SIDEBAR: Histórico ======
+with st.sidebar:
+    st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
+
+    if not st.session_state.historico:
+        st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
+    else:
+        # Mostra mais recentes primeiro
+        for i, (pergunta_hist, _resp) in enumerate(reversed(st.session_state.historico)):
+            idx_real = len(st.session_state.historico) - 1 - i
+            titulo = pergunta_hist.strip().replace("\n", " ")
+            if len(titulo) > 80:
+                titulo = titulo[:80] + "…"
+            col1, col2 = st.columns([1, 0.2])
+            with col1:
+                if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, help="Reenviar esta pergunta", type="secondary"):
+                    reenviar_pergunta(st.session_state.historico[idx_real][0])
+            with col2:
+                st.write("")  # espaçador
+
+    st.divider()
+    if st.button("🧹 Limpar histórico", use_container_width=True, type="secondary"):
+        st.session_state.historico = []
+        do_rerun()
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
