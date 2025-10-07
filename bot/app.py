@@ -59,32 +59,25 @@ def reenviar_pergunta(q: str):
 st.markdown(
     """
 <style>
-/* ===== RESET ===== */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
-/* ===== VARS ===== */
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 72px;
-  --skirt-h: 72px;                 
+  --skirt-h: 72px;
   --card-height: calc(100dvh - var(--header-height));
   --quadra-blue: #cfe3ff;
-
-  /* chatgpt-like input */
   --input-max: 900px;
   --input-bottom: 40px;
   --input-shadow: 0 10px 24px rgba(14,47,120,.10);
-
-  /* layout */
   --side-blue: #f4f9ff;
-  --skirt-bg: #ffffff;             
-  --sidebar-w: 300px;              
+  --skirt-bg: #ffffff;
+  --sidebar-w: 300px;
 }
 
-/* ===== Esconde UI nativa ===== */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
@@ -92,11 +85,8 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
   height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
 }
 .block-container{padding:0!important;min-height:0!important}
-
-/* Fundo lateral azul clarinho */
 .stApp{ background: var(--side-blue) !important; }
 
-/* ===== Header fixo (no topo de tudo) ===== */
 .header{
   position:fixed;inset:0 0 auto 0;height:var(--header-height);
   display:flex;align-items:center;justify-content:space-between;
@@ -107,12 +97,11 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-/* ======== SIDEBAR ======== */
 section[data-testid="stSidebar"]{
   position: fixed !important;
   top: var(--header-height) !important;
   left: 0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important; 
+  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   margin: 0 !important;
@@ -130,21 +119,16 @@ section[data-testid="stSidebar"] > div{
   padding: 6px 12px 12px 12px !important;
   margin: 0 !important;
 }
+
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
+div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important; }
 
-/* empurra o conteúdo principal exatamente o tamanho da sidebar */
-div[data-testid="stAppViewContainer"]{
-  margin-left: var(--sidebar-w) !important;
-}
-
-/* ===== Content ===== */
 .content{
   max-width:var(--content-max-width);
   margin:var(--header-height) auto 0;
   padding:0 8px;
 }
 
-/* ===== Card do chat (scroll só aqui) ===== */
 .chat-card{
   position:relative;
   background:linear-gradient(135deg,#fff,#fbfdff);
@@ -155,11 +139,10 @@ div[data-testid="stAppViewContainer"]{
   padding:20px;
   height:var(--card-height);
   overflow-y:auto;scroll-behavior:smooth;
-  padding-bottom: 140px;
-  scroll-padding-bottom: 140px;
+  padding-bottom: calc(var(--skirt-h) + 100px);
+  scroll-padding-bottom: calc(var(--skirt-h) + 100px);
 }
 
-/* ===== Mensagens ===== */
 .message-row{display:flex;margin:10px 4px}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
@@ -170,20 +153,19 @@ div[data-testid="stAppViewContainer"]{
 }
 .bubble.user{
   background:linear-gradient(180deg,#fff,#eef2ff);
-  border:1px solid rgba(59,130,246,.14);border-bottom-right-radius:6px
+  border:1px solid rgba(59,130,246,0.14);border-bottom-right-radius:6px
 }
 .bubble.assistant{
   background:#f8fafc;border:1px solid rgba(15,23,42,.06);border-bottom-left-radius:6px
 }
 
-/* ===== ChatGPT-like: input flutuante ===== */
 [data-testid="stChatInput"]{
   position: fixed !important;
-  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important; 
+  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important;
   transform: translateX(-50%) !important;
   bottom: var(--input-bottom) !important;
   width: min(var(--input-max), 96vw) !important;
-  z-index: 5000; 
+  z-index: 5000;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -215,48 +197,33 @@ div[data-testid="stAppViewContainer"]{
 }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
 
-/* ===== SKIRT (rodapé branco) ===== */
 .bottom-gradient-fix{
   position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--skirt-bg) !important; 
+  height: var(--skirt-h); background: var(--skirt-bg) !important;
   z-index: 10 !important; pointer-events: none;
 }
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .bottom-gradient-fix{ height: calc(var(--skirt-h) + env(safe-area-inset-bottom)); }
 }
 
-/* ===== Sidebar - tipografia e botões ===== */
-.sidebar-header{
-  font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;
-  margin:2px 4px 0 2px;
-}
-.sidebar-bar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin:6px 4px 8px 2px;
-  height:28px; 
-}
-.sidebar-sub{
-  font-size:.78rem;
-  color:#6b7280;
-}
+.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:2px 4px 0 2px; }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:6px 4px 8px 2px; height:28px; }
+.sidebar-sub{ font-size:.78rem; color:#6b7280; }
 
-/* Lixeira: apenas ícone, centralizado */
 .trash-wrap{
   display:flex;
   align-items:center;
   justify-content:center;
-  height: 28px; 
+  height:28px;
 }
-.trash-wrap :where(button){
+.trash-wrap button{
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   width: 28px !important;
   height: 28px !important;
   font-size: 18px !important;
-  line-height: 28px !important; 
+  line-height: 1 !important;
   cursor: pointer !important;
   display: flex !important;
   align-items: center !important;
@@ -265,22 +232,23 @@ div[data-testid="stAppViewContainer"]{
   padding: 0 !important;
 }
 
-/* Botões de histórico: texto mais pra cima */
-.hist-item :where(button){
-  justify-content:flex-start !important;
-  align-items: flex-start !important; 
-  white-space:nowrap !important;
-  overflow:hidden !important;
-  text-overflow:ellipsis !important;
+.hist-item button{
+  justify-content: flex-start !important;
+  align-items: flex-start !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
   border-radius:10px !important;
   border:1px solid rgba(37,99,235,0.12) !important;
   background:#f8fafc !important;
   box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
   margin:6px 4px;
-  padding-top:4px !important; 
-  padding-bottom:4px !important;
 }
+
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -315,7 +283,6 @@ st.markdown(
 # ====== SIDEBAR: Histórico ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-
     col_l, col_r = st.columns([1, 0.2])
     with col_l:
         st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
@@ -428,4 +395,5 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
     st.session_state.pending_index = None
-   
+    st.session_state.pending_question = None
+    do_rerun()
