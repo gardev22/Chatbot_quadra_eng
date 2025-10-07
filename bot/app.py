@@ -56,217 +56,89 @@ def reenviar_pergunta(q: str):
     do_rerun()
 
 # ====== CSS ======
+
 st.markdown(
     """
 <style>
 /* ===== RESET ===== */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-img{max-width:100%;height:auto;display:inline-block}
-img.logo{height:44px!important;width:auto!important}
 
-/* ===== VARS ===== */
+/* ===== VARIÁVEIS ===== */
 :root{
-  --content-max-width: min(96vw, 1400px);
-  --header-height: 72px;
-  --skirt-h: 72px;                 /* altura barra inferior */
-  --card-height: calc(100dvh - var(--header-height));
-  --quadra-blue: #cfe3ff;
-
-  /* chatgpt-like input */
-  --input-max: 900px;
-  --input-bottom: 40px;
-  --input-shadow: 0 10px 24px rgba(14,47,120,.10);
-
-  /* layout */
-  --side-blue: #f4f9ff;
-  --skirt-bg: #ffffff;             /* 🔸 barra inferior BRANCA */
-  --sidebar-w: 300px;              /* largura do sidebar */
+  --header-height:72px;
+  --sidebar-w:300px;
+  --side-blue:#f4f9ff;
 }
 
-/* ===== Esconde UI nativa ===== */
+/* ===== HEADER ===== */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
-html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"]{
-  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
-}
-.block-container{padding:0!important;min-height:0!important}
+.stApp{background:var(--side-blue)!important;}
 
-/* Fundo lateral azul clarinho */
-.stApp{ background: var(--side-blue) !important; }
-
-/* ===== Header fixo (no topo de tudo) ===== */
-.header{
-  position:fixed;inset:0 0 auto 0;height:var(--header-height);
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;background:#fff;z-index:1000;
-  border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)
-}
-.header-left{display:flex;align-items:center;gap:10px;font-weight:600}
-.header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
-.header-right{display:flex;align-items:center;gap:12px}
-
-/* ======== SIDEBAR (colado à esquerda, abaixo do header) ======== */
+/* ===== SIDEBAR ===== */
 section[data-testid="stSidebar"]{
-  position: fixed !important;
-  top: var(--header-height) !important;
-  left: 0 !important;
-  height: calc(100dvh - var(--header-height)) !important; /* vai até o rodapé */
-  width: var(--sidebar-w) !important;
-  min-width: var(--sidebar-w) !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #fff !important;
-  border-right: 1px solid rgba(59,130,246,.10);
-  z-index: 900 !important;    /* abaixo do header (1000) */
-  transform: none !important;
-  visibility: visible !important;
-  overflow: hidden !important;
+  position:fixed!important;
+  top:var(--header-height)!important;
+  left:0!important;
+  height:calc(100dvh - var(--header-height))!important;
+  width:var(--sidebar-w)!important;
+  min-width:var(--sidebar-w)!important;
+  background:#fff!important;
+  border-right:1px solid rgba(59,130,246,.1)!important;
+  z-index:2000!important; /* 🔹 agora sempre acima do fundo */
+  overflow-y:auto!important;
+  box-shadow:4px 0 10px rgba(14,47,120,.05)!important;
 }
+
 section[data-testid="stSidebar"] > div{
-  height: 100% !important;
-  overflow-y: auto !important;
-  padding: 6px 12px 12px 12px !important;  /* 🔸 menos padding-top -> sobe o texto */
-  margin: 0 !important;
+  height:100%!important;
+  padding:10px 14px 14px 14px!important; /* 🔹 texto mais pra cima */
 }
-div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
 
-/* empurra o conteúdo principal exatamente o tamanho da sidebar */
+/* ===== CONTEÚDO PRINCIPAL ===== */
 div[data-testid="stAppViewContainer"]{
-  margin-left: var(--sidebar-w) !important;
+  margin-left:var(--sidebar-w)!important;
 }
 
-/* ===== Content ===== */
-.content{
-  max-width:var(--content-max-width);
-  margin:var(--header-height) auto 0;
-  padding:0 8px;
-}
-
-/* ===== Card do chat (scroll só aqui) ===== */
-.chat-card{
-  position:relative;
-  background:linear-gradient(135deg,#fff,#fbfdff);
-  border-radius:12px 12px 0 0;
-  border:1px solid var(--quadra-blue);
-  border-bottom:none;
-  box-shadow:0 14px 36px rgba(14,47,120,.04);
-  padding:20px;
-  height:var(--card-height);
-  overflow-y:auto;scroll-behavior:smooth;
-  padding-bottom: 140px;
-  scroll-padding-bottom: 140px;
-}
-
-/* ===== Mensagens ===== */
-.message-row{display:flex;margin:10px 4px}
-.message-row.user{justify-content:flex-end}
-.message-row.assistant{justify-content:flex-start}
-.bubble{
-  max-width:88%;padding:12px 14px;border-radius:12px;
-  font-size:15px;line-height:1.35;box-shadow:0 6px 14px rgba(15,23,42,.03);
-  word-wrap:break-word
-}
-.bubble.user{
-  background:linear-gradient(180deg,#fff,#eef2ff);
-  border:1px solid rgba(59,130,246,.14);border-bottom-right-radius:6px
-}
-.bubble.assistant{
-  background:#f8fafc;border:1px solid rgba(15,23,42,.06);border-bottom-left-radius:6px
-}
-
-/* ===== ChatGPT-like: input flutuante ===== */
-[data-testid="stChatInput"]{
-  position: fixed !important;
-  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important; /* central no espaço útil */
-  transform: translateX(-50%) !important;
-  bottom: var(--input-bottom) !important;
-  width: min(var(--input-max), 96vw) !important;
-  z-index: 5000; /* acima de sidebar e conteúdo */
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-[data-testid="stChatInput"] > div{
-  width: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #ffffff !important;
-  border: 1.5px solid #2f64d0 !important;
-  border-radius: 999px !important;
-  box-shadow: var(--input-shadow) !important;
-  overflow: hidden;
-}
-
-/* AUTO-GROW */
-[data-testid="stChatInput"] textarea{
-  width: 100% !important;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 999px !important;
-  padding: 12px 16px !important;
-  font-size: 16px !important;
-  box-shadow: none !important;
-  outline: none !important;
-  height: auto !important;
-  min-height: 44px !important;
-  max-height: 220px !important;
-  overflow-y: hidden !important;
-}
-[data-testid="stChatInput"] button{ margin-right: 8px !important; }
-
-/* ===== SKIRT (rodapé branco) ===== */
-.bottom-gradient-fix{
-  position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--skirt-bg) !important; /* 🔸 branco */
-  z-index: 10 !important; pointer-events: none;
-}
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .bottom-gradient-fix{ height: calc(var(--skirt-h) + env(safe-area-inset-bottom)); }
-}
-
-/* ===== Sidebar - tipografia e botões ===== */
+/* ===== HISTÓRICO ===== */
 .sidebar-header{
-  font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;
-  margin:2px 4px 0 2px;                 /* 🔸 mais alto */
+  font-size:.95rem;font-weight:700;color:#1f2937;
+  margin-bottom:2px;
 }
-.sidebar-bar{
-  display:flex;align-items:center;justify-content:space-between;
-  margin:4px 4px 8px 2px;               /* 🔸 mais alto */
-}
-.sidebar-sub{ font-size:.78rem;color:#6b7280; }
+.sidebar-sub{font-size:.8rem;color:#6b7280;margin-top:-6px;}
 
-/* Lixeira: apenas ícone, sem caixa/sombra */
-.trash-wrap{ display:flex;align-items:center;justify-content:flex-end; }
-.trash-wrap :where(button){
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  width: auto !important; height: auto !important;
-  padding: 0 !important; margin: 0 2px 0 0 !important;
-  font-size: 20px !important; line-height: 1 !important;
-  cursor: pointer !important;
+/* Botão de lixeira sem caixa */
+.trash-wrap button{
+  background:transparent!important;
+  border:none!important;
+  box-shadow:none!important;
+  width:auto!important;height:auto!important;
+  padding:0!important;margin:0!important;
+  font-size:20px!important;line-height:1!important;
+  cursor:pointer!important;
+  color:#444!important;
 }
 
-/* Botões de histórico */
+/* Itens do histórico */
 .hist-item :where(button){
-  justify-content:flex-start !important;
-  white-space:nowrap !important;
-  overflow:hidden !important;
-  text-overflow:ellipsis !important;
-  border-radius:10px !important;
-  border:1px solid rgba(37,99,235,0.12) !important;
-  background:#f8fafc !important;
-  box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
+  justify-content:flex-start!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  border-radius:10px!important;
+  border:1px solid rgba(37,99,235,0.12)!important;
+  background:#f8fafc!important;
+  box-shadow:0 3px 10px rgba(15,23,42,.04)!important;
   margin:6px 4px;
 }
-.hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
+.hist-empty{color:#9ca3af;font-size:.9rem;padding:8px 10px;}
 </style>
 """,
     unsafe_allow_html=True,
 )
+
 
 # ====== HEADER HTML ======
 logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />' if logo_b64 else \
