@@ -61,9 +61,7 @@ st.markdown("""
 *{box-sizing:border-box} html,body{margin:0;padding:0} img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
-/* ===== Variáveis ===== */
 :root{
-  --sidebar-top-pad: 0px;               /* << ajuste ÚNICO pra subir/baixar a sidebar */
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
@@ -103,9 +101,16 @@ section[data-testid="stSidebar"]{
   border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
   visibility: visible !important; overflow:hidden !important;
 }
+
+/* ===== ÚNICA REGRA da área interna da sidebar =====
+   Ajuste AQUI para "subir tudo": mude apenas o padding-top */
 section[data-testid="stSidebar"] > div{
-  height:100% !important; overflow-y:auto !important;
-  padding: var(--sidebar-top-pad) 12px 12px 12px !important;  /* << controla o topo */
+  height:100% !important;
+  overflow-y:auto !important;
+  padding-top: 0 !important;        /* ← 0px, 2px, 4px... */
+  padding-right: 12px !important;
+  padding-bottom: 12px !important;
+  padding-left: 12px !important;
   margin:0 !important;
 }
 
@@ -236,7 +241,7 @@ with st.sidebar:
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        # Ordem natural (1ª → última)
+        # ordem natural (1ª -> última)
         for pergunta_hist, _resp in st.session_state.historico:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
@@ -244,7 +249,7 @@ with st.sidebar:
             st.markdown(f'<div style="padding:4px 6px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# JS lixeira (mantido)
+# JS: lixeira
 st.markdown("""
 <script>
 document.addEventListener('trash_clicked', () => {
@@ -253,7 +258,7 @@ document.addEventListener('trash_clicked', () => {
 </script>
 """, unsafe_allow_html=True)
 
-# Python reset histórico (mantido)
+# Python reset histórico
 if st.query_params.get("trash"):
     st.session_state.historico = []
     do_rerun()
@@ -268,7 +273,6 @@ for pergunta, resposta in st.session_state.historico:
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if not msgs_html:
-    # mantém o ponto, mas ele só aparece dentro do card
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
 st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
@@ -328,17 +332,17 @@ if st.session_state.awaiting_answer and not st.session_state.answering_started:
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
-        resposta = responder_pergunta(st.session_state.pending_question)
+        resposta=responder_pergunta(st.session_state.pending_question)
     except Exception as e:
-        resposta = f"❌ Erro ao consultar o backend: {e}"
+        resposta=f"❌ Erro ao consultar o backend: {e}"
 
-    idx = st.session_state.pending_index
-    if idx is not None and 0 <= idx < len(st.session_state.historico):
-        pergunta_fix = st.session_state.historico[idx][0]
-        st.session_state.historico[idx] = (pergunta_fix, resposta)
+    idx=st.session_state.pending_index
+    if idx is not None and 0<=idx<len(st.session_state.historico):
+        pergunta_fix=st.session_state.historico[idx][0]
+        st.session_state.historico[idx]=(pergunta_fix,resposta)
 
-    st.session_state.awaiting_answer = False
-    st.session_state.answering_started = False
-    st.session_state.pending_index = None
-    st.session_state.pending_question = None
+    st.session_state.awaiting_answer=False
+    st.session_state.answering_started=False
+    st.session_state.pending_index=None
+    st.session_state.pending_question=None
     do_rerun()
