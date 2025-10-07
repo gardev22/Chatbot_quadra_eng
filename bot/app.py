@@ -107,7 +107,7 @@ section[data-testid="stSidebar"]{
 section[data-testid="stSidebar"] > div{
   height:100% !important;
   overflow-y:auto !important;
-  padding-top: -100px !important;        /* ← 0px (padrão). Use 2px, 4px, etc. */
+  padding-top: -80px !important;        /* ← 0px (padrão). Use 2px, 4px, etc. */
   padding-right: 12px !important;
   padding-bottom: 12px !important;
   padding-left: 12px !important;
