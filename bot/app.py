@@ -65,6 +65,7 @@ img.logo{height:44px!important;width:auto!important}
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
+  --chat-safe-gap: 40px;  /* ajuste aqui: 24px, 32px, 40px, 56px... */
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --quadra-blue:#cfe3ff;
   --input-max:900px;
@@ -314,7 +315,11 @@ st.markdown("""
     const card  = document.getElementById('chatCard');
     if(!input||!card) return;
     const rect = input.getBoundingClientRect();
-    const alturaEfetiva = (window.innerHeight - rect.top) + 16;
+    const gapVar = getComputedStyle(document.documentElement)
+      .getPropertyValue('--chat-safe-gap').trim();
+    const gap = parseInt(gapVar || '24', 10);
+    const alturaEfetiva = (window.innerHeight - rect.top) + gap;
+    
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
   }
