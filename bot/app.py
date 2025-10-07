@@ -68,7 +68,7 @@ img.logo{height:44px!important;width:auto!important}
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --quadra-blue:#cfe3ff;
   --input-max:900px;
-  --input-bottom:40px;
+  --input-bottom:60px;
   --input-shadow:0 10px 24px rgba(14,47,120,.10);
   --side-blue:#f4f9ff;
   --skirt-bg:#ffffff;
