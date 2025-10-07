@@ -65,7 +65,7 @@ img.logo{height:44px!important;width:auto!important}
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
-  --chat-safe-gap: 40px;  /* ajuste aqui: 24px, 32px, 40px, 56px... */
+  --chat-safe-gap: 96px;           /* <<< folga para o input não sobrepor (ajuste aqui) */
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --quadra-blue:#cfe3ff;
   --input-max:900px;
@@ -103,12 +103,11 @@ section[data-testid="stSidebar"]{
   visibility: visible !important; overflow:hidden !important;
 }
 
-/* ===== ÚNICA REGRA da área interna da sidebar =====
-   Ajuste AQUI para "subir tudo": mude apenas o padding-top */
+/* área interna da sidebar (mantido) */
 section[data-testid="stSidebar"] > div{
   height:100% !important;
   overflow-y:auto !important;
-  padding-top: -10px !important;        /* ← 0px (padrão). Use 2px, 4px, etc. */
+  padding-top: -10px !important;    /* como você já tinha */
   padding-right: 12px !important;
   padding-bottom: 12px !important;
   padding-left: 12px !important;
@@ -135,11 +134,12 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   height:var(--card-height);
   overflow-y:auto;
   scroll-behavior:smooth;
-  padding-bottom: calc(var(--skirt-h) + 32px);
-  scroll-padding-bottom: calc(var(--skirt-h) + 32px);
+  /* fallback CSS: já dá espaço no fim mesmo antes do JS */
+  padding-bottom: var(--chat-safe-gap);
+  scroll-padding-bottom: var(--chat-safe-gap);
 }
 
-.message-row{display:flex;margin:12px 4px}
+.message-row{display:flex;margin:12px 4px; scroll-margin-bottom: calc(var(--chat-safe-gap) + 16px); }
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{max-width:88%;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.45;box-shadow:0 6px 14px rgba(15,23,42,.03);word-wrap:break-word}
@@ -179,7 +179,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   outline: none !important;
   height: auto !important;
   min-height: 44px !important;
-  max-height: 220x !important;
+  max-height: 220px !important;
   overflow-y: hidden !important;
 }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
@@ -192,12 +192,10 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 
 .sidebar-header{ font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px -2px 2px; }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
-.sidebar-sub{ font size:.88rem; color:#6b7280; }
+.sidebar-sub{ font-size:.88rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
 .trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
-
-.hist-item button{justify-content: flex-start !important; align-items:flex-start !important; padding-top:6px !important; padding-bottom:6px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; border-radius:10px !important; border:1px solid rgba(37,99,235,0.12) !important; background:#f8fafc !important; box-shadow:0 3px 10px rgba(15,23,42,.04) !important; margin:6px 4px;}
 
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 
@@ -218,13 +216,11 @@ div[data-testid="stSidebarContent"] > *:first-child{
 /* Itens do histórico (perguntas) */
 .hist-row{
   padding: 6px 6px;
-  font-size: 1.1rem;              /* ajuste aqui: 0.95rem, 1.0rem, 1.05rem... */
+  font-size: 1.1rem;
   color: #4b5563 !important;    /* cinza escuro */
   line-height: 1.35;
 }
-.hist-row + .hist-row{ margin-top: 6px; } /* espaçamento entre itens */
-
-
+.hist-row + .hist-row{ margin-top: 6px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -254,6 +250,7 @@ st.markdown(f"""
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
+    # Barra superior com título + lixeira
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="sidebar-sub">Perguntas desta sessão</div>
@@ -263,11 +260,11 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    # Histórico simples
     st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:2px;">', unsafe_allow_html=True)
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        # ordem natural (1ª -> última)
         for pergunta_hist, _resp in st.session_state.historico:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
@@ -275,7 +272,7 @@ with st.sidebar:
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# JS: lixeira
+# JS para capturar clique da lixeira
 st.markdown("""
 <script>
 document.addEventListener('trash_clicked', () => {
@@ -284,7 +281,7 @@ document.addEventListener('trash_clicked', () => {
 </script>
 """, unsafe_allow_html=True)
 
-# Python reset histórico
+# Python para resetar histórico quando a lixeira é clicada
 if st.query_params.get("trash"):
     st.session_state.historico = []
     do_rerun()
@@ -300,6 +297,9 @@ for pergunta, resposta in st.session_state.historico:
 
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
+
+# âncora para auto-scroll
+msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
 st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
 
@@ -319,10 +319,11 @@ st.markdown("""
       .getPropertyValue('--chat-safe-gap').trim();
     const gap = parseInt(gapVar || '24', 10);
     const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-    
+
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
   }
+
   function autoGrow(){
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
     if(!ta) return;
@@ -332,13 +333,40 @@ st.markdown("""
     ta.style.height = desired+'px';
     ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
   }
+
+  function scrollToEnd(smooth=true){
+    const end = document.getElementById('chatEnd');
+    if(!end) return;
+    end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
+  }
+
   const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
-  window.addEventListener('load',()=>{autoGrow();ajustaEspaco();});
+
+  window.addEventListener('load',()=>{
+    autoGrow();
+    ajustaEspaco();
+    scrollToEnd(false);
+  });
   window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
-  document.addEventListener('input',(e)=>{if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){autoGrow();ajustaEspaco();}});
-  setTimeout(()=>{autoGrow();ajustaEspaco();},0);
-  setTimeout(()=>{autoGrow();ajustaEspaco();},150);
+
+  document.addEventListener('input',(e)=>{
+    if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
+      autoGrow();ajustaEspaco();
+    }
+  });
+
+  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
+  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
+
+  const card = document.getElementById('chatCard');
+  if(card){
+    const mo = new MutationObserver(()=>{
+      ajustaEspaco();
+      scrollToEnd(true);
+    });
+    mo.observe(card, {childList:true, subtree:false});
+  }
 })();
 </script>
 """, unsafe_allow_html=True)
@@ -362,17 +390,17 @@ if st.session_state.awaiting_answer and not st.session_state.answering_started:
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
-        resposta=responder_pergunta(st.session_state.pending_question)
+        resposta = responder_pergunta(st.session_state.pending_question)
     except Exception as e:
-        resposta=f"❌ Erro ao consultar o backend: {e}"
+        resposta = f"❌ Erro ao consultar o backend: {e}"
 
-    idx=st.session_state.pending_index
-    if idx is not None and 0<=idx<len(st.session_state.historico):
-        pergunta_fix=st.session_state.historico[idx][0]
-        st.session_state.historico[idx]=(pergunta_fix,resposta)
+    idx = st.session_state.pending_index
+    if idx is not None and 0 <= idx < len(st.session_state.historico):
+        pergunta_fix = st.session_state.historico[idx][0]
+        st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    st.session_state.awaiting_answer=False
-    st.session_state.answering_started=False
-    st.session_state.pending_index=None
-    st.session_state.pending_question=None
+    st.session_state.awaiting_answer = False
+    st.session_state.answering_started = False
+    st.session_state.pending_index = None
+    st.session_state.pending_question = None
     do_rerun()
