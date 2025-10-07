@@ -211,8 +211,8 @@ div[data-testid="stSidebarContent"] > *:first-child{
 }
 
 /* acabamento: sobe um tiquinho o título e a barra */
-.sidebar-header{ margin-top: -12px !important; }
-.sidebar-bar{ margin-top: -8px !important; }
+.sidebar-header{ margin-top: -20px !important; }
+.sidebar-bar{ margin-top: -12px !important; }
 
 </style>
 """, unsafe_allow_html=True)
