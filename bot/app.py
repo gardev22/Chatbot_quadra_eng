@@ -217,8 +217,8 @@ div[data-testid="stSidebarContent"] > *:first-child{
 /* Itens do histórico (perguntas) */
 .hist-row{
   padding: 6px 6px;
-  font-size: 1.2rem;              /* ajuste aqui: 0.95rem, 1.0rem, 1.05rem... */
-  color: #111827!important;    /* cinza escuro */
+  font-size: 1.1rem;              /* ajuste aqui: 0.95rem, 1.0rem, 1.05rem... */
+  color: #4b5563 !important;    /* cinza escuro */
   line-height: 1.35;
 }
 .hist-row + .hist-row{ margin-top: 6px; } /* espaçamento entre itens */
