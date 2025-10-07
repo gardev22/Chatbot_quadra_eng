@@ -189,9 +189,9 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   z-index: 10 !important; pointer-events: none;
 }
 
-.sidebar-header{ font-size:1.2rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px -2px 2px; }
+.sidebar-header{ font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px -2px 2px; }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
-.sidebar-sub{ font size:.90rem; color:#6b7280; }
+.sidebar-sub{ font size:.88rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
 .trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
