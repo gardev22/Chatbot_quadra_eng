@@ -6,7 +6,7 @@ import os
 import re
 import warnings
 from html import escape
-from openai_backend import responder_pergunta  # seu backend
+from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
@@ -32,7 +32,7 @@ if logo_b64:
 
 # ====== ESTADO ======
 if "historico" not in st.session_state:
-    st.session_state.historico = []   # [(pergunta, resposta)]
+    st.session_state.historico = []
 st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
@@ -56,26 +56,23 @@ def reenviar_pergunta(q: str):
     do_rerun()
 
 # ====== CSS ======
-st.markdown(
-    """
+st.markdown("""
 <style>
-*{box-sizing:border-box}
-html,body{margin:0;padding:0}
-img{max-width:100%;height:auto;display:inline-block}
+*{box-sizing:border-box} html,body{margin:0;padding:0} img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
 :root{
-  --content-max-width: min(96vw, 1400px);
-  --header-height: 72px;
-  --skirt-h: 72px;
-  --card-height: calc(100dvh - var(--header-height));
-  --quadra-blue: #cfe3ff;
-  --input-max: 900px;
-  --input-bottom: 40px;
-  --input-shadow: 0 10px 24px rgba(14,47,120,.10);
-  --side-blue: #f4f9ff;
-  --skirt-bg: #ffffff;
-  --sidebar-w: 300px;
+  --content-max-width:min(96vw,1400px);
+  --header-height:72px;
+  --skirt-h:72px;
+  --card-height:calc(100dvh - var(--header-height) - 24px);
+  --quadra-blue:#cfe3ff;
+  --input-max:900px;
+  --input-bottom:24px;
+  --input-shadow:0 10px 24px rgba(14,47,120,.10);
+  --side-blue:#f4f9ff;
+  --skirt-bg:#ffffff;
+  --sidebar-w:300px;
 }
 
 header[data-testid="stHeader"]{display:none!important}
@@ -85,39 +82,28 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
   height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
 }
 .block-container{padding:0!important;min-height:0!important}
-.stApp{ background: var(--side-blue) !important; }
+.stApp{background: var(--side-blue) !important}
 
-.header{
-  position:fixed;inset:0 0 auto 0;height:var(--header-height);
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;background:#fff;z-index:1000;
-  border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)
-}
+.header{position:fixed;inset:0 0 auto 0;height:var(--header-height);
+display:flex;align-items:center;justify-content:space-between;
+padding:10px 16px;background:#fff;z-index:1000;
+border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)}
+
 .header-left{display:flex;align-items:center;gap:10px;font-weight:600}
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
 section[data-testid="stSidebar"]{
-  position: fixed !important;
-  top: var(--header-height) !important;
-  left: 0 !important;
+  position: fixed !important; top: var(--header-height) !important; left:0 !important;
   height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
-  width: var(--sidebar-w) !important;
-  min-width: var(--sidebar-w) !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #fff !important;
-  border-right: 1px solid rgba(59,130,246,.10);
-  z-index: 900 !important;
-  transform: none !important;
-  visibility: visible !important;
-  overflow: hidden !important;
+  width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
+  margin:0!important; padding:0!important; background:#fff!important;
+  border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
+  visibility: visible !important; overflow:hidden !important;
 }
 section[data-testid="stSidebar"] > div{
-  height: 100% !important;
-  overflow-y: auto !important;
-  padding: 6px 12px 12px 12px !important;
-  margin: 0 !important;
+  height:100% !important; overflow-y:auto !important;
+  padding:6px 12px 12px 12px !important; margin:0 !important;
 }
 
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
@@ -126,7 +112,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 .content{
   max-width:var(--content-max-width);
   margin:var(--header-height) auto 0;
-  padding:0 8px;
+  padding:8px;
 }
 
 .chat-card{
@@ -140,25 +126,16 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   height:var(--card-height);
   overflow-y:auto;
   scroll-behavior:smooth;
-  padding-bottom: calc(var(--skirt-h) + 20px);
-  scroll-padding-bottom: calc(var(--skirt-h) + 20px);
+  padding-bottom: calc(var(--skirt-h) + 32px);
+  scroll-padding-bottom: calc(var(--skirt-h) + 32px);
 }
 
-.message-row{display:flex;margin:10px 4px}
+.message-row{display:flex;margin:12px 4px}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
-.bubble{
-  max-width:88%;padding:12px 14px;border-radius:12px;
-  font-size:15px;line-height:1.35;box-shadow:0 6px 14px rgba(15,23,42,.03);
-  word-wrap:break-word
-}
-.bubble.user{
-  background:linear-gradient(180deg,#fff,#eef2ff);
-  border:1px solid rgba(59,130,246,0.14);border-bottom-right-radius:6px
-}
-.bubble.assistant{
-  background:#f8fafc;border:1px solid rgba(15,23,42,.06);border-bottom-left-radius:6px
-}
+.bubble{max-width:88%;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.45;box-shadow:0 6px 14px rgba(15,23,42,.03);word-wrap:break-word}
+.bubble.user{background:linear-gradient(180deg,#fff,#eef2ff);border:1px solid rgba(59,130,246,0.14);border-bottom-right-radius:6px}
+.bubble.assistant{background:#f8fafc;border:1px solid rgba(15,23,42,.06);border-bottom-left-radius:6px}
 
 [data-testid="stChatInput"]{
   position: fixed !important;
@@ -203,64 +180,24 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   height: var(--skirt-h); background: var(--skirt-bg) !important;
   z-index: 10 !important; pointer-events: none;
 }
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .bottom-gradient-fix{ height: calc(var(--skirt-h) + env(safe-area-inset-bottom)); }
-}
 
 .sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:2px 4px 0 2px; }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:6px 4px 8px 2px; height:28px; }
 .sidebar-sub{ font-size:.78rem; color:#6b7280; }
 
-.trash-wrap{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  height:28px;
-}
-.trash-wrap button{
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  width: 28px !important;
-  height: 28px !important;
-  font-size: 18px !important;
-  line-height: 1 !important;
-  cursor: pointer !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
+.trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
+.trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
 
-.hist-item button{
-  justify-content: flex-start !important;
-  align-items: flex-start !important;
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  border-radius:10px !important;
-  border:1px solid rgba(37,99,235,0.12) !important;
-  background:#f8fafc !important;
-  box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
-  margin:6px 4px;
-}
+.hist-item button{justify-content: flex-start !important; align-items:flex-start !important; padding-top:6px !important; padding-bottom:6px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; border-radius:10px !important; border:1px solid rgba(37,99,235,0.12) !important; background:#f8fafc !important; box-shadow:0 3px 10px rgba(15,23,42,.04) !important; margin:6px 4px;}
 
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
-
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ====== HEADER HTML ======
-logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />' if logo_b64 else \
-               '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />' if logo_b64 else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
 
-st.markdown(
-    f"""
+st.markdown(f"""
 <div class="header">
   <div class="header-left">
     {logo_img_tag}
@@ -277,19 +214,15 @@ st.markdown(
     <div class="user-circle">U</div>
   </div>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# ====== SIDEBAR: Histórico ======
+# ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
-
-    # ✅ Lixeira centralizada
-    st.markdown('<div class="trash-wrap">', unsafe_allow_html=True)
+    # Barra superior com texto + lixeira lado a lado
+    st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div><div class="trash-wrap">', unsafe_allow_html=True)
     trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
     if trash_clicked:
         st.session_state.historico = []
         do_rerun()
@@ -325,75 +258,68 @@ st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join
 st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
 
 # ====== JS ======
-st.markdown(
-    """
+st.markdown("""
 <script>
 (function(){
   function ajustaEspaco(){
     const input = document.querySelector('[data-testid="stChatInput"]');
     const card  = document.getElementById('chatCard');
-    if (!input || !card) return;
+    if(!input||!card) return;
     const rect = input.getBoundingClientRect();
-    const alturaEfetiva = (window.innerHeight - rect.top) + 12;
+    const alturaEfetiva = (window.innerHeight - rect.top) + 16;
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
   }
   function autoGrow(){
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
-    if (!ta) return;
+    if(!ta) return;
     const MAX = 220;
-    ta.style.height = 'auto';
+    ta.style.height='auto';
     const desired = Math.min(ta.scrollHeight, MAX);
-    ta.style.height = desired + 'px';
-    ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
+    ta.style.height = desired+'px';
+    ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
   }
-  const ro = new ResizeObserver(() => { ajustaEspaco(); });
+  const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
-  window.addEventListener('load',  () => { autoGrow(); ajustaEspaco(); });
-  window.addEventListener('resize',() => { autoGrow(); ajustaEspaco(); });
-  document.addEventListener('input', (e) => {
-    if (e.target && e.target.matches('[data-testid="stChatInput"] textarea')) {
-      autoGrow(); ajustaEspaco();
-    }
-  });
-  setTimeout(() => { autoGrow(); ajustaEspaco(); }, 0);
-  setTimeout(() => { autoGrow(); ajustaEspaco(); }, 150);
+  window.addEventListener('load',()=>{autoGrow();ajustaEspaco();});
+  window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
+  document.addEventListener('input',(e)=>{if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){autoGrow();ajustaEspaco();}});
+  setTimeout(()=>{autoGrow();ajustaEspaco();},0);
+  setTimeout(()=>{autoGrow();ajustaEspaco();},150);
 })();
 </script>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# ====== INPUT FIXO ======
+# ====== INPUT ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
-# ====== FLUXO EM 3 ETAPAS ======
+# ====== FLUXO ======
 if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, "")) 
-    st.session_state.pending_index = len(st.session_state.historico) - 1
+    st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
-    st.session_state.answering_started = False
+    st.session_state.awaiting_answer=True
+    st.session_state.answering_started=False
     do_rerun()
 
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started = True
+    st.session_state.answering_started=True
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
-        resposta = responder_pergunta(st.session_state.pending_question)
+        resposta=responder_pergunta(st.session_state.pending_question)
     except Exception as e:
-        resposta = f"❌ Erro ao consultar o backend: {e}"
+        resposta=f"❌ Erro ao consultar o backend: {e}"
 
-    idx = st.session_state.pending_index
-    if idx is not None and 0 <= idx < len(st.session_state.historico):
-        pergunta_fix = st.session_state.historico[idx][0]
-        st.session_state.historico[idx] = (pergunta_fix, resposta)
+    idx=st.session_state.pending_index
+    if idx is not None and 0<=idx<len(st.session_state.historico):
+        pergunta_fix=st.session_state.historico[idx][0]
+        st.session_state.historico[idx]=(pergunta_fix,resposta)
 
-    st.session_state.awaiting_answer = False
-    st.session_state.answering_started = False
-    st.session_state.pending_index = None
-    st.session_state.pending_question = None
+    st.session_state.awaiting_answer=False
+    st.session_state.answering_started=False
+    st.session_state.pending_index=None
+    st.session_state.pending_question=None
     do_rerun()
