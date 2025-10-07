@@ -220,34 +220,42 @@ st.markdown(f"""
 # ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    
-    # Barra superior com texto + lixeira lado a lado
+
+    # Barra superior com título + lixeira lado a lado
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="sidebar-sub">Perguntas desta sessão</div>
         <div class="trash-wrap">
+            <button onclick="document.dispatchEvent(new CustomEvent('trash_clicked'))">🗑️</button>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
-    
-    trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
-    
-    if trash_clicked:
-        st.session_state.historico = []
-        do_rerun()
-    
+
+    # Histórico simples rolável
+    st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:6px;">', unsafe_allow_html=True)
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        for i, (pergunta_hist, _resp) in enumerate(reversed(st.session_state.historico)):
-            idx_real = len(st.session_state.historico) - 1 - i
+        for pergunta_hist, _resp in reversed(st.session_state.historico):
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            st.markdown('<div class="hist-item">', unsafe_allow_html=True)
-            if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, type="secondary"):
-                reenviar_pergunta(st.session_state.historico[idx_real][0])
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="padding:4px 6px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# JS para capturar clique da lixeira
+st.markdown("""
+<script>
+document.addEventListener('trash_clicked', () => {
+    fetch('/_stcore/trash', {method:'POST'}).then(()=>location.reload());
+});
+</script>
+""", unsafe_allow_html=True)
+
+# Python para resetar histórico quando a lixeira é clicada
+if st.experimental_get_query_params().get("trash"):
+    st.session_state.historico = []
+    do_rerun()
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
