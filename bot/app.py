@@ -62,6 +62,7 @@ st.markdown("""
 img.logo{height:44px!important;width:auto!important}
 
 :root{
+  --sidebar-top-pad: 0px; } /* ajuste aqui: 0px, 2px, 4px... */
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
@@ -74,6 +75,8 @@ img.logo{height:44px!important;width:auto!important}
   --skirt-bg:#ffffff;
   --sidebar-w:300px;
 }
+
+section[data-testid="stSidebar"] > div{ padding: var(--sidebar-top-pad) 12px 12px 12px !important; }
 
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
@@ -101,10 +104,10 @@ section[data-testid="stSidebar"]{
   border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
   visibility: visible !important; overflow:hidden !important;
 }
+
 section[data-testid="stSidebar"] > div{
   height:100% !important; overflow-y:auto !important;
-  /* ↓ Subi o conteúdo sem usar transform (não some com overflow) */
-  padding:0px 12px 12px 12px !important; 
+  padding:0 12px 12px 12px !important;   /* ↓ sobe tudo */
   margin:0 !important;
 }
 
