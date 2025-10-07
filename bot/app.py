@@ -63,7 +63,7 @@ img.logo{height:44px!important;width:auto!important}
 
 /* ===== Variáveis ===== */
 :root{
-  --sidebar-top-pad: -4px;               /* << ajuste ÚNICO pra subir/baixar a sidebar */
+  --sidebar-top-pad: -15px;               /* << ajuste ÚNICO pra subir/baixar a sidebar */
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
