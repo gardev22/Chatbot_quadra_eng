@@ -202,7 +202,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 
 /* remove o respiro padrão do contêiner interno da sidebar do Streamlit */
 div[data-testid="stSidebarContent"]{
-  padding-top: 4 !important;
+  padding-top: 10 !important;
 }
 
 /* garante que o primeiro bloco não reintroduza espaçamento */
