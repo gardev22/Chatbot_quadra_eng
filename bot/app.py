@@ -104,7 +104,7 @@ section[data-testid="stSidebar"]{
 section[data-testid="stSidebar"] > div{
   height:100% !important; overflow-y:auto !important;
   /* ↓ Subi o conteúdo sem usar transform (não some com overflow) */
-  padding:2px 12px 12px 12px !important; 
+  padding:0px 12px 12px 12px !important; 
   margin:0 !important;
 }
 
