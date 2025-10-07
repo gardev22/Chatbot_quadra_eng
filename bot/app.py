@@ -65,7 +65,7 @@ img.logo{height:44px!important;width:auto!important}
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
-  --chat-safe-gap: 220px;           /* <<< folga para o input não sobrepor (ajuste aqui) */
+  --chat-safe-gap: 300px;           /* <<< folga para o input não sobrepor (ajuste aqui) */
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --quadra-blue:#cfe3ff;
   --input-max:900px;
