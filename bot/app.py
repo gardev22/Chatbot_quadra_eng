@@ -181,28 +181,16 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   z-index: 10 !important; pointer-events: none;
 }
 
-/* Ajustes da barra de histórico */
-.sidebar-header{ 
-    font-size:0.9rem;
-    font-weight:700;
-    letter-spacing:.02em;
-    color:#1f2937;
-    margin:0 4px 2px 4px; /* menos margem para subir */
-}
-.sidebar-bar{
-    display:flex; align-items:center; justify-content:space-between;
-    margin:0 4px 4px 2px; /* menos margem para subir */
-    height:28px;
-}
-.sidebar-sub{
-    font-size:.78rem; color:#6b7280; margin-top:0px;
-}
-.trash-wrap{
-    display:flex; align-items:center; justify-content:flex-end; height:28px;
-    margin-left:6px; margin-top:0px;
-}
-.hist-item, .hist-item button{ border:none; background:none; box-shadow:none; padding:2px 4px; margin:2px 0; }
-.hist-empty{ color:#9ca3af;font-size:.85rem;padding:4px 6px; }
+.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:2px 4px 0 2px; }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:6px 4px 8px 2px; height:28px; }
+.sidebar-sub{ font-size:.78rem; color:#6b7280; }
+
+.trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
+.trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
+
+.hist-item button{justify-content: flex-start !important; align-items:flex-start !important; padding-top:6px !important; padding-bottom:6px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; border-radius:10px !important; border:1px solid rgba(37,99,235,0.12) !important; background:#f8fafc !important; box-shadow:0 3px 10px rgba(15,23,42,.04) !important; margin:6px 4px;}
+
+.hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -229,12 +217,13 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
+# ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Barra superior com título + lixeira
+    # Barra superior com título + lixeira lado a lado
     st.markdown("""
-    <div class="sidebar-bar">
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="sidebar-sub">Perguntas desta sessão</div>
         <div class="trash-wrap">
             <button onclick="document.dispatchEvent(new CustomEvent('trash_clicked'))">🗑️</button>
@@ -242,16 +231,16 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Histórico simples rolável (ordem natural)
-    st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:4px;">', unsafe_allow_html=True)
+    # Histórico simples rolável
+    st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:6px;">', unsafe_allow_html=True)
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        for pergunta_hist, _resp in st.session_state.historico:  # ordem normal
+        for pergunta_hist, _resp in reversed(st.session_state.historico):
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            st.markdown(f'<div style="padding:2px 4px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="padding:4px 6px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # JS para capturar clique da lixeira
@@ -264,7 +253,7 @@ document.addEventListener('trash_clicked', () => {
 """, unsafe_allow_html=True)
 
 # Python para resetar histórico quando a lixeira é clicada
-if st.experimental_get_query_params().get("trash"):
+if st.query_params.get("trash"):
     st.session_state.historico = []
     do_rerun()
 
