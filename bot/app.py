@@ -79,7 +79,7 @@ img.logo{height:44px!important;width:auto!important}
 
   /* layout */
   --side-blue: #f4f9ff;
-  --sidebar-w: 300px;     /* LARGURA DO SIDEBAR */
+  --sidebar-w: 300px;     /* largura do sidebar */
 }
 
 /* ===== Esconde UI nativa ===== */
@@ -106,7 +106,7 @@ section[data-testid="stSidebar"]{
 section[data-testid="stSidebar"] > div{
   height:100dvh !important;
   overflow-y:auto !important;
-  padding:14px 10px 18px 10px !important;
+  padding:14px 10px 18px 10px !Important;
 }
 div[data-testid="stSidebarCollapseButton"]{ display:none !important; }
 div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important; }
@@ -116,25 +116,32 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   font-weight:700;
   letter-spacing:.02em;
   color:#1f2937;
-  margin:6px 6px 8px 6px;
+  margin:6px 6px 4px 6px;
 }
-.sidebar-row{
-  display:flex;align-items:center;justify-content:space-between;
-  margin:-2px 6px 12px 6px;
+
+/* Linha com label à esquerda e ícone de lixeira à direita */
+.sidebar-bar{
+  display:flex; align-items:center; justify-content:space-between;
+  margin:0 6px 12px 6px;
 }
 .sidebar-sub{
-  font-size:.78rem;color:#6b7280;
+  font-size:.78rem; color:#6b7280;
 }
-.trash-btn > button{
-  width:36px;height:32px;padding:0 !important;
+
+/* container da lixeira (garante canto direito e centralização) */
+.trash-wrap{ display:flex; justify-content:flex-end; align-items:center; }
+.trash-wrap > button{
+  width:32px !important; height:32px !important; padding:0 !important;
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
   border-radius:8px !important;
   border:1px solid rgba(37,99,235,0.12) !important;
   background:#fff !important;
   box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
+  font-size:18px !important; line-height:1 !important;
 }
 
 /* Botões de histórico */
-.hist-btn > button{
+.hist-item > button{
   justify-content:flex-start !important;
   white-space:nowrap !important;
   overflow:hidden !important;
@@ -143,7 +150,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   border:1px solid rgba(37,99,235,0.12) !important;
   background:#f8fafc !important;
   box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
-  margin: 6px 4px;
+  margin:6px 4px;
 }
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 
@@ -200,8 +207,8 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 /* ===== ChatGPT-like: input flutuante ===== */
 [data-testid="stChatInput"]{
   position: fixed !important;
-  /* centraliza no espaço útil (área sem o sidebar) */
-  left: calc(50% + var(--sidebar-w) / 2) !important;
+  /* centraliza no espaço útil (viewport - sidebar) */
+  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important;
   transform: translateX(-50%) !important;
   bottom: var(--input-bottom) !important;
   width: min(var(--input-max), 96vw) !important;
@@ -287,17 +294,17 @@ st.markdown(
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Linha: "Perguntas desta sessão" + ícone de lixeira à direita
+    # Linha: label + ícone lixeira à direita (bem no canto)
     col_l, col_r = st.columns([1, 0.2])
     with col_l:
-      st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
     with col_r:
-      # botão ícone (lixeira)
-      trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico", use_container_width=True)
-      if trash_clicked:
-          st.session_state.historico = []
-          do_rerun()
-    st.markdown('<div class="sidebar-row"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="trash-wrap">', unsafe_allow_html=True)
+        trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
+        st.markdown('</div>', unsafe_allow_html=True)
+        if trash_clicked:
+            st.session_state.historico = []
+            do_rerun()
 
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
@@ -307,10 +314,10 @@ with st.sidebar:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            # botão full-width para reenviar
-            if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True):
+            st.markdown('<div class="hist-item">', unsafe_allow_html=True)
+            if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, type="secondary"):
                 reenviar_pergunta(st.session_state.historico[idx_real][0])
-            st.markdown('<div class="hist-btn"></div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
