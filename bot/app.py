@@ -182,8 +182,8 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 }
 
 /* 🔧 Menos margem no topo dos títulos da sidebar */
-.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:-10px 4px 0 2px; }
-.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:-4px 4px 8px 2px; height:28px; }
+.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:-8px 4px 0 2px; }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:-2px 4px 8px 2px; height:28px; }
 .sidebar-sub{ font-size:.78rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
