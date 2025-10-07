@@ -214,6 +214,16 @@ div[data-testid="stSidebarContent"] > *:first-child{
 .sidebar-header{ margin-top: -30px !important; }
 .sidebar-bar{ margin-top: -24px !important; }
 
+/* Itens do histórico (perguntas) */
+.hist-row{
+  padding: 6px 6px;
+  font-size: 1rem;              /* ajuste aqui: 0.95rem, 1.0rem, 1.05rem... */
+  color: #1f2937 !important;    /* cinza escuro */
+  line-height: 1.35;
+}
+.hist-row + .hist-row{ margin-top: 6px; } /* espaçamento entre itens */
+
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -261,7 +271,7 @@ with st.sidebar:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            st.markdown(f'<div style="padding:4px 6px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # JS: lixeira
