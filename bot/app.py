@@ -108,18 +108,20 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .header-right{display:flex;align-items:center;gap:12px}
 
 /* ======== SIDEBAR (colado à esquerda, abaixo do header) ======== */
+/* ======== SIDEBAR ======== */
+
 section[data-testid="stSidebar"]{
   position: fixed !important;
   top: var(--header-height) !important;
   left: 0 !important;
-  height: calc(100dvh - var(--header-height)) !important; /* vai até o rodapé */
+  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important; /* 🔸 deixa espaço pro rodapé branco */
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   margin: 0 !important;
   padding: 0 !important;
   background: #fff !important;
   border-right: 1px solid rgba(59,130,246,.10);
-  z-index: 900 !important;    /* abaixo do header (1000) */
+  z-index: 900 !important;
   transform: none !important;
   visibility: visible !important;
   overflow: hidden !important;
@@ -127,9 +129,10 @@ section[data-testid="stSidebar"]{
 section[data-testid="stSidebar"] > div{
   height: 100% !important;
   overflow-y: auto !important;
-  padding: 6px 12px 12px 12px !important;  /* 🔸 menos padding-top -> sobe o texto */
+  padding: 6px 12px 12px 12px !important;
   margin: 0 !important;
 }
+
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
 
 /* empurra o conteúdo principal exatamente o tamanho da sidebar */
@@ -230,24 +233,40 @@ div[data-testid="stAppViewContainer"]{
 /* ===== Sidebar - tipografia e botões ===== */
 .sidebar-header{
   font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;
-  margin:2px 4px 0 2px;                 /* 🔸 mais alto */
+  margin:2px 4px 0 2px;
 }
 .sidebar-bar{
-  display:flex;align-items:center;justify-content:space-between;
-  margin:4px 4px 8px 2px;               /* 🔸 mais alto */
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin:6px 4px 8px 2px;
+  height:28px; /* 🔸 altura fixa p/ centralizar o ícone */
 }
-.sidebar-sub{ font-size:.78rem;color:#6b7280; }
+.sidebar-sub{
+  font-size:.78rem;
+  color:#6b7280;
+}
 
 /* Lixeira: apenas ícone, sem caixa/sombra */
-.trash-wrap{ display:flex;align-items:center;justify-content:flex-end; }
+.trash-wrap{
+  display:flex;
+  align-items:center;
+  justify-content:center; /* 🔸 centraliza o ícone na caixa */
+}
 .trash-wrap :where(button){
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  width: auto !important; height: auto !important;
-  padding: 0 !important; margin: 0 2px 0 0 !important;
-  font-size: 20px !important; line-height: 1 !important;
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
   cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Botões de histórico */
