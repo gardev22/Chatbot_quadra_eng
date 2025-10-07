@@ -185,6 +185,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
 
 .bottom-gradient-fix{
+  border-top: 2px solid #e5e7eb;
   position: fixed; left: 0; right: 0; bottom: 0;
   height: var(--skirt-h); background: var(--skirt-bg) !important;
   z-index: 10 !important; pointer-events: none;
