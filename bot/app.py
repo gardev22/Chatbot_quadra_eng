@@ -69,7 +69,7 @@ img.logo{height:44px!important;width:auto!important}
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 72px;
-  --skirt-h: 72px;                 /* altura da barra branca inferior */
+  --skirt-h: 72px;                 /* altura barra inferior */
   --card-height: calc(100dvh - var(--header-height));
   --quadra-blue: #cfe3ff;
 
@@ -80,6 +80,7 @@ img.logo{height:44px!important;width:auto!important}
 
   /* layout */
   --side-blue: #f4f9ff;
+  --skirt-bg: #ffffff;             /* 🔸 barra inferior BRANCA */
   --sidebar-w: 300px;              /* largura do sidebar */
 }
 
@@ -92,10 +93,10 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 }
 .block-container{padding:0!important;min-height:0!important}
 
-/* Fundo */
+/* Fundo lateral azul clarinho */
 .stApp{ background: var(--side-blue) !important; }
 
-/* ===== Header fixo (fica por cima) ===== */
+/* ===== Header fixo (no topo de tudo) ===== */
 .header{
   position:fixed;inset:0 0 auto 0;height:var(--header-height);
   display:flex;align-items:center;justify-content:space-between;
@@ -106,19 +107,19 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-/* ======== SIDEBAR abaixo do header e acima do skirt ======== */
+/* ======== SIDEBAR (colado à esquerda, abaixo do header) ======== */
 section[data-testid="stSidebar"]{
   position: fixed !important;
-  top: var(--header-height) !important;                                       /* começa abaixo do header */
+  top: var(--header-height) !important;
   left: 0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;   /* não invade a barra branca */
+  height: calc(100dvh - var(--header-height)) !important; /* vai até o rodapé */
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   margin: 0 !important;
   padding: 0 !important;
   background: #fff !important;
   border-right: 1px solid rgba(59,130,246,.10);
-  z-index: 900 !important;                                                    /* menor que o header (1000) */
+  z-index: 900 !important;    /* abaixo do header (1000) */
   transform: none !important;
   visibility: visible !important;
   overflow: hidden !important;
@@ -126,7 +127,7 @@ section[data-testid="stSidebar"]{
 section[data-testid="stSidebar"] > div{
   height: 100% !important;
   overflow-y: auto !important;
-  padding: 8px 10px 12px 10px !important;   /* 🔼 menos padding-top (subiu o texto) */
+  padding: 6px 12px 12px 12px !important;  /* 🔸 menos padding-top -> sobe o texto */
   margin: 0 !important;
 }
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
@@ -219,7 +220,7 @@ div[data-testid="stAppViewContainer"]{
 /* ===== SKIRT (rodapé branco) ===== */
 .bottom-gradient-fix{
   position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--side-blue) !important;
+  height: var(--skirt-h); background: var(--skirt-bg) !important; /* 🔸 branco */
   z-index: 10 !important; pointer-events: none;
 }
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
@@ -228,23 +229,25 @@ div[data-testid="stAppViewContainer"]{
 
 /* ===== Sidebar - tipografia e botões ===== */
 .sidebar-header{
-  font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;margin:2px 6px 2px 6px; /* 🔼 subiu mais */
+  font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;
+  margin:2px 4px 0 2px;                 /* 🔸 mais alto */
 }
 .sidebar-bar{
-  display:flex;align-items:center;justify-content:space-between;margin:0 6px 10px 6px;       /* 🔼 subiu mais */
+  display:flex;align-items:center;justify-content:space-between;
+  margin:4px 4px 8px 2px;               /* 🔸 mais alto */
 }
 .sidebar-sub{ font-size:.78rem;color:#6b7280; }
 
-/* Ícone de lixeira: forçamos o estilo no botão real do Streamlit de forma ampla e estável */
+/* Lixeira: apenas ícone, sem caixa/sombra */
 .trash-wrap{ display:flex;align-items:center;justify-content:flex-end; }
 .trash-wrap :where(button){
-  width:32px !important;height:32px !important;padding:0 !important;
-  display:inline-flex !important;align-items:center !important;justify-content:center !important;
-  font-size:18px !important;line-height:1 !important;
-  border-radius:8px !important;
-  border:1px solid rgba(37,99,235,0.12) !important;
-  background:#fff !important;
-  box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: auto !important; height: auto !important;
+  padding: 0 !important; margin: 0 2px 0 0 !important;
+  font-size: 20px !important; line-height: 1 !important;
+  cursor: pointer !important;
 }
 
 /* Botões de histórico */
@@ -295,7 +298,7 @@ st.markdown(
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Linha: label + ícone de lixeira no canto direito
+    # Linha: label + ícone de lixeira à direita
     col_l, col_r = st.columns([1, 0.2])
     with col_l:
         st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
