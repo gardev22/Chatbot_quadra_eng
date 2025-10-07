@@ -199,6 +199,21 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 .hist-item button{justify-content: flex-start !important; align-items:flex-start !important; padding-top:6px !important; padding-bottom:6px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; border-radius:10px !important; border:1px solid rgba(37,99,235,0.12) !important; background:#f8fafc !important; box-shadow:0 3px 10px rgba(15,23,42,.04) !important; margin:6px 4px;}
 
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
+
+/* remove o respiro padrão do contêiner interno da sidebar do Streamlit */
+div[data-testid="stSidebarContent"]{
+  padding-top: 0 !important;
+}
+
+/* garante que o primeiro bloco não reintroduza espaçamento */
+div[data-testid="stSidebarContent"] > *:first-child{
+  margin-top: 0 !important;
+}
+
+/* acabamento: sobe um tiquinho o título e a barra */
+.sidebar-header{ margin-top: -6px !important; }
+.sidebar-bar{ margin-top: -4px !important; }
+
 </style>
 """, unsafe_allow_html=True)
 
