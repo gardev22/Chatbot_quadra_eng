@@ -1,4 +1,4 @@
-# historico
+# bibliotecas
 
 import streamlit as st
 import base64
@@ -10,7 +10,6 @@ from openai_backend import responder_pergunta  # seu backend
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# Sidebar visível por padrão
 st.set_page_config(page_title="Chatbot Quadra", layout="wide", initial_sidebar_state="expanded")
 
 def do_rerun():
@@ -78,8 +77,9 @@ img.logo{height:44px!important;width:auto!important}
   --input-bottom: 40px;
   --input-shadow: 0 10px 24px rgba(14,47,120,.10);
 
-  /* azul lateral sólido */
+  /* layout */
   --side-blue: #f4f9ff;
+  --sidebar-w: 300px;     /* LARGURA DO SIDEBAR */
 }
 
 /* ===== Esconde UI nativa ===== */
@@ -94,27 +94,43 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 /* laterais AZUL SÓLIDO */
 .stApp{ background: var(--side-blue) !important; }
 
-/* ===== Sidebar (scroll próprio) ===== */
+/* ===== Sidebar ===== */
 section[data-testid="stSidebar"]{
   background:#ffffff !important;
   border-right:1px solid rgba(59,130,246,.10);
+  visibility: visible !important;
+  transform: none !important;
+  min-width: var(--sidebar-w) !important;
+  width: var(--sidebar-w) !important;
 }
 section[data-testid="stSidebar"] > div{
   height:100dvh !important;
   overflow-y:auto !important;
   padding:14px 10px 18px 10px !important;
 }
+div[data-testid="stSidebarCollapseButton"]{ display:none !important; }
+div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important; }
+
 .sidebar-header{
   font-size:0.95rem;
   font-weight:700;
   letter-spacing:.02em;
   color:#1f2937;
-  margin:6px 6px 12px 6px;
+  margin:6px 6px 8px 6px;
+}
+.sidebar-row{
+  display:flex;align-items:center;justify-content:space-between;
+  margin:-2px 6px 12px 6px;
 }
 .sidebar-sub{
-  font-size:.78rem;
-  color:#6b7280;
-  margin:-6px 6px 12px 6px;
+  font-size:.78rem;color:#6b7280;
+}
+.trash-btn > button{
+  width:36px;height:32px;padding:0 !important;
+  border-radius:8px !important;
+  border:1px solid rgba(37,99,235,0.12) !important;
+  background:#fff !important;
+  box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
 }
 
 /* Botões de histórico */
@@ -127,12 +143,9 @@ section[data-testid="stSidebar"] > div{
   border:1px solid rgba(37,99,235,0.12) !important;
   background:#f8fafc !important;
   box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
+  margin: 6px 4px;
 }
-.hist-empty{
-  color:#9ca3af;
-  font-size:.9rem;
-  padding:8px 10px;
-}
+.hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 
 /* ===== Header fixo ===== */
 .header{
@@ -187,7 +200,8 @@ section[data-testid="stSidebar"] > div{
 /* ===== ChatGPT-like: input flutuante ===== */
 [data-testid="stChatInput"]{
   position: fixed !important;
-  left: 50% !important;
+  /* centraliza no espaço útil (área sem o sidebar) */
+  left: calc(50% + var(--sidebar-w) / 2) !important;
   transform: translateX(-50%) !important;
   bottom: var(--input-bottom) !important;
   width: min(var(--input-max), 96vw) !important;
@@ -225,14 +239,11 @@ section[data-testid="stSidebar"] > div{
 }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
 
-/* ===== SKIRT (rodapé sólido azul) ===== */
+/* ===== SKIRT (rodapé sólido) ===== */
 .bottom-gradient-fix{
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  height: 72px;
-  background: var(--side-blue) !important;
-  z-index: 10 !important;
-  pointer-events: none;
+  position: fixed; left: 0; right: 0; bottom: 0;
+  height: 72px; background: var(--side-blue) !important;
+  z-index: 10 !important; pointer-events: none;
 }
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .bottom-gradient-fix{ height: calc(72px + env(safe-area-inset-bottom)); }
@@ -241,16 +252,6 @@ section[data-testid="stSidebar"] > div{
 /* input sempre na frente do skirt */
 [data-testid="stChatInput"]{ z-index: 5000 !important; }
 [data-testid="stChatInput"] > div{ position: relative !important; z-index: 5001 !important; }
-
-/* ===== FORCE SIDEBAR OPEN (override total) ===== */
-section[data-testid="stSidebar"]{
-  visibility: visible !important;
-  transform: none !important;
-  min-width: 320px !important;
-  width: 320px !important;
-}
-div[data-testid="stSidebarCollapseButton"]{ display:none !important; }
-div[data-testid="stAppViewContainer"]{ margin-left: 320px !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -285,7 +286,18 @@ st.markdown(
 # ====== SIDEBAR: Histórico ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
+
+    # Linha: "Perguntas desta sessão" + ícone de lixeira à direita
+    col_l, col_r = st.columns([1, 0.2])
+    with col_l:
+      st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
+    with col_r:
+      # botão ícone (lixeira)
+      trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico", use_container_width=True)
+      if trash_clicked:
+          st.session_state.historico = []
+          do_rerun()
+    st.markdown('<div class="sidebar-row"></div>', unsafe_allow_html=True)
 
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
@@ -295,17 +307,10 @@ with st.sidebar:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            # botão full-width estilizado
-            c = st.container()
-            with c:
-                if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, type="secondary"):
-                    reenviar_pergunta(st.session_state.historico[idx_real][0])
+            # botão full-width para reenviar
+            if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True):
+                reenviar_pergunta(st.session_state.historico[idx_real][0])
             st.markdown('<div class="hist-btn"></div>', unsafe_allow_html=True)
-
-    st.divider()
-    if st.button("🧹 Limpar histórico", use_container_width=True, type="secondary"):
-        st.session_state.historico = []
-        do_rerun()
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
@@ -324,16 +329,11 @@ st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join
 # ====== SKIRT ======
 st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
 
-# ====== JS: autoscroll + padding dinâmico + AUTO-GROW ======
+# ====== JS ======
 st.markdown(
     """
 <script>
 (function(){
-  const scrollToBottom = () => {
-    const el = document.getElementById("chatCard");
-    if (el) el.scrollTop = el.scrollHeight;
-  };
-
   function ajustaEspaco(){
     const input = document.querySelector('[data-testid="stChatInput"]');
     const card  = document.getElementById('chatCard');
@@ -343,7 +343,6 @@ st.markdown(
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
   }
-
   function autoGrow(){
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
     if (!ta) return;
@@ -353,20 +352,15 @@ st.markdown(
     ta.style.height = desired + 'px';
     ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
   }
-
   const ro = new ResizeObserver(() => { ajustaEspaco(); });
   ro.observe(document.body);
-
-  window.addEventListener('load',  () => { autoGrow(); ajustaEspaco(); scrollToBottom(); });
+  window.addEventListener('load',  () => { autoGrow(); ajustaEspaco(); });
   window.addEventListener('resize',() => { autoGrow(); ajustaEspaco(); });
-
   document.addEventListener('input', (e) => {
     if (e.target && e.target.matches('[data-testid="stChatInput"] textarea')) {
-      autoGrow();
-      ajustaEspaco();
+      autoGrow(); ajustaEspaco();
     }
   });
-
   setTimeout(() => { autoGrow(); ajustaEspaco(); }, 0);
   setTimeout(() => { autoGrow(); ajustaEspaco(); }, 150);
 })();
