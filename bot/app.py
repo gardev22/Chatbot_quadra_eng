@@ -69,7 +69,7 @@ img.logo{height:44px!important;width:auto!important}
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 72px;
-  --skirt-h: 72px;                 /* altura barra inferior */
+  --skirt-h: 72px;                 
   --card-height: calc(100dvh - var(--header-height));
   --quadra-blue: #cfe3ff;
 
@@ -80,8 +80,8 @@ img.logo{height:44px!important;width:auto!important}
 
   /* layout */
   --side-blue: #f4f9ff;
-  --skirt-bg: #ffffff;             /* 🔸 barra inferior BRANCA */
-  --sidebar-w: 300px;              /* largura do sidebar */
+  --skirt-bg: #ffffff;             
+  --sidebar-w: 300px;              
 }
 
 /* ===== Esconde UI nativa ===== */
@@ -107,14 +107,12 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-/* ======== SIDEBAR (colado à esquerda, abaixo do header) ======== */
 /* ======== SIDEBAR ======== */
-
 section[data-testid="stSidebar"]{
   position: fixed !important;
   top: var(--header-height) !important;
   left: 0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important; /* 🔸 deixa espaço pro rodapé branco */
+  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important; 
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   margin: 0 !important;
@@ -132,7 +130,6 @@ section[data-testid="stSidebar"] > div{
   padding: 6px 12px 12px 12px !important;
   margin: 0 !important;
 }
-
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
 
 /* empurra o conteúdo principal exatamente o tamanho da sidebar */
@@ -182,11 +179,11 @@ div[data-testid="stAppViewContainer"]{
 /* ===== ChatGPT-like: input flutuante ===== */
 [data-testid="stChatInput"]{
   position: fixed !important;
-  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important; /* central no espaço útil */
+  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important; 
   transform: translateX(-50%) !important;
   bottom: var(--input-bottom) !important;
   width: min(var(--input-max), 96vw) !important;
-  z-index: 5000; /* acima de sidebar e conteúdo */
+  z-index: 5000; 
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -202,8 +199,6 @@ div[data-testid="stAppViewContainer"]{
   box-shadow: var(--input-shadow) !important;
   overflow: hidden;
 }
-
-/* AUTO-GROW */
 [data-testid="stChatInput"] textarea{
   width: 100% !important;
   background: transparent !important;
@@ -223,7 +218,7 @@ div[data-testid="stAppViewContainer"]{
 /* ===== SKIRT (rodapé branco) ===== */
 .bottom-gradient-fix{
   position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--skirt-bg) !important; /* 🔸 branco */
+  height: var(--skirt-h); background: var(--skirt-bg) !important; 
   z-index: 10 !important; pointer-events: none;
 }
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
@@ -240,18 +235,19 @@ div[data-testid="stAppViewContainer"]{
   align-items:center;
   justify-content:space-between;
   margin:6px 4px 8px 2px;
-  height:28px; /* 🔸 altura fixa p/ centralizar o ícone */
+  height:28px; 
 }
 .sidebar-sub{
   font-size:.78rem;
   color:#6b7280;
 }
 
-/* Lixeira: apenas ícone, sem caixa/sombra */
+/* Lixeira: apenas ícone, centralizado */
 .trash-wrap{
   display:flex;
   align-items:center;
-  justify-content:center; /* 🔸 centraliza o ícone na caixa */
+  justify-content:center;
+  height: 28px; 
 }
 .trash-wrap :where(button){
   background: transparent !important;
@@ -260,7 +256,7 @@ div[data-testid="stAppViewContainer"]{
   width: 28px !important;
   height: 28px !important;
   font-size: 18px !important;
-  line-height: 1 !important;
+  line-height: 28px !important; 
   cursor: pointer !important;
   display: flex !important;
   align-items: center !important;
@@ -269,9 +265,10 @@ div[data-testid="stAppViewContainer"]{
   padding: 0 !important;
 }
 
-/* Botões de histórico */
+/* Botões de histórico: texto mais pra cima */
 .hist-item :where(button){
   justify-content:flex-start !important;
+  align-items: flex-start !important; 
   white-space:nowrap !important;
   overflow:hidden !important;
   text-overflow:ellipsis !important;
@@ -280,6 +277,8 @@ div[data-testid="stAppViewContainer"]{
   background:#f8fafc !important;
   box-shadow:0 3px 10px rgba(15,23,42,.04) !important;
   margin:6px 4px;
+  padding-top:4px !important; 
+  padding-bottom:4px !important;
 }
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 </style>
@@ -317,7 +316,6 @@ st.markdown(
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Linha: label + ícone de lixeira à direita
     col_l, col_r = st.columns([1, 0.2])
     with col_l:
         st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
@@ -430,5 +428,4 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
     st.session_state.pending_index = None
-    st.session_state.pending_question = None
-    do_rerun()
+   
