@@ -94,19 +94,30 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 /* Fundo */
 .stApp{ background: var(--side-blue) !important; }
 
-/* ======== SIDEBAR COLADO NA ESQUERDA (sem gutter) ======== */
+/* ===== Header fixo (fica por CIMA de tudo da página) ===== */
+.header{
+  position:fixed;inset:0 0 auto 0;height:var(--header-height);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;background:#fff;z-index:1000;
+  border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)
+}
+.header-left{display:flex;align-items:center;gap:10px;font-weight:600}
+.header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
+.header-right{display:flex;align-items:center;gap:12px}
+
+/* ======== SIDEBAR abaixo do header (sem gutter) ======== */
 section[data-testid="stSidebar"]{
   position: fixed !important;
-  top: 0 !important;
+  top: var(--header-height) !important;                            /* começa abaixo do header */
   left: 0 !important;
-  height: 100dvh !important;
+  height: calc(100dvh - var(--header-height)) !important;         /* ocupa o restante da altura */
   width: var(--sidebar-w) !important;
   min-width: var(--sidebar-w) !important;
   margin: 0 !important;
   padding: 0 !important;
   background: #fff !important;
   border-right: 1px solid rgba(59,130,246,.10);
-  z-index: 1201 !important;
+  z-index: 900 !important;                                        /* menor que o header (1000) */
   transform: none !important;
   visibility: visible !important;
 }
@@ -122,17 +133,6 @@ div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
 div[data-testid="stAppViewContainer"]{
   margin-left: var(--sidebar-w) !important;
 }
-
-/* ===== Header fixo ===== */
-.header{
-  position:fixed;inset:0 0 auto 0;height:var(--header-height);
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;background:#fff;z-index:1000;
-  border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)
-}
-.header-left{display:flex;align-items:center;gap:10px;font-weight:600}
-.header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
-.header-right{display:flex;align-items:center;gap:12px}
 
 /* ===== Content ===== */
 .content{
@@ -181,7 +181,7 @@ div[data-testid="stAppViewContainer"]{
   transform: translateX(-50%) !important;
   bottom: var(--input-bottom) !important;
   width: min(var(--input-max), 96vw) !important;
-  z-index: 5000; /* acima da sidebar */
+  z-index: 5000; /* acima de sidebar e conteúdo, mas abaixo de modais */
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -294,7 +294,7 @@ st.markdown(
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Linha: label + ícone de lixeira bem no canto direito
+    # Linha: label + ícone de lixeira no canto direito
     col_l, col_r = st.columns([1, 0.2])
     with col_l:
         st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
