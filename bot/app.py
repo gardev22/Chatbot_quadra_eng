@@ -93,13 +93,10 @@ border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,12
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-section[data-testid="stSidebar"]{
-  position: fixed !important; top: var(--header-height) !important; left:0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
-  width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
-  margin:0!important; padding:0!important; background:#fff!important;
-  border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
-  visibility: visible !important; overflow:hidden !important;
+section[data-testid="stSidebar"] > div{
+  /* estava: padding: 0 12px 12px 12px; */
+  padding: 0 12px 12px 12px !important;
+  transform: translateY(-10px);   /* ↑ suba mais/menos ajustando esse valor */
 }
 
 /* 🔧 SUBI O CONTEÚDO DA SIDEBAR (menos respiro no topo) */
@@ -185,8 +182,8 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 }
 
 /* 🔧 Menos margem no topo dos títulos da sidebar */
-.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px 0 2px; }
-.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:2px 4px 8px 2px; height:28px; }
+.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:-10px 4px 0 2px; }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:-4px 4px 8px 2px; height:28px; }
 .sidebar-sub{ font-size:.78rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
