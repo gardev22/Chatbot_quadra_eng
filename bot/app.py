@@ -217,16 +217,25 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
+# ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+    
     # Barra superior com texto + lixeira lado a lado
-    st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div><div class="trash-wrap">', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Perguntas desta sessão</div>
+        <div class="trash-wrap">
+    """, unsafe_allow_html=True)
+    
     trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
-    st.markdown('</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
+    
     if trash_clicked:
         st.session_state.historico = []
         do_rerun()
-
+    
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
