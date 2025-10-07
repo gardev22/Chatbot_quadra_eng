@@ -178,7 +178,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   outline: none !important;
   height: auto !important;
   min-height: 44px !important;
-  max-height: 220px !important;
+  max-height: 180x !important;
   overflow-y: hidden !important;
 }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
