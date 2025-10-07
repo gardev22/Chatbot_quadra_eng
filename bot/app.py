@@ -230,7 +230,7 @@ div[data-testid="stAppViewContainer"]{
 /* ===== Sidebar - tipografia e botões ===== */
 .sidebar-header{
   font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937;
-  margin:2px 4px 0 2px;                 /* 🔸 mais alto */
+  margin:1px 2px 0 1px;                 /* 🔸 mais alto */
 }
 .sidebar-bar{
   display:flex;align-items:center;justify-content:space-between;
