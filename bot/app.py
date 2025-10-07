@@ -1,4 +1,4 @@
-# bibliotecas
+# historico
 
 import streamlit as st
 import base64
@@ -10,7 +10,7 @@ from openai_backend import responder_pergunta  # seu backend
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# 🔹 Sidebar precisa ficar visível (como escondemos o header, não há botão nativo para abrir)
+# Sidebar visível por padrão
 st.set_page_config(page_title="Chatbot Quadra", layout="wide", initial_sidebar_state="expanded")
 
 def do_rerun():
@@ -46,7 +46,6 @@ def linkify(text: str) -> str:
     return _url_re.sub(r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', safe)
 
 def reenviar_pergunta(q: str):
-    """Enfileira uma pergunta para o mesmo fluxo de 3 etapas já existente."""
     q = (q or "").strip()
     if not q:
         return
@@ -79,8 +78,8 @@ img.logo{height:44px!important;width:auto!important}
   --input-bottom: 40px;
   --input-shadow: 0 10px 24px rgba(14,47,120,.10);
 
-  /* azul lateral sólido (mesmo tom do seu gradiente) */
-  --side-blue: #f4f9ff; /* rgba(244,249,255,1) */
+  /* azul lateral sólido */
+  --side-blue: #f4f9ff;
 }
 
 /* ===== Esconde UI nativa ===== */
@@ -92,7 +91,7 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 }
 .block-container{padding:0!important;min-height:0!important}
 
-/* laterais AZUL SÓLIDO (sem degradê) */
+/* laterais AZUL SÓLIDO */
 .stApp{ background: var(--side-blue) !important; }
 
 /* ===== Sidebar (scroll próprio) ===== */
@@ -164,7 +163,7 @@ section[data-testid="stSidebar"] > div{
   padding:20px;
   height:var(--card-height);
   overflow-y:auto;scroll-behavior:smooth;
-  padding-bottom: 140px;  /* reserva inicial; JS ajusta */
+  padding-bottom: 140px;
   scroll-padding-bottom: 140px;
 }
 
@@ -230,9 +229,9 @@ section[data-testid="stSidebar"] > div{
 .bottom-gradient-fix{
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  height: 72px;               /* ajuste fino */
+  height: 72px;
   background: var(--side-blue) !important;
-  z-index: 10 !important;      /* fica atrás do input */
+  z-index: 10 !important;
   pointer-events: none;
 }
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
@@ -242,6 +241,16 @@ section[data-testid="stSidebar"] > div{
 /* input sempre na frente do skirt */
 [data-testid="stChatInput"]{ z-index: 5000 !important; }
 [data-testid="stChatInput"] > div{ position: relative !important; z-index: 5001 !important; }
+
+/* ===== FORCE SIDEBAR OPEN (override total) ===== */
+section[data-testid="stSidebar"]{
+  visibility: visible !important;
+  transform: none !important;
+  min-width: 320px !important;
+  width: 320px !important;
+}
+div[data-testid="stSidebarCollapseButton"]{ display:none !important; }
+div[data-testid="stAppViewContainer"]{ margin-left: 320px !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -281,18 +290,17 @@ with st.sidebar:
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        # Mostra mais recentes primeiro
         for i, (pergunta_hist, _resp) in enumerate(reversed(st.session_state.historico)):
             idx_real = len(st.session_state.historico) - 1 - i
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            col1, col2 = st.columns([1, 0.2])
-            with col1:
-                if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, help="Reenviar esta pergunta", type="secondary"):
+            # botão full-width estilizado
+            c = st.container()
+            with c:
+                if st.button(titulo or "(vazio)", key=f"hist_{idx_real}", use_container_width=True, type="secondary"):
                     reenviar_pergunta(st.session_state.historico[idx_real][0])
-            with col2:
-                st.write("")  # espaçador
+            st.markdown('<div class="hist-btn"></div>', unsafe_allow_html=True)
 
     st.divider()
     if st.button("🧹 Limpar histórico", use_container_width=True, type="secondary"):
@@ -313,7 +321,7 @@ if not msgs_html:
 
 st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
 
-# ====== SKIRT (rodapé sólido azul) ======
+# ====== SKIRT ======
 st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
 
 # ====== JS: autoscroll + padding dinâmico + AUTO-GROW ======
@@ -367,7 +375,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ====== INPUT FIXO (oficial) ======
+# ====== INPUT FIXO ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
 # ====== FLUXO EM 3 ETAPAS ======
