@@ -138,9 +138,10 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   box-shadow:0 14px 36px rgba(14,47,120,.04);
   padding:20px;
   height:var(--card-height);
-  overflow-y:auto;scroll-behavior:smooth;
-  padding-bottom: calc(var(--skirt-h) + 100px);
-  scroll-padding-bottom: calc(var(--skirt-h) + 100px);
+  overflow-y:auto;
+  scroll-behavior:smooth;
+  padding-bottom: calc(var(--skirt-h) + 20px);
+  scroll-padding-bottom: calc(var(--skirt-h) + 20px);
 }
 
 .message-row{display:flex;margin:10px 4px}
@@ -283,16 +284,15 @@ st.markdown(
 # ====== SIDEBAR: Histórico ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    col_l, col_r = st.columns([1, 0.2])
-    with col_l:
-        st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
-    with col_r:
-        st.markdown('<div class="trash-wrap">', unsafe_allow_html=True)
-        trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
-        st.markdown('</div>', unsafe_allow_html=True)
-        if trash_clicked:
-            st.session_state.historico = []
-            do_rerun()
+    st.markdown('<div class="sidebar-bar"><div class="sidebar-sub">Perguntas desta sessão</div></div>', unsafe_allow_html=True)
+
+    # ✅ Lixeira centralizada
+    st.markdown('<div class="trash-wrap">', unsafe_allow_html=True)
+    trash_clicked = st.button("🗑️", key="trash", help="Limpar histórico")
+    st.markdown('</div>', unsafe_allow_html=True)
+    if trash_clicked:
+        st.session_state.historico = []
+        do_rerun()
 
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
