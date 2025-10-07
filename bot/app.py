@@ -101,9 +101,12 @@ section[data-testid="stSidebar"]{
   border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
   visibility: visible !important; overflow:hidden !important;
 }
+
+/* 🔧 SUBI O CONTEÚDO DA SIDEBAR (menos respiro no topo) */
 section[data-testid="stSidebar"] > div{
   height:100% !important; overflow-y:auto !important;
-  padding:6px 12px 12px 12px !important; margin:0 !important;
+  padding:0 12px 12px 12px !important;  /* antes: 6px 12px 12px 12px */
+  margin:0 !important;
 }
 
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
@@ -181,8 +184,9 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   z-index: 10 !important; pointer-events: none;
 }
 
-.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:2px 4px 0 2px; }
-.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:6px 4px 8px 2px; height:28px; }
+/* 🔧 Menos margem no topo dos títulos da sidebar */
+.sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px 0 2px; }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:2px 4px 8px 2px; height:28px; }
 .sidebar-sub{ font-size:.78rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
@@ -217,13 +221,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
-# ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Barra superior com título + lixeira lado a lado
+    # Barra superior com título + lixeira
     st.markdown("""
-    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="sidebar-bar">
         <div class="sidebar-sub">Perguntas desta sessão</div>
         <div class="trash-wrap">
             <button onclick="document.dispatchEvent(new CustomEvent('trash_clicked'))">🗑️</button>
@@ -231,23 +234,26 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Histórico simples rolável
-    st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:6px;">', unsafe_allow_html=True)
+    # Histórico rolável
+    st.markdown('<div style="max-height:calc(100% - 50px); overflow-y:auto; margin-top:2px;">', unsafe_allow_html=True)
     if not st.session_state.historico:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        for pergunta_hist, _resp in reversed(st.session_state.historico):
+        # 🔧 Ordem natural (não invertida)
+        for pergunta_hist, _resp in st.session_state.historico:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div style="padding:4px 6px; font-size:0.85rem; color:#111827;">{escape(titulo)}</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# JS para capturar clique da lixeira
+# JS para capturar clique da lixeira (coloca ?trash=1 na URL)
 st.markdown("""
 <script>
 document.addEventListener('trash_clicked', () => {
-    fetch('/_stcore/trash', {method:'POST'}).then(()=>location.reload());
+  const url = new URL(window.location.href);
+  url.searchParams.set('trash','1');
+  window.location.replace(url.toString());
 });
 </script>
 """, unsafe_allow_html=True)
@@ -255,6 +261,10 @@ document.addEventListener('trash_clicked', () => {
 # Python para resetar histórico quando a lixeira é clicada
 if st.query_params.get("trash"):
     st.session_state.historico = []
+    # remove o param para não limpar de novo no refresh
+    qp = st.query_params
+    del qp["trash"]
+    st.query_params.update(qp)
     do_rerun()
 
 # ====== RENDER MENSAGENS ======
@@ -326,17 +336,17 @@ if st.session_state.awaiting_answer and not st.session_state.answering_started:
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
-        resposta=responder_pergunta(st.session_state.pending_question)
+        resposta = responder_pergunta(st.session_state.pending_question)
     except Exception as e:
-        resposta=f"❌ Erro ao consultar o backend: {e}"
+        resposta = f"❌ Erro ao consultar o backend: {e}"
 
-    idx=st.session_state.pending_index
-    if idx is not None and 0<=idx<len(st.session_state.historico):
-        pergunta_fix=st.session_state.historico[idx][0]
-        st.session_state.historico[idx]=(pergunta_fix,resposta)
+    idx = st.session_state.pending_index
+    if idx is not None and 0 <= idx < len(st.session_state.historico):
+        pergunta_fix = st.session_state.historico[idx][0]
+        st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    st.session_state.awaiting_answer=False
-    st.session_state.answering_started=False
-    st.session_state.pending_index=None
-    st.session_state.pending_question=None
+    st.session_state.awaiting_answer = False
+    st.session_state.answering_started = False
+    st.session_state.pending_index = None
+    st.session_state.pending_question = None
     do_rerun()
