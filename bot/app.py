@@ -172,7 +172,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   background: transparent !important;
   border: none !important;
   border-radius: 999px !important;
-  padding: 12px 16px !important;
+  padding: 18px 20px !important;
   font-size: 16px !important;
   box-shadow: none !important;
   outline: none !important;
