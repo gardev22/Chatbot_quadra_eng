@@ -93,14 +93,13 @@ border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,12
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-section[data-testid="stSidebar"] > div{
-  height:100% !important;
-  overflow-y:auto !important;
-  padding-top: 0px !important;   /* ajuste aqui: 0px, 2px, 4px... */
-  padding-right: 12px !important;
-  padding-bottom: 12px !important;
-  padding-left: 12px !important;
-  margin:0 !important;
+section[data-testid="stSidebar"]{
+  position: fixed !important; top: var(--header-height) !important; left:0 !important;
+  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
+  width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
+  margin:0!important; padding:0!important; background:#fff!important;
+  border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
+  visibility: visible !important; overflow:hidden !important;
 }
 
 /* ===== ÚNICA REGRA da área interna da sidebar =====
@@ -108,7 +107,7 @@ section[data-testid="stSidebar"] > div{
 section[data-testid="stSidebar"] > div{
   height:100% !important;
   overflow-y:auto !important;
-  padding-top: 10 !important;        /* ← 0px, 2px, 4px... */
+  padding-top: 0px !important;        /* ← 0px (padrão). Use 2px, 4px, etc. */
   padding-right: 12px !important;
   padding-bottom: 12px !important;
   padding-left: 12px !important;
@@ -192,7 +191,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 
 .sidebar-header{ font-size:0.95rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px -2px 2px; }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
-.sidebar-sub{ font-size:.78rem; color:#6b7280; }
+.sidebar-sub{ font size:.78rem; color:#6b7280; }
 
 .trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
 .trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
