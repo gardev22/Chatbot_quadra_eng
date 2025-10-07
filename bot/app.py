@@ -253,7 +253,7 @@ document.addEventListener('trash_clicked', () => {
 """, unsafe_allow_html=True)
 
 # Python para resetar histórico quando a lixeira é clicada
-if st.experimental_get_query_params().get("trash"):
+if st.query_params.get("trash"):
     st.session_state.historico = []
     do_rerun()
 
