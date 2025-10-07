@@ -202,7 +202,7 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 
 /* remove o respiro padrão do contêiner interno da sidebar do Streamlit */
 div[data-testid="stSidebarContent"]{
-  padding-top: 0 !important;
+  padding-top: 4 !important;
 }
 
 /* garante que o primeiro bloco não reintroduza espaçamento */
@@ -211,8 +211,8 @@ div[data-testid="stSidebarContent"] > *:first-child{
 }
 
 /* acabamento: sobe um tiquinho o título e a barra */
-.sidebar-header{ margin-top: -6px !important; }
-.sidebar-bar{ margin-top: -4px !important; }
+.sidebar-header{ margin-top: -12px !important; }
+.sidebar-bar{ margin-top: -8px !important; }
 
 </style>
 """, unsafe_allow_html=True)
