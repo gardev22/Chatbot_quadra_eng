@@ -108,7 +108,7 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .header-right{display:flex;align-items:center;gap:12px}
 
 /* ======== SIDEBAR (colado à esquerda, abaixo do header) ======== */
-section[data-testid="stSidebar"] > div { padding: 6px 12px 12px 12px; }{
+section[data-testid="stSidebar"] > div { padding: 3px 8px 9px 10px; }{
   position: fixed !important;
   top: var(--header-height) !important;
   left: 0 !important;
