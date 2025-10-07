@@ -93,13 +93,14 @@ border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,12
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px}
 
-section[data-testid="stSidebar"]{
-  position: fixed !important; top: var(--header-height) !important; left:0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
-  width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
-  margin:0!important; padding:0!important; background:#fff!important;
-  border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
-  visibility: visible !important; overflow:hidden !important;
+section[data-testid="stSidebar"] > div{
+  height:100% !important;
+  overflow-y:auto !important;
+  padding-top: 0px !important;   /* ajuste aqui: 0px, 2px, 4px... */
+  padding-right: 12px !important;
+  padding-bottom: 12px !important;
+  padding-left: 12px !important;
+  margin:0 !important;
 }
 
 /* ===== ÚNICA REGRA da área interna da sidebar =====
