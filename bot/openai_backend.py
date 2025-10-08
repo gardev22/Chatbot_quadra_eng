@@ -235,7 +235,7 @@ def montar_prompt_rag(pergunta, blocos):
         "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, você deve apresentar a dedução de forma clara.\n"
         "   - Exemplo: se o documento lista várias responsabilidades e não menciona ASO, você pode responder: 'O documento não cita ASO como responsabilidade do departamento pessoal.'\n"
         "3. Se realmente não houver nenhuma evidência, diga exatamente:\n"
-        "   'Essa informação não está disponível nos documentos fornecidos.'\n"
+        "   '⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️'\n Departamento de Estratégia & Inovação."
         "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes entre aspas sempre que possível.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
