@@ -262,7 +262,7 @@ def montar_prompt_rag(pergunta, blocos):
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
         "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara.\n"
         f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes entre aspas sempre que possível.\n\n"
+        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes em negrito sempre que possível.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
