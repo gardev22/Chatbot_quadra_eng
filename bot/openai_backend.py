@@ -14,42 +14,59 @@ from google.oauth2 import service_account
 
 # ========= CONFIG =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"              # você pode testar "gpt-4o-mini" para ainda mais velocidade
-TOP_K = 5                        # blocos finais enviados ao LLM
-TOP_N_ANN = 80                   # candidatos do estágio 1 (ANN) antes do reranker
-MAX_TOKENS = 500                 # resposta menor tende a ser mais rápida
+MODEL_ID = "gpt-4o-mini"          # você pode testar "gpt-4o-mini" para ainda mais velocidade
+TOP_K = 5                         # blocos finais enviados ao LLM
+TOP_N_ANN = 80                    # candidatos do estágio 1 (ANN) antes do reranker
+MAX_TOKENS = 500                  # resposta menor tende a ser mais rápida
 TEMPERATURE = 0.2
-REQUEST_TIMEOUT = 40             # segundos
+REQUEST_TIMEOUT = 40              # segundos
 
 # Pasta do Google Drive
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
+# ========= MENSAGEM PADRÃO E THRESHOLD =========
+FALLBACK_MSG = (
+    "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
+    "Departamento de Estratégia & Inovação."
+)
+CE_SCORE_THRESHOLD = 0.42  # ajuste fino: 0.38~0.48 funciona bem com o MiniLM
+
+# ========= CACHE BUSTER (force refresh geral) =========
+CACHE_BUSTER = "2025-10-08-01"
+
+# ========= UTILS =========
+def sanitize_doc_name(name: str) -> str:
+    """Remove 'Cópia de', 'Copy of' e extensões (.doc/.docx/.pdf/.txt), além de espaços extras."""
+    name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\.(docx?|pdf|txt)$", "", name, flags=re.IGNORECASE)
+    return name.strip()
+
 # ========= CLIENTES E MODELOS (CACHEADOS) =========
 @st.cache_resource(show_spinner=False)
-def get_drive_client():
+def get_drive_client(_v=CACHE_BUSTER):
     creds = service_account.Credentials.from_service_account_info(
         dict(st.secrets["gcp_service_account"]), scopes=SCOPES
     )
     return build('drive', 'v3', credentials=creds)
 
 @st.cache_resource(show_spinner=False)
-def get_sbert_model():
+def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
     # modelo pequeno e rápido; ótimo custo/benefício
     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     return model
 
 @st.cache_resource(show_spinner=False)
-def get_cross_encoder():
+def get_cross_encoder(_v=CACHE_BUSTER):
     import torch
     from sentence_transformers import CrossEncoder
     device = "cuda" if torch.cuda.is_available() else "cpu"
     ce = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
     return ce
 
-# ========= CARREGAMENTO DOS DOCX (CACHE) =========
+# ========= LISTAGEM E DOWNLOAD (DRIVE) =========
 def _list_docx_metadata(drive_service, folder_id):
     query = (
         f"'{folder_id}' in parents and "
@@ -63,6 +80,7 @@ def _download_docx_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id)
     return request.execute()
 
+# ========= PARSE DOCX EM BLOCOS =========
 def _split_text_blocks(text, max_words=200):
     words = text.split()
     blocks = []
@@ -80,26 +98,38 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=200):
             out.append({"pagina": file_name, "texto": chunk, "file_id": file_id})
     return out
 
+# ========= CACHE DE METADADOS E CONTEÚDO (ASSINATURA) =========
 @st.cache_data(show_spinner=False)
-def load_all_blocks_cached(folder_id: str):
+def _list_docx_metadata_cached(folder_id: str, _v=CACHE_BUSTER):
+    drive = get_drive_client()
+    files = _list_docx_metadata(drive, folder_id)
+    return files
+
+def _build_signature(files_meta):
+    payload = sorted(
+        [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in files_meta],
+        key=lambda x: x["id"]
+    )
+    return json.dumps(payload, ensure_ascii=False)
+
+@st.cache_data(show_spinner=False)
+def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     """
-    Lê a pasta do Drive, baixa os DOCX e devolve:
-      - blocks_raw: lista de pequenos blocos
-      - meta_digest: string com hash da listagem para invalidar cache quando houver mudança
-    O cache invalida automaticamente quando id/name/checksum/modifiedTime mudarem.
+    Função pesada, cacheada **em cima da assinatura**.
+    Quando qualquer nome/arquivo muda, a signature muda e o cache invalida.
     """
     drive = get_drive_client()
     files = _list_docx_metadata(drive, folder_id)
-    # gera uma "assinatura" do estado da pasta para invalidar o cache se algo mudar
-    signature = json.dumps(
-        sorted([{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in files], key=lambda x: x["id"]),
-        ensure_ascii=False
-    )
-
     all_blocks = []
     for f in files:
         bytes_ = _download_docx_bytes(drive, f["id"])
         all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
+    return all_blocks
+
+def load_all_blocks_cached(folder_id: str):
+    files = _list_docx_metadata_cached(folder_id)
+    signature = _build_signature(files)
+    all_blocks = _download_and_parse_blocks(signature, folder_id)
     return all_blocks, signature
 
 # ========= AGRUPAMENTO EM JANELA DESLIZANTE =========
@@ -126,7 +156,7 @@ def try_import_faiss():
         return None
 
 @st.cache_resource(show_spinner=False)
-def build_vector_index():
+def build_vector_index(_v=CACHE_BUSTER):
     """
     1) Carrega blocos do Drive (cacheados)
     2) Agrupa em janelas (contexto)
@@ -143,7 +173,7 @@ def build_vector_index():
     texts = [b["texto"] for b in grouped]
 
     @st.cache_data(show_spinner=False)
-    def _embed_texts_cached(texts_):
+    def _embed_texts_cached(texts_, _v2=CACHE_BUSTER):
         # embeddings de todos os blocos (cacheados)
         return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
 
@@ -184,22 +214,20 @@ def ann_search(query_text: str, top_n: int):
     candidates = [{"idx": i, "score": s, "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
     return candidates
 
-# ========= RERANKING =========
+# ========= RERANKING (RETORNA SCORES) =========
 def crossencoder_rerank(query: str, candidates, top_k: int):
     """
-    Recebe candidatos do ANN e reranqueia via CrossEncoder.
+    Retorna uma lista de dicts: {"block": ..., "score": float}
     """
     if not candidates:
         return []
 
     ce = get_cross_encoder()
     pairs = [(query, c["block"]["texto"]) for c in candidates]
-
-    # Batch interno do CrossEncoder
-    scores = ce.predict(pairs, batch_size=64)  # 64 geralmente é ok
-    reranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)[:top_k]
-    final_blocks = [c[0]["block"] for c in reranked]
-    return final_blocks
+    scores = ce.predict(pairs, batch_size=64)
+    packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
+    packed.sort(key=lambda x: x["score"], reverse=True)
+    return packed[:top_k]
 
 # ========= DETECÇÃO DE ETAPA SEGUINTE (mesma lógica, rápida) =========
 def responder_etapa_seguinte(pergunta, blocos_raw):
@@ -232,10 +260,8 @@ def montar_prompt_rag(pergunta, blocos):
         "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
         "### Regras de resposta:\n"
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
-        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, você deve apresentar a dedução de forma clara.\n"
-        "   - Exemplo: se o documento lista várias responsabilidades e não menciona ASO, você pode responder: 'O documento não cita ASO como responsabilidade do departamento pessoal.'\n"
-        "3. Se realmente não houver nenhuma evidência, diga exatamente:\n"
-        "   '⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️'\n Departamento de Estratégia & Inovação."
+        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara.\n"
+        f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
         "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes entre aspas sempre que possível.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
@@ -258,14 +284,20 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) busca ANN rápida
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
 
-        # fallback: se por algum motivo não vier nada
+        # se nada veio do ANN, já retorna a mensagem padrão
         if not candidates:
-            return "Não encontrei contexto relevante nos documentos."
+            return FALLBACK_MSG
 
-        # 2) reranking apenas nos candidatos
-        blocos_relevantes = crossencoder_rerank(pergunta, candidates, top_k=top_k)
+        # 2) reranking com scores
+        reranked = crossencoder_rerank(pergunta, candidates, top_k=top_k)
 
-        # 3) prompt e chamada ao modelo
+        # se o melhor score estiver baixo, consideramos "sem evidência"
+        best_score = reranked[0]["score"] if reranked else 0.0
+        if best_score < CE_SCORE_THRESHOLD:
+            return FALLBACK_MSG
+
+        # 3) prompt e chamada ao modelo SOMENTE quando há evidência suficiente
+        blocos_relevantes = [r["block"] for r in reranked]
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         url = "https://api.openai.com/v1/chat/completions"
@@ -291,11 +323,12 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = escolhas[0]["message"]["content"]
 
-        # anexa link do documento mais relevante
-        if blocos_relevantes:
+        # 4) Anexar link SOMENTE quando não for fallback e houver confiança
+        if resposta.strip() != FALLBACK_MSG and best_score >= CE_SCORE_THRESHOLD and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
-            doc_nome = primeiro.get("pagina", "?")
+            raw_nome = primeiro.get("pagina", "?")
+            doc_nome = sanitize_doc_name(raw_nome)
             if doc_id:
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
@@ -304,7 +337,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
-
 
 # ========= CLI de teste =========
 if __name__ == "__main__":
