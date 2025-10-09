@@ -355,24 +355,25 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not candidates:
             return FALLBACK_MSG
 
-        # 2) escolher reranker
+        # 2) define se é primeira pergunta
         asked_once = st.session_state.get("_asked_once", False)
+
+        # --- reranking ---
         if FAST_FIRST_QUESTION and not asked_once:
-            reranked = cosine_rerank(pergunta, candidates, top_k=top_k)   # ultra rápido
+            reranked = cosine_rerank(pergunta, candidates, top_k=top_k)
+            best_score = reranked[0]["score"] if reranked else 0.0
+            # na primeira vez, não filtramos por score
+            blocos_relevantes = [r["block"] for r in reranked] or [c["block"] for c in candidates[:top_k]]
         else:
             reranked = crossencoder_rerank(pergunta, candidates, top_k=top_k)
+            best_score = reranked[0]["score"] if reranked else 0.0
+            if best_score < CE_SCORE_THRESHOLD:
+                st.session_state["_asked_once"] = True
+                return FALLBACK_MSG
+            blocos_relevantes = [r["block"] for r in reranked]
 
-        best_score = reranked[0]["score"] if reranked else 0.0
-        # quando for fast path, usamos um limiar um pouco mais permissivo
-        min_thresh = CE_SCORE_THRESHOLD if (asked_once or not FAST_FIRST_QUESTION) else (CE_SCORE_THRESHOLD - 0.05)
-        if best_score < min_thresh:
-            st.session_state["_asked_once"] = True  # marca mesmo assim
-            return FALLBACK_MSG
-
-        blocos_relevantes = [r["block"] for r in reranked]
+        # 3) monta prompt e chama o modelo
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
-
-        # 3) chamada ao LLM
         http = get_http()
         url = "https://api.openai.com/v1/chat/completions"
         payload = {
@@ -395,7 +396,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = escolhas[0]["message"]["content"]
 
-        # 4) Anexar link quando houve evidência
+        # 4) adiciona link do documento
         if resposta.strip() != FALLBACK_MSG and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -405,12 +406,12 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
-        # marca que já passamos pela 1ª pergunta
         st.session_state["_asked_once"] = True
         return resposta
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
+
 
 # ========= CLI de teste =========
 if __name__ == "__main__":
