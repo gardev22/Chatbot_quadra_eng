@@ -19,37 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Força o título da aba a ser exatamente "Chatbot Quadra" (sem "· Streamlit")
-
-st.markdown(
-    """
-    <script>
-    // espera o app montar completamente
-    window.addEventListener("load", () => {
-        const TITLE = "Chatbot Quadra";
-        function applyTitle() {
-            if (document.title !== TITLE) {
-                document.title = TITLE;
-            }
-        }
-        // aplica imediatamente
-        applyTitle();
-        // aplica de novo em intervalos (caso Streamlit reescreva)
-        let count = 0;
-        const interval = setInterval(() => {
-            applyTitle();
-            count++;
-            if (count > 100) clearInterval(interval);
-        }, 100);
-
-        // re-aplica quando a aba volta a ficar ativa
-        document.addEventListener("visibilitychange", applyTitle);
-    });
-    </script>
-    """,
-    unsafe_allow_html=True,
-)
-
 def do_rerun():
     if hasattr(st, "rerun"):
         st.rerun()
