@@ -20,39 +20,31 @@ st.set_page_config(
 )
 
 # Força o título da aba a ser exatamente "Chatbot Quadra" (sem "· Streamlit")
+
 st.markdown(
     """
     <script>
-    (function(){
-      const TARGET = "Chatbot Quadra";
-
-      function setTitle(){
-        if (document && document.title !== TARGET){
-          document.title = TARGET;
+    // espera o app montar completamente
+    window.addEventListener("load", () => {
+        const TITLE = "Chatbot Quadra";
+        function applyTitle() {
+            if (document.title !== TITLE) {
+                document.title = TITLE;
+            }
         }
-      }
+        // aplica imediatamente
+        applyTitle();
+        // aplica de novo em intervalos (caso Streamlit reescreva)
+        let count = 0;
+        const interval = setInterval(() => {
+            applyTitle();
+            count++;
+            if (count > 100) clearInterval(interval);
+        }, 100);
 
-      // 1) seta já
-      setTitle();
-
-      // 2) observa mudanças no próprio <title>
-      const titleEl = document.querySelector('head > title') || (function(){
-        const t = document.createElement('title'); document.head.appendChild(t); return t;
-      })();
-      new MutationObserver(setTitle).observe(titleEl, {
-        childList: true, subtree: true, characterData: true
-      });
-
-      // 3) observa alterações no <head> (Streamlit recria nós em re-runs)
-      new MutationObserver(setTitle).observe(document.head, { childList: true, subtree: true });
-
-      // 4) “reaplica” periodicamente por alguns segundos (nuvem é teimosa)
-      let n = 0;
-      const timer = setInterval(()=>{ setTitle(); if(++n > 40) clearInterval(timer); }, 250);
-
-      // 5) quando a aba volta ao foco
-      document.addEventListener('visibilitychange', setTitle);
-    })();
+        // re-aplica quando a aba volta a ficar ativa
+        document.addEventListener("visibilitychange", applyTitle);
+    });
     </script>
     """,
     unsafe_allow_html=True,
