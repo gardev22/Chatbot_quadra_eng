@@ -10,7 +10,53 @@ from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-st.set_page_config(page_title="Chatbot Quadra", layout="wide", initial_sidebar_state="expanded")
+# ====== CONFIG DA PÁGINA (favicon + título da aba) ======
+LOGO_PATH = "data/logo_quadra.png"  # mesmo logo do cabeçalho
+st.set_page_config(
+    page_title="Chatbot Quadra",
+    page_icon=LOGO_PATH,             # troca o favicon pelo logo da Quadra
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Força o título da aba a ser exatamente "Chatbot Quadra" (sem "· Streamlit")
+st.markdown(
+    """
+    <script>
+    (function(){
+      const TARGET = "Chatbot Quadra";
+
+      function setTitle(){
+        if (document && document.title !== TARGET){
+          document.title = TARGET;
+        }
+      }
+
+      // 1) seta já
+      setTitle();
+
+      // 2) observa mudanças no próprio <title>
+      const titleEl = document.querySelector('head > title') || (function(){
+        const t = document.createElement('title'); document.head.appendChild(t); return t;
+      })();
+      new MutationObserver(setTitle).observe(titleEl, {
+        childList: true, subtree: true, characterData: true
+      });
+
+      // 3) observa alterações no <head> (Streamlit recria nós em re-runs)
+      new MutationObserver(setTitle).observe(document.head, { childList: true, subtree: true });
+
+      // 4) “reaplica” periodicamente por alguns segundos (nuvem é teimosa)
+      let n = 0;
+      const timer = setInterval(()=>{ setTitle(); if(++n > 40) clearInterval(timer); }, 250);
+
+      // 5) quando a aba volta ao foco
+      document.addEventListener('visibilitychange', setTitle);
+    })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 def do_rerun():
     if hasattr(st, "rerun"):
@@ -18,8 +64,7 @@ def do_rerun():
     else:
         st.experimental_rerun()
 
-# ====== LOGO ======
-LOGO_PATH = "data/logo_quadra.png"
+# ====== LOGO (para exibir no cabeçalho) ======
 def carregar_imagem_base64(path):
     if not os.path.exists(path):
         return None
@@ -27,8 +72,6 @@ def carregar_imagem_base64(path):
         return base64.b64encode(f.read()).decode()
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
-if logo_b64:
-    st.markdown(f'<link rel="icon" href="data:image/png;base64,{logo_b64}" />', unsafe_allow_html=True)
 
 # ====== ESTADO ======
 if "historico" not in st.session_state:
@@ -65,7 +108,7 @@ img.logo{height:44px!important;width:auto!important}
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
-  --chat-safe-gap: 300px;           /* <<< folga para o input não sobrepor (ajuste aqui) */
+  --chat-safe-gap: 300px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --quadra-blue:#cfe3ff;
   --input-max:900px;
@@ -103,11 +146,10 @@ section[data-testid="stSidebar"]{
   visibility: visible !important; overflow:hidden !important;
 }
 
-/* área interna da sidebar (mantido) */
 section[data-testid="stSidebar"] > div{
   height:100% !important;
   overflow-y:auto !important;
-  padding-top: -10px !important;    /* como você já tinha */
+  padding-top: -10px !important;
   padding-right: 12px !important;
   padding-bottom: 12px !important;
   padding-left: 12px !important;
@@ -134,7 +176,6 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   height:var(--card-height);
   overflow-y:auto;
   scroll-behavior:smooth;
-  /* fallback CSS: já dá espaço no fim mesmo antes do JS */
   padding-bottom: var(--chat-safe-gap);
   scroll-padding-bottom: var(--chat-safe-gap);
 }
@@ -200,25 +241,16 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 
-/* remove o respiro padrão do contêiner interno da sidebar do Streamlit */
-div[data-testid="stSidebarContent"]{
-  padding-top: 15 !important;
-}
+div[data-testid="stSidebarContent"]{ padding-top: 15 !important; }
+div[data-testid="stSidebarContent"] > *:first-child{ margin-top: 0 !important; }
 
-/* garante que o primeiro bloco não reintroduza espaçamento */
-div[data-testid="stSidebarContent"] > *:first-child{
-  margin-top: 0 !important;
-}
-
-/* acabamento: sobe um tiquinho o título e a barra */
 .sidebar-header{ margin-top: -30px !important; }
 .sidebar-bar{ margin-top: -24px !important; }
 
-/* Itens do histórico (perguntas) */
 .hist-row{
   padding: 6px 6px;
   font-size: 1.1rem;
-  color: #4b5563 !important;    /* cinza escuro */
+  color: #4b5563 !important;
   line-height: 1.35;
 }
 .hist-row + .hist-row{ margin-top: 6px; }
@@ -233,7 +265,7 @@ st.markdown(f"""
   <div class="header-left">
     {logo_img_tag}
     <div>
-      Quadra Engenharia
+      Chatbot Quadra
       <div class="title-sub">Assistente Inteligente</div>
     </div>
   </div>
