@@ -8,7 +8,7 @@ from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# ====== CONFIG DA PÁGINA (mantém seu favicon e título) ======
+# ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
 st.set_page_config(
     page_title="Chatbot Quadra",
@@ -41,7 +41,7 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== MARCAÇÃO (remove **asteriscos** renderizando como HTML) ======
+# ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
     if not text:
         return ""
@@ -54,9 +54,6 @@ def formatar_markdown_basico(text: str) -> str:
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
     text = text.replace("\n", "<br>")
     return text
-
-# ====== UTILS ======
-_url_re = re.compile(r'(https?://[^\s<>"\]]+)', re.IGNORECASE)
 
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
@@ -89,10 +86,10 @@ img.logo{height:44px!important;width:auto!important}
   --input-max:900px;
   --input-bottom:60px;
 
-  --bg:#0F1115;
-  --panel:#0B0D10;
-  --panel-header:#14171C;
-  --panel-alt:#1C1F26;
+  --bg:#0F1115;           /* fundo do app */
+  --panel:#0B0D10;        /* sidebar preta */
+  --panel-header:#14171C; /* header/topo */
+  --panel-alt:#1C1F26;    /* área do chat */
   --border:#242833;
 
   --text:#E5E7EB;
@@ -105,17 +102,18 @@ img.logo{height:44px!important;width:auto!important}
   --bubble-user:#222833;
   --bubble-assistant:#232833;
 
-  --input-bg:#1E222B;       /* CINZA do ChatInput */
+  --input-bg:#1E222B;     /* CINZA desejado do ChatInput */
   --input-border:#323949;
 
   --sidebar-w:270px;
 }
 
-/* Chrome do Streamlit / fundo */
+/* Oculta chrome supérfluo */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
 
+/* Layout base */
 html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"]{
   height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
 }
@@ -160,15 +158,13 @@ section[data-testid="stSidebar"]>div{height:100%!important;overflow-y:auto!impor
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
+/* Conteúdo do chat */
 .content{max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px}
-
-/* Cartão do chat */
 .chat-card{
   position:relative;
   background:var(--panel-alt);
   border-radius:12px 12px 0 0;
-  border:none;
-  box-shadow:none;
+  border:none; box-shadow:none;
   padding:20px;
   height:var(--card-height);
   overflow-y:auto; scroll-behavior:smooth;
@@ -189,43 +185,59 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 .chat-card a{ color:var(--link); text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) }
 
-/* ChatInput cinza */
-[data-testid="stChatInput"]{
-  position:fixed!important;
-  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
-  transform:translateX(-50%)!important;
-  bottom:var(--input-bottom)!important;
-  width:min(var(--input-max),96vw)!important;
-  z-index:5000; background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important;
+/* ===================== ChatInput cinza & sem "barra branca" ===================== */
+
+/* 1) Zera fundos internos para evitar branco herdado */
+[data-testid="stChatInput"] *{
+  background: transparent !important;
+  color: var(--text) !important;
 }
-[data-testid="stChatInput"] > div{
-  background:var(--input-bg) !important;
+
+/* 2) Força a pílula do input a ficar cinza – tentativas redundantes (DOM muda por versão) */
+[data-testid="stChatInput"] > div{ background: var(--input-bg) !important; }
+[data-testid="stChatInput"] > div > div{ background: var(--input-bg) !important; }
+[data-testid="stChatInput"] > div > div:nth-child(1){ background: var(--input-bg) !important; }
+
+/* 2b) Seletor robusto: qualquer div que contenha textarea vira a pílula cinza */
+[data-testid="stChatInput"] div:has(textarea){
+  background: var(--input-bg) !important;
   border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35)!important;
   overflow:hidden;
-  color:var(--text) !important;
 }
-[data-testid="stChatInput"] > div > div{ background:transparent !important }
+
+/* 3) Botão/enviar */
+[data-testid="stChatInput"] button{
+  background: transparent !important;
+  border:none !important;
+  color: var(--text-dim) !important;
+}
+[data-testid="stChatInput"] svg{ fill:currentColor !important }
+
+/* 4) Textarea */
 [data-testid="stChatInput"] textarea{
-  background:transparent !important;
-  color:var(--text) !important;
+  background: transparent !important;
+  color: var(--text) !important;
   padding:18px 20px !important;
   font-size:16px !important;
   border:none !important;
   outline:none !important;
   height:auto !important; min-height:44px !important; max-height:220px !important; overflow-y:hidden !important;
 }
-[data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
-[data-testid="stChatInput"] button{
-  margin-right:8px !important;
-  background:transparent !important;
-  border:none !important;
-  color:var(--text-dim) !important;
-}
-[data-testid="stChatInput"] svg{ fill:currentColor !important }
+[data-testid="stChatInput"] textarea::placeholder{ color: var(--muted) !important }
 
-/* Remover “barra branca”: não escondemos o contêiner, só neutralizamos o fundo/efeitos */
+/* 5) Posição do ChatInput (fixo e central em relação ao content) */
+[data-testid="stChatInput"]{
+  position:fixed!important;
+  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
+  transform:translateX(-50%)!important;
+  bottom:var(--input-bottom)!important;
+  width:min(var(--input-max),96vw)!important;
+  z-index:5000; border:none!important; box-shadow:none!important; padding:0!important;
+}
+
+/* 6) Neutraliza o contêiner inferior (sem esconder, para não sumir o chat_input) */
 [data-testid="stBottomBlockContainer"]{
   background:transparent !important;
   box-shadow:none !important;
@@ -314,7 +326,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (ajusta espaço/auto-scroll) ======
+# ====== JS (ajustes de espaço / auto-scroll) ======
 st.markdown("""
 <script>
 (function(){
