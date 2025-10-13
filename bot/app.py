@@ -84,12 +84,11 @@ img.logo{height:44px!important;width:auto!important}
   --chat-safe-gap:300px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --input-max:900px;
-  --input-bottom:60px;
 
-  --bg:#0F1115;           /* fundo do app */
-  --panel:#0B0D10;        /* sidebar preta */
-  --panel-header:#14171C; /* header/topo */
-  --panel-alt:#1C1F26;    /* área do chat */
+  --bg:#0F1115;
+  --panel:#0B0D10;
+  --panel-header:#14171C;
+  --panel-alt:#1C1F26;
   --border:#242833;
 
   --text:#E5E7EB;
@@ -102,7 +101,7 @@ img.logo{height:44px!important;width:auto!important}
   --bubble-user:#222833;
   --bubble-assistant:#232833;
 
-  --input-bg:#1E222B;     /* CINZA desejado do ChatInput */
+  --input-bg:#1E222B;      /* CINZA do ChatInput */
   --input-border:#323949;
 
   --sidebar-w:270px;
@@ -185,20 +184,29 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 .chat-card a{ color:var(--link); text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) }
 
-/* ===================== ChatInput cinza & sem "barra branca" ===================== */
+/* ===================== ChatInput cinza & sem barra branca ===================== */
 
-/* 1) Zera fundos internos para evitar branco herdado */
+/* 1) Zera o fundo do container inferior (remove “barra branca”) */
+[data-testid="stBottomBlockContainer"]{
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 14px 0 16px 0 !important;  /* só um respiro */
+}
+
+/* 2) Centraliza o bloco do input e limita largura */
+[data-testid="stBottomBlockContainer"] > div{
+  max-width: min(var(--content-max-width), 96vw);
+  margin: 0 auto !important;
+}
+
+/* 3) Deixa todo conteúdo do stChatInput transparente por padrão */
 [data-testid="stChatInput"] *{
   background: transparent !important;
   color: var(--text) !important;
 }
 
-/* 2) Força a pílula do input a ficar cinza – tentativas redundantes (DOM muda por versão) */
-[data-testid="stChatInput"] > div{ background: var(--input-bg) !important; }
-[data-testid="stChatInput"] > div > div{ background: var(--input-bg) !important; }
-[data-testid="stChatInput"] > div > div:nth-child(1){ background: var(--input-bg) !important; }
-
-/* 2b) Seletor robusto: qualquer div que contenha textarea vira a pílula cinza */
+/* 4) Força a “pílula” cinza que envolve o textarea (seletor robusto) */
 [data-testid="stChatInput"] div:has(textarea){
   background: var(--input-bg) !important;
   border:1px solid var(--input-border) !important;
@@ -207,15 +215,13 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   overflow:hidden;
 }
 
-/* 3) Botão/enviar */
+/* 5) Botão e texto */
 [data-testid="stChatInput"] button{
   background: transparent !important;
   border:none !important;
   color: var(--text-dim) !important;
 }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
-
-/* 4) Textarea */
 [data-testid="stChatInput"] textarea{
   background: transparent !important;
   color: var(--text) !important;
@@ -227,21 +233,11 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 }
 [data-testid="stChatInput"] textarea::placeholder{ color: var(--muted) !important }
 
-/* 5) Posição do ChatInput (fixo e central em relação ao content) */
+/* NÃO usar position:fixed aqui — evitamos duplicar o input */
 [data-testid="stChatInput"]{
-  position:fixed!important;
-  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
-  transform:translateX(-50%)!important;
-  bottom:var(--input-bottom)!important;
-  width:min(var(--input-max),96vw)!important;
-  z-index:5000; border:none!important; box-shadow:none!important; padding:0!important;
-}
-
-/* 6) Neutraliza o contêiner inferior (sem esconder, para não sumir o chat_input) */
-[data-testid="stBottomBlockContainer"]{
-  background:transparent !important;
-  box-shadow:none !important;
-  border:none !important;
+  position: static !important;
+  transform: none !important;
+  width: 100% !important;
 }
 
 /* Tipografia sidebar e scrollbars */
