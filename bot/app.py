@@ -344,6 +344,7 @@ st.markdown("""
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
 
+
 # ====== FLUXO (3 fases com debounce corrigido) ======
 
 # Fase 1: usuário enviou a pergunta
@@ -353,14 +354,17 @@ if pergunta and pergunta.strip():
     # Debounce: evita reprocessar o mesmo texto
     if st.session_state._last_input != q:
         st.session_state._last_input = q
-        st.session_state.historico.append((q, ""))  # mostra mensagem imediatamente
+        st.session_state.historico.append((q, ""))  # mostra imediatamente
         st.session_state.pending_index = len(st.session_state.historico) - 1
         st.session_state.pending_question = q
         st.session_state.awaiting_answer = True
-        st.session_state.answering_started = False  # ainda não começou a responder
+        st.session_state.answering_started = False
 
-# Fase 2: processa resposta apenas se há pergunta pendente
-if st.session_state.awaiting_answer and not st.session_state.answering_started:
+        st.experimental_rerun()  # força rerun só para mostrar o texto antes da resposta
+
+
+# Fase 2: se há pergunta pendente e ainda não começou a responder
+elif st.session_state.awaiting_answer and not st.session_state.answering_started:
     st.session_state.answering_started = True  # marca como em andamento
     q = st.session_state.pending_question
 
