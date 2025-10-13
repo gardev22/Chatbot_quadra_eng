@@ -179,7 +179,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 #chatCard *, .chat-card *{ position:relative; z-index:51 !important; }
 
 /* ==== MENSAGENS ==== */
-.message-row{display:flex!important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px); opacity:1!important; visibility:visible!important;}
+.message-row{display:flex!important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
@@ -288,6 +288,9 @@ with st.sidebar:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
+# ====== (1) PLACEHOLDER FIXO PARA O CHAT ======
+chat_placeholder = st.empty()
+
 # ====== RENDER MENSAGENS ======
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
@@ -303,7 +306,11 @@ if not msgs_html:
 # âncora para auto-scroll
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
-st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
+# ====== RENDER PELO PLACEHOLDER (não some em rerun) ======
+chat_placeholder.markdown(
+    f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
+    unsafe_allow_html=True
+)
 
 # ====== SKIRT ======
 st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
