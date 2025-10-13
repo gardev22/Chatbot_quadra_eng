@@ -159,7 +159,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 
 /* ==== CHAT CARD ==== */
 #chatCard,.chat-card{
-  position:relative; z-index:2 !important;
+  position:relative; z-index:50 !important;            /* sobe o chat acima de tudo */
   background:var(--bg)!important;
   border:none!important; border-radius:0!important; box-shadow:none!important;
   padding:20px; height:var(--card-height); overflow-y:auto; scroll-behavior:smooth;
@@ -224,29 +224,12 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
 
-/* ==== STACKING ORDER / ANTI-OVERLAY FIX ==== */
-[data-testid="stAppViewContainer"]{
-  position: relative !important;
-  z-index: 0 !important;
-  transform: translateZ(0);
-}
-.content{
-  position: relative !important;
-  z-index: 1 !important;
-}
-.header{ z-index: 3 !important; }
-section[data-testid="stSidebar"]{ z-index: 2 !important; }
-[data-testid="StyledFullScreenContainer"],
+/* ==== ANTI-OVERLAY (mata decorações que podem cobrir o chat) ==== */
 [data-testid="stStatusWidget"],
-[data-testid="stDecoration"]{
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: -1 !important;
-  pointer-events: none !important;
-  background: transparent !important;
+[data-testid="stDecoration"],
+[data-testid="StyledFullScreenContainer"]{
+  display:none !important;
 }
-body::before{ z-index: -2 !important; }
-html, body, .stApp{ isolation: isolate; }
 </style>
 """, unsafe_allow_html=True)
 
