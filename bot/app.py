@@ -288,7 +288,7 @@ with st.sidebar:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
-# ====== (1) PLACEHOLDER FIXO PARA O CHAT ======
+# ====== (opcional) placeholder estável para o chat ======
 chat_placeholder = st.empty()
 
 # ====== RENDER MENSAGENS ======
@@ -306,7 +306,6 @@ if not msgs_html:
 # âncora para auto-scroll
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
-# ====== RENDER PELO PLACEHOLDER (não some em rerun) ======
 chat_placeholder.markdown(
     f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
     unsafe_allow_html=True
@@ -381,10 +380,12 @@ if pergunta and pergunta.strip():
     st.session_state.answering_started=False
     do_rerun()
 
+# --- Fase 2 (só marca e segue; NÃO força novo rerun aqui) ---
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
     st.session_state.answering_started=True
-    do_rerun()
+    # REMOVIDO: do_rerun()
 
+# --- Fase 3: chama backend e grava resposta ---
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
         resposta = responder_pergunta(st.session_state.pending_question)
