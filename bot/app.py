@@ -19,6 +19,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+def do_rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
+
 # ====== LOGO (cabeçalho) ======
 def carregar_imagem_base64(path):
     if not os.path.exists(path):
@@ -31,6 +37,11 @@ logo_b64 = carregar_imagem_base64(LOGO_PATH)
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
+st.session_state.setdefault("awaiting_answer", False)
+st.session_state.setdefault("answering_started", False)
+st.session_state.setdefault("pending_index", None)
+st.session_state.setdefault("pending_question", None)
+st.session_state.setdefault("_last_input", None)  # [FIX] debounce anti-duplicata
 
 # ====== MARCAÇÃO (markdown simples -> HTML seguro) ======
 def formatar_markdown_basico(text: str) -> str:
@@ -49,14 +60,27 @@ def formatar_markdown_basico(text: str) -> str:
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
-# ====== CSS (tema dark + layout) ======
+def reenviar_pergunta(q: str):
+    q = (q or "").strip()
+    if not q:
+        return
+    st.session_state.historico.append((q, ""))
+    st.session_state.pending_index = len(st.session_state.historico) - 1
+    st.session_state.pending_question = q
+    st.session_state.awaiting_answer = True
+    st.session_state.answering_started = False
+    do_rerun()
+
+# ====== CSS ======
 st.markdown("""
 <style>
+/* ==== RESET ==== */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
+/* ==== VARS ==== */
 :root{
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
@@ -82,6 +106,7 @@ img.logo{height:44px!important;width:auto!important}
   --input-border:#323949;
 }
 
+/* ==== FUNDO UNIFICADO ==== */
 html,body,#root,.stApp,main,.stMain,.block-container,
 [data-testid="stAppViewContainer"],[data-testid="stBottomBlockContainer"],
 [data-testid="stDecoration"],[data-testid="stStatusWidget"],
@@ -91,11 +116,13 @@ html,body,#root,.stApp,main,.stMain,.block-container,
 }
 body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-2;pointer-events:none}
 
+/* ==== Chrome do Streamlit ==== */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
 .block-container{padding:0!important;min-height:0!important}
 
+/* ==== HEADER ==== */
 .header{
   position:fixed; inset:0 0 auto 0; height:var(--header-height);
   display:flex; align-items:center; justify-content:space-between;
@@ -113,6 +140,7 @@ div[data-testid="stToolbar"]{display:none!important}
 }
 .header a:hover{color:var(--link-hover)!important; border-color:#3B4250!important}
 
+/* ==== SIDEBAR ==== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
   height:calc(100dvh - var(--header-height))!important;
@@ -126,8 +154,10 @@ section[data-testid="stSidebar"]>div{ height:100%!important; overflow-y:auto!imp
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 
+/* ==== CONTENT ==== */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 
+/* ==== CHAT CARD ==== */
 #chatCard,.chat-card{
   position:relative; z-index:1 !important;
   background:var(--bg)!important;
@@ -137,6 +167,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
   color:var(--text);
 }
 
+/* ==== MENSAGENS ==== */
 .message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
@@ -150,6 +181,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 .bubble a{ color:#B9C0CA !important; text-decoration:underline; }
 .bubble a:hover{ color:#FFFFFF !important; }
 
+/* ==== INPUT ==== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -173,8 +205,8 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 [data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--text-dim)!important }
 [data-testid="stChatInput"] svg{ fill:currentColor!important }
 
+/* ==== OUTROS ==== */
 .bottom-gradient-fix{ display:none!important }
-
 .sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
 .sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
 .sidebar-sub{font-size:.88rem;color:var(--muted)}
@@ -187,6 +219,7 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 .hist-row + .hist-row{margin-top:6px}
 .hist-row:hover{background:#171b21}
 
+/* ==== SCROLLBARS ==== */
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
@@ -238,20 +271,22 @@ with st.sidebar:
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
-for pergunta_txt, resposta_txt in st.session_state.historico:
-    p_html = linkify(pergunta_txt)
+for pergunta, resposta in st.session_state.historico:
+    p_html = linkify(pergunta)
     msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
-    if resposta_txt:
-        r_html = linkify(resposta_txt)
+    if resposta:
+        r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if not msgs_html:
     msgs_html.append('<div style="color:#9aa4b2;text-align:center;margin-top:20px;">.</div>')
 
+# âncora para auto-scroll
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
+
 st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
 
-# ====== JS: ajuste de espaço/scroll ======
+# ====== JS: ajusta espaço do input e auto-scroll ======
 st.markdown("""
 <script>
 (function(){
@@ -301,17 +336,49 @@ st.markdown("""
 # ====== INPUT ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
-# ====== FLUXO SIMPLIFICADO (sem loops de rerun) ======
+# ====== FLUXO (3 fases com debounce) ======
+
+# Fase 1: usuário enviou
 if pergunta and pergunta.strip():
     q = pergunta.strip()
-    # 1) mostra a pergunta do usuário imediatamente
-    st.session_state.historico.append((q, ""))
 
-    # 2) chama o backend
+    # [FIX] Debounce: evita reprocessar o mesmo texto após o rerun
+    if st.session_state._last_input == q and not st.session_state.awaiting_answer:
+        # já tratamos esse input; ignora silenciosamente
+        pass
+    else:
+        st.session_state._last_input = q  # marca como último
+        st.session_state.historico.append((q, ""))
+        st.session_state.pending_index = len(st.session_state.historico)-1
+        st.session_state.pending_question = q
+        st.session_state.awaiting_answer = True
+        st.session_state.answering_started = False
+        do_rerun()
+
+# Fase 2: sinaliza início do processamento
+if st.session_state.awaiting_answer and not st.session_state.answering_started:
+    st.session_state.answering_started = True
+    do_rerun()
+
+# Fase 3: chama backend e grava resposta
+if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
-        resposta = responder_pergunta(q)
+        resposta = responder_pergunta(st.session_state.pending_question)
     except Exception as e:
         resposta = f"❌ Erro ao consultar o backend: {e}"
 
-    # 3) salva a resposta no mesmo item
-    st.session_state.historico[-1] = (q, resposta)
+    idx = st.session_state.pending_index
+    if idx is not None and 0 <= idx < len(st.session_state.historico):
+        pergunta_fix = st.session_state.historico[idx][0]
+        st.session_state.historico[idx] = (pergunta_fix, resposta)
+
+    # limpa flags
+    st.session_state.awaiting_answer = False
+    st.session_state.answering_started = False
+    st.session_state.pending_index = None
+    st.session_state.pending_question = None
+
+    # [FIX] libera o debounce para o próximo envio
+    st.session_state._last_input = None
+
+    do_rerun()
