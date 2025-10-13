@@ -343,9 +343,8 @@ st.markdown("""
 # ====== INPUT ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
-# ====== FLUXO (3 fases com debounce) ======
 
-# ====== FLUXO (3 fases com debounce) ======
+# ====== FLUXO (3 fases com debounce corrigido) ======
 
 # Fase 1: usuário enviou a pergunta
 if pergunta and pergunta.strip():
@@ -354,26 +353,27 @@ if pergunta and pergunta.strip():
     # Debounce: evita reprocessar o mesmo texto
     if st.session_state._last_input != q:
         st.session_state._last_input = q
-        st.session_state.historico.append((q, ""))
+        st.session_state.historico.append((q, ""))  # mostra mensagem imediatamente
         st.session_state.pending_index = len(st.session_state.historico) - 1
         st.session_state.pending_question = q
         st.session_state.awaiting_answer = True
-        st.session_state.answering_started = True  # já marca como iniciando
-        st.experimental_rerun()
+        st.session_state.answering_started = False  # ainda não começou a responder
 
-# Fase 2: processa resposta (sem novo rerun até terminar)
-if st.session_state.awaiting_answer and st.session_state.answering_started:
+# Fase 2: processa resposta apenas se há pergunta pendente
+if st.session_state.awaiting_answer and not st.session_state.answering_started:
+    st.session_state.answering_started = True  # marca como em andamento
+    q = st.session_state.pending_question
+
     try:
-        resposta = responder_pergunta(st.session_state.pending_question)
+        resposta = responder_pergunta(q)
     except Exception as e:
         resposta = f"❌ Erro ao consultar o backend: {e}"
 
     idx = st.session_state.pending_index
     if idx is not None and 0 <= idx < len(st.session_state.historico):
-        pergunta_fix = st.session_state.historico[idx][0]
-        st.session_state.historico[idx] = (pergunta_fix, resposta)
+        st.session_state.historico[idx] = (st.session_state.historico[idx][0], resposta)
 
-    # Limpa estados
+    # limpa estados
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
     st.session_state.pending_index = None
