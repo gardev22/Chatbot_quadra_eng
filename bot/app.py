@@ -84,7 +84,6 @@ st.markdown("""
 img.logo{height:44px!important;width:auto!important}
 
 :root{
-  /* layout invariável */
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
@@ -93,31 +92,30 @@ img.logo{height:44px!important;width:auto!important}
   --input-max:900px;
   --input-bottom:60px;
 
-  /* ===== PALETA DARK (preto e cinza estilo GPT) ===== */
-  --bg:#0F1115;              /* fundo geral */
-  --bg-soft:#12151B;         /* faixas sutis */
-  --panel:#181B22;           /* painéis/side/header */
-  --panel-alt:#1F232D;       /* cartão principal (chat) */
-  --border:#2A2F3A;          /* bordas */
-  --shadow:0 14px 36px rgba(0,0,0,.35);
+  /* PALETA ESCURA (estilo GPT) */
+  --bg:#0F1115;            /* fundo do app */
+  --panel:#0B0D10;         /* sidebar 100% preta */
+  --panel-header:#14171C;  /* header/topo */
+  --panel-alt:#1C1F26;     /* área do chat */
+  --border:#242833;        /* bordas discretas */
 
-  --text:#E5E7EB;            /* texto principal */
-  --text-dim:#CBD5E1;        /* texto secundário */
-  --muted:#9AA4B2;           /* texto apagado */
+  --text:#E5E7EB;
+  --text-dim:#C9D1D9;
+  --muted:#9AA4B2;
 
-  --link:#AAB3C2;            /* links discretos */
-  --link-hover:#ECEFF3;
+  --link:#B9C0CA;
+  --link-hover:#FFFFFF;
 
-  --bubble-user:#1D232F;
-  --bubble-assistant:#222733;
+  --bubble-user:#222833;
+  --bubble-assistant:#232833;
 
-  --input-bg:#1F2330;
-  --input-border:#51576D;
+  --input-bg:#1E222B;
+  --input-border:#323949;
 
-  --sidebar-w:270px;         /* largura do histórico (mantenha/ajuste se quiser) */
+  --sidebar-w:270px;
 }
 
-/* streamlit “chrome” */
+/* remover barra padrão do Streamlit e padronizar fundo */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
@@ -125,144 +123,129 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
   height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
 }
 .block-container{padding:0!important;min-height:0!important}
-.stApp{background: var(--bg) !important; color: var(--text) !important}
+.stApp{background:var(--bg)!important;color:var(--text)!important}
 
 /* ===== header fixo ===== */
 .header{
   position:fixed;inset:0 0 auto 0;height:var(--header-height);
   display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;background:var(--panel);z-index:1000;
-  border-bottom:1px solid var(--border);box-shadow:0 6px 18px rgba(0,0,0,.20)
+  padding:10px 16px;background:var(--panel-header);z-index:1000;
+  border-bottom:1px solid var(--border);
 }
 .header-left{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text)}
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:var(--muted);margin-top:-4px}
 .header-right{display:flex;align-items:center;gap:12px;color:var(--text)}
 .header a{
-  color:var(--link) !important; text-decoration:none;
-  border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
+  color:var(--link)!important;text-decoration:none;
+  border:1px solid var(--border);padding:8px 12px;border-radius:10px;display:inline-block;
 }
-.header a:hover{ color:var(--link-hover)!important; border-color:#3B4250 }
+.header a:hover{color:var(--link-hover)!important;border-color:#3B4250}
 
-/* ===== sidebar fixa ===== */
+/* ===== sidebar 100% preta ===== */
 section[data-testid="stSidebar"]{
-  position: fixed !important; top: var(--header-height) !important; left:0 !important;
-  height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
-  width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
+  position:fixed!important; top:var(--header-height)!important; left:0!important;
+  height:calc(100dvh - var(--header-height) - var(--skirt-h))!important;
+  width:var(--sidebar-w)!important; min-width:var(--sidebar-w)!important;
   margin:0!important; padding:0!important; background:var(--panel)!important;
-  border-right:1px solid var(--border); z-index:900 !important; transform:none !important;
-  visibility: visible !important; overflow:hidden !important; color: var(--text);
+  border-right:1px solid var(--border); z-index:900!important; transform:none!important;
+  visibility:visible!important; overflow:hidden!important; color:var(--text);
 }
-section[data-testid="stSidebar"] > div{
-  height:100% !important; overflow-y:auto !important;
-  padding: 0 12px 12px 12px !important; margin:0 !important;
+section[data-testid="stSidebar"]>div{
+  height:100%!important; overflow-y:auto!important; padding:0 12px 12px 12px!important; margin:0!important;
 }
-div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
-div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important; }
+div[data-testid="stSidebarCollapseButton"]{display:none!important}
+div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
-.content{
-  max-width:var(--content-max-width);
-  margin:var(--header-height) auto 0;
-  padding:8px;
-}
+.content{max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px}
 
-/* ===== chat card ===== */
+/* ===== cartão do chat: sem borda nem contorno cinza ===== */
 .chat-card{
   position:relative;
-  background: var(--panel-alt);
+  background:var(--panel-alt);
   border-radius:12px 12px 0 0;
-  border:1px solid var(--border);
-  border-bottom:none;
-  box-shadow: var(--shadow);
+  border:none;                 /* remove contorno */
+  box-shadow:none;             /* remove sombra grande */
   padding:20px;
   height:var(--card-height);
   overflow-y:auto;
   scroll-behavior:smooth;
-  padding-bottom: var(--chat-safe-gap);
-  scroll-padding-bottom: var(--chat-safe-gap);
-  color: var(--text);
+  padding-bottom:var(--chat-safe-gap);
+  scroll-padding-bottom:var(--chat-safe-gap);
+  color:var(--text);
 }
 
-.message-row{display:flex;margin:12px 4px; scroll-margin-bottom: calc(var(--chat-safe-gap) + 16px); }
+.message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
-  max-width:88%;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.45;
-  box-shadow:0 6px 14px rgba(0,0,0,.25);word-wrap:break-word; color: var(--text);
-  border:1px solid var(--border);
+  max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
+  box-shadow:none; word-wrap:break-word; color:var(--text);
+  border:1px solid transparent;         /* nada de borda visível */
 }
-.bubble.user{background: var(--bubble-user); border-bottom-right-radius:6px}
-.bubble.assistant{background: var(--bubble-assistant); border-bottom-left-radius:6px}
+.bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
+.bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
 
-/* ===== links no conteúdo ===== */
-.chat-card a{ color: var(--link); text-decoration: underline; }
-.chat-card a:hover{ color: var(--link-hover); }
+/* links no conteúdo */
+.chat-card a{ color:var(--link); text-decoration:underline }
+.chat-card a:hover{ color:var(--link-hover) }
 
-/* ===== input (mesma posição, só cores) ===== */
+/* ===== input escuro (sem branco) ===== */
 [data-testid="stChatInput"]{
-  position: fixed !important;
-  left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important;
-  transform: translateX(-50%) !important;
-  bottom: var(--input-bottom) !important;
-  width: min(var(--input-max), 96vw) !important;
-  z-index: 5000;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
+  position:fixed!important;
+  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
+  transform:translateX(-50%)!important;
+  bottom:var(--input-bottom)!important;
+  width:min(var(--input-max),96vw)!important;
+  z-index:5000; background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important;
 }
-[data-testid="stChatInput"] > div{
-  width: 100% !important; margin: 0 !important; padding: 0 !important;
-  background: var(--input-bg) !important;
-  border: 1.5px solid var(--input-border) !important;
-  border-radius: 999px !important;
-  box-shadow: 0 10px 24px rgba(0,0,0,.35) !important;
-  overflow: hidden; color: var(--text);
+[data-testid="stChatInput"]>div{
+  width:100%!important; margin:0!important; padding:0!important;
+  background:var(--input-bg)!important;
+  border:1px solid var(--input-border)!important;
+  border-radius:999px!important;
+  box-shadow:0 10px 24px rgba(0,0,0,.35)!important;
+  overflow:hidden; color:var(--text);
 }
 [data-testid="stChatInput"] textarea{
-  width: 100% !important; background: transparent !important; color: var(--text) !important;
-  border: none !important; border-radius: 999px !important;
-  padding: 18px 20px !important; font-size: 16px !important;
-  box-shadow: none !important; outline: none !important;
-  height: auto !important; min-height: 44px !important; max-height: 220px !important;
-  overflow-y: hidden !important;
+  width:100%!important; background:transparent!important; color:var(--text)!important;
+  border:none!important; border-radius:999px!important;
+  padding:18px 20px!important; font-size:16px!important;
+  box-shadow:none!important; outline:none!important;
+  height:auto!important; min-height:44px!important; max-height:220px!important; overflow-y:hidden!important;
 }
-[data-testid="stChatInput"] textarea::placeholder{ color: var(--muted) !important; }
-[data-testid="stChatInput"] button{ margin-right: 8px !important; }
-
-/* ===== barra inferior ===== */
-.bottom-gradient-fix{
-  border-top: 1.5px solid var(--border);
-  position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--panel) !important;
-  z-index: 10 !important; pointer-events: none;
+[data-testid="stChatInput"] textarea::placeholder{color:var(--muted)!important}
+[data-testid="stChatInput"] button{
+  margin-right:8px!important; background:transparent!important; border:none!important;
+  color:var(--text-dim)!important;
 }
+[data-testid="stChatInput"] button:hover{filter:brightness(1.15)}
 
-/* ===== Sidebar tipografia ===== */
-.sidebar-header{ font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text); margin:0 4px -2px 2px; }
-.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
-.sidebar-sub{ font-size:.88rem; color:var(--muted); }
-.hist-empty{ color:var(--muted);font-size:.9rem;padding:8px 10px; }
+/* ===== remover completamente a “faixa” de baixo ===== */
+.bottom-gradient-fix{ display:none !important; }
 
-div[data-testid="stSidebarContent"]{ padding-top: 15 !important; }
-div[data-testid="stSidebarContent"] > *:first-child{ margin-top: 0 !important; }
+/* ===== Sidebar (tipografia) ===== */
+.sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
+.sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
+.sidebar-sub{font-size:.88rem;color:var(--muted)}
+.hist-empty{color:var(--muted);font-size:.9rem;padding:8px 10px}
+div[data-testid="stSidebarContent"]{padding-top:15!important}
+div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
+.sidebar-header{margin-top:-30px!important}
+.sidebar-bar{margin-top:-24px!important}
 
-/* acabamento (mantidos) */
-.sidebar-header{ margin-top: -30px !important; }
-.sidebar-bar{ margin-top: -24px !important; }
-
-/* Itens do histórico */
+/* Histórico */
 .hist-row{
-  padding: 6px 6px; font-size: 1.1rem; color: var(--text-dim) !important; line-height: 1.35;
-  border-radius:8px;
+  padding:6px 6px; font-size:1.1rem; color:var(--text-dim)!important; line-height:1.35; border-radius:8px;
 }
-.hist-row + .hist-row{ margin-top: 6px; }
-.hist-row:hover{ background: #212734; }
+.hist-row + .hist-row{margin-top:6px}
+.hist-row:hover{background:#161a20}
 
-/* scrollbars discretas */
-*::-webkit-scrollbar{ width:10px; height:10px }
-*::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
-*::-webkit-scrollbar-track{ background:#10131A }
+/* Scrollbars discretas */
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
+*::-webkit-scrollbar-track{background:#0F1115}
 </style>
+
 
 """, unsafe_allow_html=True)
 
