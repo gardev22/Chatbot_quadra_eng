@@ -43,19 +43,15 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== MARCAÇÃO (remove **asteriscos** renderizando como HTML) ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte marcações simples de markdown para HTML sem quebrar layout."""
     if not text:
         return ""
-    # Links clicáveis (antes de mexer em negrito/itálico)
     text = re.sub(
         r'(https?://[^\s<>"\]]+)',
         r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
         text,
     )
-    # **negrito** e *itálico*
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    # Quebras de linha
     text = text.replace("\n", "<br>")
     return text
 
@@ -63,7 +59,6 @@ def formatar_markdown_basico(text: str) -> str:
 _url_re = re.compile(r'(https?://[^\s<>"\]]+)', re.IGNORECASE)
 
 def linkify(text: str) -> str:
-    # mantém seu comportamento + conversão de markdown básico
     return formatar_markdown_basico(text or "")
 
 def reenviar_pergunta(q: str):
@@ -77,7 +72,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (restaurado do seu layout original) ======
+# ====== CSS ======
 st.markdown("""
 <style>
 *{box-sizing:border-box}
@@ -94,12 +89,11 @@ img.logo{height:44px!important;width:auto!important}
   --input-max:900px;
   --input-bottom:60px;
 
-  /* PALETA ESCURA (estilo GPT) */
-  --bg:#0F1115;             /* fundo do app */
-  --panel:#0B0D10;          /* sidebar 100% preta */
-  --panel-header:#14171C;   /* header/topo */
-  --panel-alt:#1C1F26;      /* área do chat */
-  --border:#242833;         /* bordas discretas */
+  --bg:#0F1115;
+  --panel:#0B0D10;
+  --panel-header:#14171C;
+  --panel-alt:#1C1F26;
+  --border:#242833;
 
   --text:#E5E7EB;
   --text-dim:#C9D1D9;
@@ -117,7 +111,7 @@ img.logo{height:44px!important;width:auto!important}
   --sidebar-w:270px;
 }
 
-/* remover barra padrão do Streamlit e padronizar fundo */
+/* Chrome do Streamlit / fundo */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
@@ -128,7 +122,7 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 .block-container{padding:0!important;min-height:0!important}
 .stApp{background:var(--bg)!important;color:var(--text)!important}
 
-/* ===== header fixo ===== */
+/* Header fixo */
 .header{
   position:fixed;inset:0 0 auto 0;height:var(--header-height);
   display:flex;align-items:center;justify-content:space-between;
@@ -144,7 +138,7 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 }
 .header a:hover{color:var(--link-hover)!important;border-color:#3B4250}
 
-/* ===== sidebar 100% preta ===== */
+/* Sidebar preta */
 section[data-testid="stSidebar"]{
   position:fixed!important;
   top:var(--header-height)!important;
@@ -162,24 +156,19 @@ section[data-testid="stSidebar"]{
   overflow:hidden!important;
   color:var(--text);
 }
-section[data-testid="stSidebar"]>div{
-  height:100%!important;
-  overflow-y:auto!important;
-  padding:0 12px 12px 12px!important;
-  margin:0!important;
-}
+section[data-testid="stSidebar"]>div{height:100%!important;overflow-y:auto!important;padding:0 12px 12px 12px!important;margin:0!important}
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
 .content{max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px}
 
-/* ===== cartão do chat: sem borda nem contorno cinza ===== */
+/* Cartão do chat */
 .chat-card{
   position:relative;
   background:var(--panel-alt);
   border-radius:12px 12px 0 0;
-  border:none;            /* remove contorno */
-  box-shadow:none;        /* remove sombra grande */
+  border:none;
+  box-shadow:none;
   padding:20px;
   height:var(--card-height);
   overflow-y:auto; scroll-behavior:smooth;
@@ -193,16 +182,14 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   max-width:88%;
   padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
   box-shadow:none; word-wrap:break-word; color:var(--text);
-  border:1px solid transparent; /* nada de borda visível */
+  border:1px solid transparent;
 }
 .bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
 .bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
-
-/* links no conteúdo */
 .chat-card a{ color:var(--link); text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) }
 
-/* ===== input escuro (sem branco) ===== */
+/* ChatInput cinza */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -211,20 +198,15 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   width:min(var(--input-max),96vw)!important;
   z-index:5000; background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important;
 }
-/* Capa externa do pill */
 [data-testid="stChatInput"] > div{
-  background:var(--input-bg) !important;              /* CINZA */
+  background:var(--input-bg) !important;
   border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35)!important;
   overflow:hidden;
   color:var(--text) !important;
 }
-/* Impede que filhos injetem fundo branco */
-[data-testid="stChatInput"] > div > div{
-  background:transparent !important;
-}
-/* Área de texto */
+[data-testid="stChatInput"] > div > div{ background:transparent !important }
 [data-testid="stChatInput"] textarea{
   background:transparent !important;
   color:var(--text) !important;
@@ -235,7 +217,6 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   height:auto !important; min-height:44px !important; max-height:220px !important; overflow-y:hidden !important;
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
-/* Ícone/botão de enviar */
 [data-testid="stChatInput"] button{
   margin-right:8px !important;
   background:transparent !important;
@@ -244,10 +225,14 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
-/* ===== remover completamente a “faixa” de baixo ===== */
-.bottom-gradient-fix{ display:none !important; }
+/* Remover “barra branca”: não escondemos o contêiner, só neutralizamos o fundo/efeitos */
+[data-testid="stBottomBlockContainer"]{
+  background:transparent !important;
+  box-shadow:none !important;
+  border:none !important;
+}
 
-/* ===== Sidebar (tipografia) ===== */
+/* Tipografia sidebar e scrollbars */
 .sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
 .sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
 .sidebar-sub{font-size:.88rem;color:var(--muted)}
@@ -257,32 +242,13 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 .sidebar-header{margin-top:-30px!important}
 .sidebar-bar{margin-top:-24px!important}
 
-/* Histórico */
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim)!important; line-height:1.35; border-radius:8px; }
 .hist-row + .hist-row{margin-top:6px}
 .hist-row:hover{background:#161a20}
 
-/* Scrollbars discretas */
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#0F1115}
-</style>
-""", unsafe_allow_html=True)
-
-# ====== (extra) remove decorações que criam “barra branca” e força fundo escuro ======
-st.markdown("""
-<style>
-[data-testid="stStatusWidget"],
-[data-testid="stDecoration"],
-[data-testid="StyledFullScreenContainer"],
-[data-testid="stBottomBlockContainer"]{
-  display: none !important;
-  height: 0 !important;
-  overflow: hidden !important;
-}
-html, body, .stApp, [data-testid="stAppViewContainer"]{
-  background: var(--bg) !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -335,13 +301,12 @@ for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
     msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
     if resposta:
-        r_html = linkify(resposta)  # <<< aqui formata **negrito** / *itálico*
+        r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-# âncora para auto-scroll
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
 st.markdown(
@@ -349,10 +314,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== SKIRT ======
-st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
-
-# ====== JS (mantido: ajusta espaço e auto-scroll) ======
+# ====== JS (ajusta espaço/auto-scroll) ======
 st.markdown("""
 <script>
 (function(){
