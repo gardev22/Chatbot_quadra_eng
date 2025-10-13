@@ -41,7 +41,7 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
-st.session_state.setdefault("_last_input", None)  # [FIX] debounce anti-duplicata
+st.session_state.setdefault("_last_input", None)  # debounce anti-duplicata
 
 # ====== MARCAÇÃO (markdown simples -> HTML seguro) ======
 def formatar_markdown_basico(text: str) -> str:
@@ -159,7 +159,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 
 /* ==== CHAT CARD ==== */
 #chatCard,.chat-card{
-  position:relative; z-index:1 !important;
+  position:relative; z-index:2 !important;
   background:var(--bg)!important;
   border:none!important; border-radius:0!important; box-shadow:none!important;
   padding:20px; height:var(--card-height); overflow-y:auto; scroll-behavior:smooth;
@@ -223,6 +223,30 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
+
+/* ==== STACKING ORDER / ANTI-OVERLAY FIX ==== */
+[data-testid="stAppViewContainer"]{
+  position: relative !important;
+  z-index: 0 !important;
+  transform: translateZ(0);
+}
+.content{
+  position: relative !important;
+  z-index: 1 !important;
+}
+.header{ z-index: 3 !important; }
+section[data-testid="stSidebar"]{ z-index: 2 !important; }
+[data-testid="StyledFullScreenContainer"],
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"]{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: -1 !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+body::before{ z-index: -2 !important; }
+html, body, .stApp{ isolation: isolate; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -342,12 +366,11 @@ pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 if pergunta and pergunta.strip():
     q = pergunta.strip()
 
-    # [FIX] Debounce: evita reprocessar o mesmo texto após o rerun
+    # Debounce: evita reprocessar o mesmo texto após o rerun
     if st.session_state._last_input == q and not st.session_state.awaiting_answer:
-        # já tratamos esse input; ignora silenciosamente
         pass
     else:
-        st.session_state._last_input = q  # marca como último
+        st.session_state._last_input = q
         st.session_state.historico.append((q, ""))
         st.session_state.pending_index = len(st.session_state.historico)-1
         st.session_state.pending_question = q
@@ -378,7 +401,7 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     st.session_state.pending_index = None
     st.session_state.pending_question = None
 
-    # [FIX] libera o debounce para o próximo envio
+    # libera o debounce para o próximo envio
     st.session_state._last_input = None
 
     do_rerun()
