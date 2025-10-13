@@ -80,13 +80,13 @@ def reenviar_pergunta(q: str):
 # ====== CSS (restaurado do seu layout original) ======
 st.markdown("""
 <style>
-/* ==== BASE / RESET ==== */
+/* ==== RESET ==== */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
-/* ==== VARS (um cinza único para tudo) ==== */
+/* ==== VARS (ajuste só aqui se quiser outro tom) ==== */
 :root{
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
@@ -97,8 +97,8 @@ img.logo{height:44px!important;width:auto!important}
   --input-bottom:60px;
   --sidebar-w:270px;
 
-  /* CINZA ÚNICO (tela toda) */
-  --bg:#1C1F26;          /* = fundo geral E fundo do chat */
+  /* tons */
+  --bg:#1C1F26;          /* fundo geral + chat */
   --panel:#0B0D10;       /* sidebar preta */
   --panel-header:#14171C;
   --border:#242833;
@@ -113,23 +113,24 @@ img.logo{height:44px!important;width:auto!important}
   --input-border:#323949;
 }
 
-/* ==== força fundo cinza em todo o app + overlay para matar qualquer faixa branca ==== */
-#root, html, body, .stApp, main, .stMain,
-.block-container, [data-testid="stAppViewContainer"]{
+/* ==== FUNDO UNIFICADO (mata qualquer faixa clara) ==== */
+html,body,#root,.stApp,main,.stMain,.block-container,
+[data-testid="stAppViewContainer"],[data-testid="stBottomBlockContainer"],
+[data-testid="stDecoration"],[data-testid="stStatusWidget"],
+[data-testid="StyledFullScreenContainer"]{
   background:var(--bg)!important; color:var(--text)!important;
   height:100dvh!important; max-height:100dvh!important; overflow:hidden!important;
 }
-/* overlay atrás de tudo cobrindo qualquer “vazamento” claro */
-body::before{
-  content:""; position:fixed; inset:0; background:var(--bg); z-index:-1; pointer-events:none;
-}
+/* tapete por trás cobrindo vazamentos */
+body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-1;pointer-events:none}
 
 /* ==== Chrome do Streamlit ==== */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
+.block-container{padding:0!important;min-height:0!important}
 
-/* ==== Header ==== */
+/* ==== HEADER ==== */
 .header{
   position:fixed; inset:0 0 auto 0; height:var(--header-height);
   display:flex; align-items:center; justify-content:space-between;
@@ -147,7 +148,7 @@ div[data-testid="stToolbar"]{display:none!important}
 }
 .header a:hover{color:var(--link-hover)!important; border-color:#3B4250!important}
 
-/* ==== Sidebar preta ==== */
+/* ==== SIDEBAR (preta) ==== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
   height:calc(100dvh - var(--header-height) - var(--skirt-h))!important;
@@ -161,37 +162,31 @@ section[data-testid="stSidebar"]>div{ height:100%!important; overflow-y:auto!imp
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 
-/* ==== Content ==== */
+/* ==== CONTENT ==== */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 
-/* ==== Cartão do chat (sem contorno/sombra e MESMO cinza do fundo) ==== */
-.chat-card{
-  position:relative;
-  background:var(--bg)!important;     /* mesmo tom do fundo */
-  border-radius:0!important;           /* sem cantos = “sem contorno” */
-  border:none!important;
-  box-shadow:none!important;
-  padding:20px;
-  height:var(--card-height);
-  overflow-y:auto; scroll-behavior:smooth;
+/* ==== CARTÃO DO CHAT (sem contorno/sombra e mesmo fundo) ==== */
+#chatCard,.chat-card{
+  position:relative; background:var(--bg)!important;
+  border:none!important; border-radius:0!important; box-shadow:none!important;
+  padding:20px; height:var(--card-height); overflow-y:auto; scroll-behavior:smooth;
   padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
   color:var(--text);
 }
 
-/* ==== Mensagens ==== */
+/* ==== MENSAGENS ==== */
 .message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
   max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
-  color:var(--text); word-wrap:break-word;
-  border:1px solid transparent!important; box-shadow:none!important;
+  color:var(--text); word-wrap:break-word; border:1px solid transparent!important; box-shadow:none!important;
 }
 .bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
 .bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
 .chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
 
-/* ==== Chat input 100% escuro ==== */
+/* ==== CHAT INPUT (escuro + caret branco) ==== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -202,25 +197,23 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 }
 [data-testid="stChatInput"] *{ background:transparent!important; color:var(--text)!important }
 [data-testid="stChatInput"]>div{
-  background:var(--input-bg)!important;
-  border:1px solid var(--input-border)!important;
-  border-radius:999px!important;
-  box-shadow:0 10px 24px rgba(0,0,0,.35)!important; overflow:hidden;
+  background:var(--input-bg)!important; border:1px solid var(--input-border)!important;
+  border-radius:999px!important; box-shadow:0 10px 24px rgba(0,0,0,.35)!important; overflow:hidden;
 }
 [data-testid="stChatInput"] textarea{
   width:100%!important; border:none!important; border-radius:999px!important;
   padding:18px 20px!important; font-size:16px!important; outline:none!important;
   height:auto!important; min-height:44px!important; max-height:220px!important; overflow-y:hidden!important;
-  color:var(--text)!important;
+  color:var(--text)!important; caret-color:#ffffff!important;   /* caret branco */
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted)!important }
 [data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--text-dim)!important }
 [data-testid="stChatInput"] svg{ fill:currentColor!important }
 
-/* ==== Barra inferior removida (garantia) ==== */
+/* ==== BARRA INFERIOR (garantia) ==== */
 .bottom-gradient-fix{ display:none!important }
 
-/* ==== Tipografia da sidebar ==== */
+/* ==== TIPOGRAFIA SIDEBAR ==== */
 .sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
 .sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
 .sidebar-sub{font-size:.88rem;color:var(--muted)}
@@ -233,11 +226,12 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 .hist-row + .hist-row{margin-top:6px}
 .hist-row:hover{background:#171b21}
 
-/* ==== Scrollbars escuras ==== */
+/* ==== SCROLLBARS ==== */
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
 </style>
+
 
 """, unsafe_allow_html=True)
 
