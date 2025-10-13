@@ -10,7 +10,7 @@ from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# ====== CONFIG DA PÁGINA (mantém seu favicon e título) ======
+# ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
 st.set_page_config(
     page_title="Chatbot Quadra",
@@ -25,7 +25,7 @@ def do_rerun():
     else:
         st.experimental_rerun()
 
-# ====== LOGO (para cabeçalho) ======
+# ====== LOGO (cabeçalho) ======
 def carregar_imagem_base64(path):
     if not os.path.exists(path):
         return None
@@ -42,32 +42,25 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== MARCAÇÃO (remove **asteriscos** renderizando como HTML) ======
+# ====== MARCAÇÃO (markdown simples -> HTML seguro) ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte marcações simples de markdown para HTML sem quebrar layout."""
     if not text:
         return ""
-    # Links clicáveis (antes de mexer em negrito/itálico)
     text = re.sub(
         r'(https?://[^\s<>"\]]+)',
         r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
         text,
     )
-    # **negrito** e *itálico*
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    # Quebras de linha
     text = text.replace("\n", "<br>")
     return text
 
-# ====== UTILS ======
-_url_re = re.compile(r'(https?://[^\s<>"\]]+)', re.IGNORECASE)
 def linkify(text: str) -> str:
-    # mantém seu comportamento + conversão de markdown básico
     return formatar_markdown_basico(text or "")
 
 def reenviar_pergunta(q: str):
-    q = (q or "").trim() if hasattr(str, "trim") else (q or "").strip()
+    q = (q or "").strip()
     if not q:
         return
     st.session_state.historico.append((q, ""))
@@ -77,7 +70,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (restaurado do seu layout original) ======
+# ====== CSS ======
 st.markdown("""
 <style>
 /* ==== RESET ==== */
@@ -86,20 +79,19 @@ html,body{margin:0;padding:0}
 img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
-/* ==== VARS (ajuste só aqui se quiser outro tom) ==== */
+/* ==== VARS ==== */
 :root{
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
-  --skirt-h:72px;
+  --skirt-h:0px;                  /* zera para evitar vãos */
   --chat-safe-gap:300px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --input-max:900px;
   --input-bottom:60px;
   --sidebar-w:270px;
 
-  /* tons */
-  --bg:#1C1F26;          /* fundo geral + chat */
-  --panel:#0B0D10;       /* sidebar preta */
+  --bg:#1C1F26;        /* fundo geral */
+  --panel:#0B0D10;     /* sidebar preta */
   --panel-header:#14171C;
   --border:#242833;
 
@@ -113,7 +105,7 @@ img.logo{height:44px!important;width:auto!important}
   --input-border:#323949;
 }
 
-/* ==== FUNDO UNIFICADO (mata qualquer faixa clara) ==== */
+/* ==== FUNDO UNIFICADO ==== */
 html,body,#root,.stApp,main,.stMain,.block-container,
 [data-testid="stAppViewContainer"],[data-testid="stBottomBlockContainer"],
 [data-testid="stDecoration"],[data-testid="stStatusWidget"],
@@ -121,8 +113,8 @@ html,body,#root,.stApp,main,.stMain,.block-container,
   background:var(--bg)!important; color:var(--text)!important;
   height:100dvh!important; max-height:100dvh!important; overflow:hidden!important;
 }
-/* tapete por trás cobrindo vazamentos */
-body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-1;pointer-events:none}
+/* tapete de segurança */
+body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-2;pointer-events:none}
 
 /* ==== Chrome do Streamlit ==== */
 header[data-testid="stHeader"]{display:none!important}
@@ -148,10 +140,10 @@ div[data-testid="stToolbar"]{display:none!important}
 }
 .header a:hover{color:var(--link-hover)!important; border-color:#3B4250!important}
 
-/* ===== SIDEBAR (preta) ===== */
+/* ==== SIDEBAR ==== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
-  height:calc(100dvh - var(--header-height))!important;   /* cobre até o rodapé */
+  height:calc(100dvh - var(--header-height))!important;
   width:var(--sidebar-w)!important; min-width:var(--sidebar-w)!important;
   margin:0!important; padding:0!important; background:var(--panel)!important;
   border-right:1px solid var(--border); z-index:900!important; transform:none!important;
@@ -165,9 +157,10 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 /* ==== CONTENT ==== */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 
-/* ==== CARTÃO DO CHAT (sem contorno/sombra e mesmo fundo) ==== */
+/* ==== CHAT CARD ==== */
 #chatCard,.chat-card{
-  position:relative; background:var(--bg)!important;
+  position:relative; z-index:1 !important;
+  background:var(--bg)!important;
   border:none!important; border-radius:0!important; box-shadow:none!important;
   padding:20px; height:var(--card-height); overflow-y:auto; scroll-behavior:smooth;
   padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
@@ -182,11 +175,14 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
   max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
   color:var(--text); word-wrap:break-word; border:1px solid transparent!important; box-shadow:none!important;
 }
-.bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
-.bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
-.chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
+.bubble.user{background:var(--bubble-user)!important; border-bottom-right-radius:6px}
+.bubble.assistant{background:var(--bubble-assistant)!important; border-bottom-left-radius:6px}
+/* texto e links sempre visíveis */
+.bubble, .bubble *{ color:#E5E7EB !important; }
+.bubble a{ color:#B9C0CA !important; text-decoration:underline; }
+.bubble a:hover{ color:#FFFFFF !important; }
 
-/* ==== CHAT INPUT (escuro + caret branco) ==== */
+/* ==== INPUT ==== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -210,10 +206,8 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 [data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--text-dim)!important }
 [data-testid="stChatInput"] svg{ fill:currentColor!important }
 
-/* ==== BARRA INFERIOR (garantia) ==== */
+/* ==== OUTROS ==== */
 .bottom-gradient-fix{ display:none!important }
-
-/* ==== TIPOGRAFIA SIDEBAR ==== */
 .sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
 .sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
 .sidebar-sub{font-size:.88rem;color:var(--muted)}
@@ -230,29 +224,7 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
-
-<style>
-/* --- PATCH: garante que as bolhas e o texto apareçam --- */
-
-/* As bolhas precisam ficar acima de qualquer camada e com cor própria */
-#chatCard, .chat-card{ position:relative; z-index:1 !important; }
-.bubble.user{ background:#242932 !important; }
-.bubble.assistant{ background:#242b35 !important; }
-
-/* Força a cor do texto dentro das bolhas (markdown, links, <b>, <i>, etc.) */
-.bubble, .bubble *{ color:#E5E7EB !important; }
-
-/* Links legíveis dentro das respostas */
-.bubble a{ color:#B9C0CA !important; text-decoration:underline; }
-.bubble a:hover{ color:#FFFFFF !important; }
-
-/* A camada de “tapete” lá do fundo fica ainda mais atrás (não cobre nada) */
-body::before{ z-index:-2 !important; }
 </style>
-
-</style>
-
-
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML ======
@@ -271,9 +243,9 @@ st.markdown(f"""
     </div>
   </div>
   <div class="header-right">
-    <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
-    <div style="text-align:right;font-size:0.9rem;color:#111827;">
-      Usuário Demo<br><span style="font-weight:400;color:#6b7280;font-size:0.8rem;">usuario@exemplo.com</span>
+    <a href="#" style="text-decoration:none;color:#B9C0CA;font-weight:600;border:1px solid #242833;padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
+    <div style="text-align:right;font-size:0.9rem;color:#E5E7EB;">
+      Usuário Demo<br><span style="font-weight:400;color:#9AA4B2;font-size:0.8rem;">usuario@exemplo.com</span>
     </div>
     <div class="user-circle">U</div>
   </div>
@@ -304,21 +276,18 @@ for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
     msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
     if resposta:
-        r_html = linkify(resposta)  # <<< aqui formata **negrito** / *itálico*
+        r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if not msgs_html:
-    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
+    msgs_html.append('<div style="color:#9aa4b2;text-align:center;margin-top:20px;">.</div>')
 
 # âncora para auto-scroll
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
 st.markdown(f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>', unsafe_allow_html=True)
 
-# ====== SKIRT ======
-st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
-
-# ====== JS (mantido: ajusta espaço e auto-scroll) ======
+# ====== JS: ajusta espaço do input e auto-scroll ======
 st.markdown("""
 <script>
 (function(){
@@ -327,15 +296,12 @@ st.markdown("""
     const card  = document.getElementById('chatCard');
     if(!input||!card) return;
     const rect = input.getBoundingClientRect();
-    const gapVar = getComputedStyle(document.documentElement)
-      .getPropertyValue('--chat-safe-gap').trim();
+    const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
     const gap = parseInt(gapVar || '24', 10);
     const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
   }
-
   function autoGrow(){
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
     if(!ta) return;
@@ -345,38 +311,23 @@ st.markdown("""
     ta.style.height = desired+'px';
     ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
   }
-
   function scrollToEnd(smooth=true){
     const end = document.getElementById('chatEnd');
     if(!end) return;
     end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
-
   const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
-
-  window.addEventListener('load',()=>{
-    autoGrow();
-    ajustaEspaco();
-    scrollToEnd(false);
-  });
+  window.addEventListener('load',()=>{autoGrow();ajustaEspaco();scrollToEnd(false);});
   window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
-
   document.addEventListener('input',(e)=>{
-    if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
-      autoGrow();ajustaEspaco();
-    }
+    if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){autoGrow();ajustaEspaco();}
   });
-
   setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
   setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
-
   const card = document.getElementById('chatCard');
   if(card){
-    const mo = new MutationObserver(()=>{
-      ajustaEspaco();
-      scrollToEnd(true);
-    });
+    const mo = new MutationObserver(()=>{ajustaEspaco();scrollToEnd(true);});
     mo.observe(card, {childList:true, subtree:false});
   }
 })();
@@ -392,12 +343,12 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
     st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer=True
-    st.session_state.answering_started=False
+    st.session_state.awaiting_answer = True
+    st.session_state.answering_started = False
     do_rerun()
 
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started=True
+    st.session_state.answering_started = True
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
