@@ -95,7 +95,7 @@ img.logo{height:44px!important;width:auto!important}
   --input-shadow:0 10px 24px rgba(14,47,120,.10);
   --side-blue:#f4f9ff;
   --skirt-bg:#ffffff;
-  --sidebar-w:300px;
+  --sidebar-w:250px;
 }
 
 header[data-testid="stHeader"]{display:none!important}
