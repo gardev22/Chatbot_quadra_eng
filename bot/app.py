@@ -148,10 +148,10 @@ div[data-testid="stToolbar"]{display:none!important}
 }
 .header a:hover{color:var(--link-hover)!important; border-color:#3B4250!important}
 
-/* ==== SIDEBAR (preta) ==== */
+/* ===== SIDEBAR (preta) ===== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
-  height:calc(100dvh - var(--header-height) - var(--skirt-h))!important;
+  height:calc(100dvh - var(--header-height))!important;   /* cobre até o rodapé */
   width:var(--sidebar-w)!important; min-width:var(--sidebar-w)!important;
   margin:0!important; padding:0!important; background:var(--panel)!important;
   border-right:1px solid var(--border); z-index:900!important; transform:none!important;
