@@ -84,20 +84,40 @@ st.markdown("""
 img.logo{height:44px!important;width:auto!important}
 
 :root{
+  /* layout invariável */
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
   --skirt-h:72px;
-  --chat-safe-gap: 300px;           /* folga para o input não sobrepor */
+  --chat-safe-gap:300px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
-  --quadra-blue:#cfe3ff;
   --input-max:900px;
   --input-bottom:60px;
-  --input-shadow:0 10px 24px rgba(14,47,120,.10);
-  --side-blue:#f4f9ff;
-  --skirt-bg:#ffffff;
-  --sidebar-w:270px;
+
+  /* ===== PALETA DARK (preto e cinza estilo GPT) ===== */
+  --bg:#0F1115;              /* fundo geral */
+  --bg-soft:#12151B;         /* faixas sutis */
+  --panel:#181B22;           /* painéis/side/header */
+  --panel-alt:#1F232D;       /* cartão principal (chat) */
+  --border:#2A2F3A;          /* bordas */
+  --shadow:0 14px 36px rgba(0,0,0,.35);
+
+  --text:#E5E7EB;            /* texto principal */
+  --text-dim:#CBD5E1;        /* texto secundário */
+  --muted:#9AA4B2;           /* texto apagado */
+
+  --link:#AAB3C2;            /* links discretos */
+  --link-hover:#ECEFF3;
+
+  --bubble-user:#1D232F;
+  --bubble-assistant:#222733;
+
+  --input-bg:#1F2330;
+  --input-border:#51576D;
+
+  --sidebar-w:270px;         /* largura do histórico (mantenha/ajuste se quiser) */
 }
 
+/* streamlit “chrome” */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
@@ -105,34 +125,36 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
   height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
 }
 .block-container{padding:0!important;min-height:0!important}
-.stApp{background: var(--side-blue) !important}
+.stApp{background: var(--bg) !important; color: var(--text) !important}
 
 /* ===== header fixo ===== */
-.header{position:fixed;inset:0 0 auto 0;height:var(--header-height);
-display:flex;align-items:center;justify-content:space-between;
-padding:10px 16px;background:#fff;z-index:1000;
-border-bottom:1px solid rgba(59,130,246,.08);box-shadow:0 6px 18px rgba(14,47,120,.04)}
-.header-left{display:flex;align-items:center;gap:10px;font-weight:600}
-.header-left .title-sub{font-weight:500;font-size:.85rem;color:#6b7280;margin-top:-4px}
-.header-right{display:flex;align-items:center;gap:12px}
+.header{
+  position:fixed;inset:0 0 auto 0;height:var(--header-height);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;background:var(--panel);z-index:1000;
+  border-bottom:1px solid var(--border);box-shadow:0 6px 18px rgba(0,0,0,.20)
+}
+.header-left{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text)}
+.header-left .title-sub{font-weight:500;font-size:.85rem;color:var(--muted);margin-top:-4px}
+.header-right{display:flex;align-items:center;gap:12px;color:var(--text)}
+.header a{
+  color:var(--link) !important; text-decoration:none;
+  border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
+}
+.header a:hover{ color:var(--link-hover)!important; border-color:#3B4250 }
 
-/* ===== sidebar fixa (como estava) ===== */
+/* ===== sidebar fixa ===== */
 section[data-testid="stSidebar"]{
   position: fixed !important; top: var(--header-height) !important; left:0 !important;
   height: calc(100dvh - var(--header-height) - var(--skirt-h)) !important;
   width: var(--sidebar-w) !important; min-width: var(--sidebar-w) !important;
-  margin:0!important; padding:0!important; background:#fff!important;
-  border-right:1px solid rgba(59,130,246,.10); z-index:900 !important; transform:none !important;
-  visibility: visible !important; overflow:hidden !important;
+  margin:0!important; padding:0!important; background:var(--panel)!important;
+  border-right:1px solid var(--border); z-index:900 !important; transform:none !important;
+  visibility: visible !important; overflow:hidden !important; color: var(--text);
 }
 section[data-testid="stSidebar"] > div{
-  height:100% !important;
-  overflow-y:auto !important;
-  padding-top: -10px !important;
-  padding-right: 12px !important;
-  padding-bottom: 12px !important;
-  padding-left: 12px !important;
-  margin:0 !important;
+  height:100% !important; overflow-y:auto !important;
+  padding: 0 12px 12px 12px !important; margin:0 !important;
 }
 div[data-testid="stSidebarCollapseButton"]{ display: none !important; }
 div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important; }
@@ -146,28 +168,36 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 /* ===== chat card ===== */
 .chat-card{
   position:relative;
-  background:linear-gradient(135deg,#fff,#fbfdff);
+  background: var(--panel-alt);
   border-radius:12px 12px 0 0;
-  border:1px solid var(--quadra-blue);
+  border:1px solid var(--border);
   border-bottom:none;
-  box-shadow:0 14px 36px rgba(14,47,120,.04);
+  box-shadow: var(--shadow);
   padding:20px;
   height:var(--card-height);
   overflow-y:auto;
   scroll-behavior:smooth;
-  /* reserva para o input não sobrepor */
   padding-bottom: var(--chat-safe-gap);
   scroll-padding-bottom: var(--chat-safe-gap);
+  color: var(--text);
 }
 
 .message-row{display:flex;margin:12px 4px; scroll-margin-bottom: calc(var(--chat-safe-gap) + 16px); }
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
-.bubble{max-width:88%;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.45;box-shadow:0 6px 14px rgba(15,23,42,.03);word-wrap:break-word}
-.bubble.user{background:linear-gradient(180deg,#fff,#eef2ff);border:1px solid rgba(59,130,246,0.14);border-bottom-right-radius:6px}
-.bubble.assistant{background:#f8fafc;border:1px solid rgba(15,23,42,.06);border-bottom-left-radius:6px}
+.bubble{
+  max-width:88%;padding:14px 16px;border-radius:12px;font-size:15px;line-height:1.45;
+  box-shadow:0 6px 14px rgba(0,0,0,.25);word-wrap:break-word; color: var(--text);
+  border:1px solid var(--border);
+}
+.bubble.user{background: var(--bubble-user); border-bottom-right-radius:6px}
+.bubble.assistant{background: var(--bubble-assistant); border-bottom-left-radius:6px}
 
-/* ===== input reposicionado (mesmos valores que você usava) ===== */
+/* ===== links no conteúdo ===== */
+.chat-card a{ color: var(--link); text-decoration: underline; }
+.chat-card a:hover{ color: var(--link-hover); }
+
+/* ===== input (mesma posição, só cores) ===== */
 [data-testid="stChatInput"]{
   position: fixed !important;
   left: calc( var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2 ) !important;
@@ -181,62 +211,59 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
   padding: 0 !important;
 }
 [data-testid="stChatInput"] > div{
-  width: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #ffffff !important;
-  border: 1.5px solid #2f64d0 !important;
+  width: 100% !important; margin: 0 !important; padding: 0 !important;
+  background: var(--input-bg) !important;
+  border: 1.5px solid var(--input-border) !important;
   border-radius: 999px !important;
-  box-shadow: var(--input-shadow) !important;
-  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(0,0,0,.35) !important;
+  overflow: hidden; color: var(--text);
 }
 [data-testid="stChatInput"] textarea{
-  width: 100% !important;
-  background: transparent !important;
-  border: none !important;
-  border-radius: 999px !important;
-  padding: 18px 20px !important;
-  font-size: 16px !important;
-  box-shadow: none !important;
-  outline: none !important;
-  height: auto !important;
-  min-height: 44px !important;
-  max-height: 220px !important;
+  width: 100% !important; background: transparent !important; color: var(--text) !important;
+  border: none !important; border-radius: 999px !important;
+  padding: 18px 20px !important; font-size: 16px !important;
+  box-shadow: none !important; outline: none !important;
+  height: auto !important; min-height: 44px !important; max-height: 220px !important;
   overflow-y: hidden !important;
 }
+[data-testid="stChatInput"] textarea::placeholder{ color: var(--muted) !important; }
 [data-testid="stChatInput"] button{ margin-right: 8px !important; }
 
-/* ===== barra branca inferior (skirt) — mantida ===== */
+/* ===== barra inferior ===== */
 .bottom-gradient-fix{
-  border-top: 1.5px solid #e5e7eb;
+  border-top: 1.5px solid var(--border);
   position: fixed; left: 0; right: 0; bottom: 0;
-  height: var(--skirt-h); background: var(--skirt-bg) !important;
+  height: var(--skirt-h); background: var(--panel) !important;
   z-index: 10 !important; pointer-events: none;
 }
 
-/* ===== Sidebar títulos (como você havia feito) ===== */
-.sidebar-header{ font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:#1f2937; margin:0 4px -2px 2px; }
+/* ===== Sidebar tipografia ===== */
+.sidebar-header{ font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text); margin:0 4px -2px 2px; }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
-.sidebar-sub{ font-size:.88rem; color:#6b7280; }
-
-.hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
+.sidebar-sub{ font-size:.88rem; color:var(--muted); }
+.hist-empty{ color:var(--muted);font-size:.9rem;padding:8px 10px; }
 
 div[data-testid="stSidebarContent"]{ padding-top: 15 !important; }
 div[data-testid="stSidebarContent"] > *:first-child{ margin-top: 0 !important; }
 
-/* acabamento: sobe um tiquinho o título e a barra */
+/* acabamento (mantidos) */
 .sidebar-header{ margin-top: -30px !important; }
 .sidebar-bar{ margin-top: -24px !important; }
 
-/* Itens do histórico (perguntas) */
+/* Itens do histórico */
 .hist-row{
-  padding: 6px 6px;
-  font-size: 1.1rem;
-  color: #4b5563 !important;
-  line-height: 1.35;
+  padding: 6px 6px; font-size: 1.1rem; color: var(--text-dim) !important; line-height: 1.35;
+  border-radius:8px;
 }
 .hist-row + .hist-row{ margin-top: 6px; }
+.hist-row:hover{ background: #212734; }
+
+/* scrollbars discretas */
+*::-webkit-scrollbar{ width:10px; height:10px }
+*::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
+*::-webkit-scrollbar-track{ background:#10131A }
 </style>
+
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML ======
