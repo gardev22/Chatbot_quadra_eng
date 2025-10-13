@@ -119,8 +119,8 @@ html,body,#root,.stApp,main,.stMain,.block-container,
   background:var(--bg)!important; color:var(--text)!important;
   height:100dvh!important; max-height:100dvh!important; overflow:hidden!important;
 }
-/* tapete por trás cobrindo vazamentos */
-body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-2;pointer-events:none}  /* -2 para ficar atrás de tudo */
+/* tapete por trás cobrindo vazamentos - fica atrás de tudo */
+body::before{content:"";position:fixed;inset:0;background:var(--bg);z-index:-2;pointer-events:none}
 
 /* ==== Chrome do Streamlit ==== */
 header[data-testid="stHeader"]{display:none!important}
@@ -166,20 +166,20 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w)!important }
 /* ==== CARTÃO DO CHAT (sem contorno/sombra e mesmo fundo) ==== */
 #chatCard,.chat-card{
   position:relative;
-  z-index:50 !important;                 /* GARANTE que o chat fique acima de qualquer overlay */
+  z-index:50 !important;                 /* garante que o chat fique acima de overlays */
   background:var(--bg)!important;        /* mesmo tom do fundo */
-  border:none!important;
-  border-radius:0!important;
-  box-shadow:none!important;
+  border:none!important; border-radius:0!important; box-shadow:none!important;
   padding:20px;
   height:var(--card-height);
   overflow-y:auto; scroll-behavior:smooth;
   padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
   color:var(--text);
 }
+/* tudo dentro do chat também fica acima */
+#chatCard *, .chat-card *{ position:relative; z-index:51 !important; }
 
 /* ==== MENSAGENS ==== */
-.message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
+.message-row{display:flex!important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px); opacity:1!important; visibility:visible!important;}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
@@ -236,7 +236,7 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
 
-/* ==== PATCH anti-overlay (remove elementos UI que podem cobrir o chat) ==== */
+/* ==== Remove decorações/overlays que podem cobrir o chat ==== */
 [data-testid="stStatusWidget"],
 [data-testid="stDecoration"],
 [data-testid="StyledFullScreenContainer"]{
