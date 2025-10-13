@@ -345,28 +345,23 @@ pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
 # ====== FLUXO (3 fases com debounce) ======
 
-# Fase 1: usuário enviou
+# ====== FLUXO (3 fases com debounce) ======
+
+# Fase 1: usuário enviou a pergunta
 if pergunta and pergunta.strip():
     q = pergunta.strip()
 
-    # Debounce: evita reprocessar o mesmo texto após o rerun
-    if st.session_state._last_input == q and not st.session_state.awaiting_answer:
-        pass
-    else:
+    # Debounce: evita reprocessar o mesmo texto
+    if st.session_state._last_input != q:
         st.session_state._last_input = q
         st.session_state.historico.append((q, ""))
-        st.session_state.pending_index = len(st.session_state.historico)-1
+        st.session_state.pending_index = len(st.session_state.historico) - 1
         st.session_state.pending_question = q
         st.session_state.awaiting_answer = True
-        st.session_state.answering_started = False
-        do_rerun()
+        st.session_state.answering_started = True  # já marca como iniciando
+        st.experimental_rerun()
 
-# Fase 2: sinaliza início do processamento
-if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started = True
-    do_rerun()
-
-# Fase 3: chama backend e grava resposta
+# Fase 2: processa resposta (sem novo rerun até terminar)
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
         resposta = responder_pergunta(st.session_state.pending_question)
@@ -378,13 +373,11 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    # limpa flags
+    # Limpa estados
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
     st.session_state.pending_index = None
     st.session_state.pending_question = None
-
-    # libera o debounce para o próximo envio
     st.session_state._last_input = None
 
-    do_rerun()
+    st.experimental_rerun()
