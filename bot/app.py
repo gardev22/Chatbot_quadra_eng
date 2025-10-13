@@ -48,9 +48,11 @@ def formatar_markdown_basico(text: str) -> str:
     if not text:
         return ""
     # Links clicáveis (antes de mexer em negrito/itálico)
-    text = re.sub(r'(https?://[^\s<>"\]]+)',
-                  r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
-                  text)
+    text = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
+        text,
+    )
     # **negrito** e *itálico*
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
@@ -68,7 +70,7 @@ def reenviar_pergunta(q: str):
     q = (q or "").trim() if hasattr(str, "trim") else (q or "").strip()
     if not q:
         return
-    st.session_state.historico.append((q, "")) 
+    st.session_state.historico.append((q, ""))
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
     st.session_state.awaiting_answer = True
@@ -217,9 +219,6 @@ div[data-testid="stAppViewContainer"]{ margin-left: var(--sidebar-w) !important;
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px; }
 .sidebar-sub{ font-size:.88rem; color:#6b7280; }
 
-.trash-wrap{display:flex;align-items:center;justify-content:flex-end;height:28px;margin-left:6px;}
-.trash-wrap button{background: transparent !important;border: none !important;box-shadow: none !important;width: 28px !important;height: 28px !important;font-size: 18px !important;line-height: 1 !important;cursor: pointer !important;display: flex !important;align-items: center !important;justify-content: center !important;margin:0 !important;padding:0 !important;}
-
 .hist-empty{ color:#9ca3af;font-size:.9rem;padding:8px 10px; }
 
 div[data-testid="stSidebarContent"]{ padding-top: 15 !important; }
@@ -241,7 +240,11 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top: 0 !important; }
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML ======
-logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />' if logo_b64 else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+logo_img_tag = (
+    f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
+    if logo_b64
+    else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+)
 st.markdown(f"""
 <div class="header">
   <div class="header-left">
@@ -267,9 +270,6 @@ with st.sidebar:
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
         <div class="sidebar-sub">Perguntas desta sessão</div>
-        <div class="trash-wrap">
-            <button onclick="document.dispatchEvent(new CustomEvent('trash_clicked'))">🗑️</button>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -281,20 +281,6 @@ with st.sidebar:
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
-
-# JS para capturar clique da lixeira (mantido)
-st.markdown("""
-<script>
-document.addEventListener('trash_clicked', () => {
-    fetch('/_stcore/trash', {method:'POST'}).then(()=>location.reload());
-});
-</script>
-""", unsafe_allow_html=True)
-
-# Python para resetar histórico quando a lixeira é clicada (mantido)
-if st.query_params.get("trash"):
-    st.session_state.historico = []
-    do_rerun()
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
@@ -387,7 +373,7 @@ pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 # ====== FLUXO ======
 if pergunta and pergunta.strip():
     q = pergunta.strip()
-    st.session_state.historico.append((q, "")) 
+    st.session_state.historico.append((q, ""))
     st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
     st.session_state.awaiting_answer=True
