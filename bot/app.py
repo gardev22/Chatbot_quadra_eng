@@ -230,6 +230,26 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#1C1F26}
+
+<style>
+/* --- PATCH: garante que as bolhas e o texto apareçam --- */
+
+/* As bolhas precisam ficar acima de qualquer camada e com cor própria */
+#chatCard, .chat-card{ position:relative; z-index:1 !important; }
+.bubble.user{ background:#242932 !important; }
+.bubble.assistant{ background:#242b35 !important; }
+
+/* Força a cor do texto dentro das bolhas (markdown, links, <b>, <i>, etc.) */
+.bubble, .bubble *{ color:#E5E7EB !important; }
+
+/* Links legíveis dentro das respostas */
+.bubble a{ color:#B9C0CA !important; text-decoration:underline; }
+.bubble a:hover{ color:#FFFFFF !important; }
+
+/* A camada de “tapete” lá do fundo fica ainda mais atrás (não cobre nada) */
+body::before{ z-index:-2 !important; }
+</style>
+
 </style>
 
 
