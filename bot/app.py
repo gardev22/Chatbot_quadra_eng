@@ -77,9 +77,10 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (restaurado do seu layout original) ======
+# ====== CSS (apenas VISUAL, não mexe no fluxo) ======
 st.markdown("""
 <style>
+/* ===== RESET & VARS ===== */
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 img{max-width:100%;height:auto;display:inline-block}
@@ -88,121 +89,99 @@ img.logo{height:44px!important;width:auto!important}
 :root{
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
-  --skirt-h:72px;
-  --chat-safe-gap:300px;
+  --chat-safe-gap:260px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --input-max:900px;
   --input-bottom:60px;
-
-  /* PALETA ESCURA (estilo GPT) */
-  --bg:#0F1115;             /* fundo do app */
-  --panel:#0B0D10;          /* sidebar 100% preta */
-  --panel-header:#14171C;   /* header/topo */
-  --panel-alt:#1C1F26;      /* área do chat */
-  --border:#242833;         /* bordas discretas */
-
-  --text:#E5E7EB;
-  --text-dim:#C9D1D9;
-  --muted:#9AA4B2;
-
-  --link:#B9C0CA;
-  --link-hover:#FFFFFF;
-
-  --bubble-user:#222833;
-  --bubble-assistant:#232833;
-
-  --input-bg:#1E222B;
-  --input-border:#323949;
-
   --sidebar-w:270px;
+
+  /* Paleta escura estilo GPT */
+  --bg:#0F1115;            /* fundo geral (tudo fora do histórico) */
+  --panel:#0B0D10;         /* sidebar preta */
+  --panel-header:#14171C;  /* header/topo */
+  --border:#242833;
+
+  --text:#E5E7EB;          /* padroniza textos (nada apagado) */
+  --muted:#B7C0CC;
+
+  --bubble-user:#222833;   /* bolha usuário */
+  --bubble-assist:#232833; /* bolha assistente */
+
+  --input-bg:#20242D;      /* ChatInput CINZA */
+  --input-border:#323949;
 }
 
-/* remover barra padrão do Streamlit e padronizar fundo */
-header[data-testid="stHeader"]{display:none!important}
-div[data-testid="stToolbar"]{display:none!important}
-#MainMenu,footer{visibility:hidden;height:0!important}
+/* ===== Remove barras/overlays brancos do Streamlit ===== */
+header[data-testid="stHeader"], div[data-testid="stToolbar"]{display:none!important}
+#MainMenu, footer{visibility:hidden;height:0!important}
+[data-testid="stStatusWidget"],
+[data-testid="stDecoration"],
+[data-testid="StyledFullScreenContainer"],
+[data-testid="stBottomBlockContainer"]{display:none!important}
 
+/* ===== Plano de fundo e containers ===== */
 html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"]{
-  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
+  background:var(--bg)!important; color:var(--text)!important;
+  height:100dvh!important; max-height:100dvh!important; overflow:hidden!important;
 }
 .block-container{padding:0!important;min-height:0!important}
-.stApp{background:var(--bg)!important;color:var(--text)!important}
 
-/* ===== header fixo ===== */
+/* ===== Header fixo ===== */
 .header{
-  position:fixed;inset:0 0 auto 0;height:var(--header-height);
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px;background:var(--panel-header);z-index:1000;
+  position:fixed; inset:0 0 auto 0; height:var(--header-height);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px; background:var(--panel-header); z-index:1000;
   border-bottom:1px solid var(--border);
 }
-.header-left{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text)}
-.header-left .title-sub{font-weight:500;font-size:.85rem;color:var(--muted);margin-top:-4px}
-.header-right{display:flex;align-items:center;gap:12px;color:var(--text)}
+.header-left{display:flex;align-items:center;gap:10px}
+.header-left,.header-right,.header *{color:var(--text)!important}
 .header a{
-  color:var(--link)!important;text-decoration:none;
-  border:1px solid var(--border);padding:8px 12px;border-radius:10px;display:inline-block;
+  text-decoration:none; color:var(--text)!important;
+  border:1px solid var(--border); padding:8px 12px; border-radius:10px;
 }
-.header a:hover{color:var(--link-hover)!important;border-color:#3B4250}
+.header a:hover{filter:brightness(1.15)}
 
-/* ===== sidebar 100% preta ===== */
+/* ===== Sidebar escura ===== */
 section[data-testid="stSidebar"]{
-  position:fixed!important;
-  top:var(--header-height)!important;
-  left:0!important;
-  height:calc(100dvh - var(--header-height) - var(--skirt-h))!important;
-  width:var(--sidebar-w)!important;
-  min-width:var(--sidebar-w)!important;
-  margin:0!important;
-  padding:0!important;
-  background:var(--panel)!important;
-  border-right:1px solid var(--border);
-  z-index:900!important;
-  transform:none!important;
-  visibility:visible!important;
-  overflow:hidden!important;
-  color:var(--text);
+  position:fixed!important; top:var(--header-height)!important; left:0!important;
+  height:calc(100dvh - var(--header-height))!important;
+  width:var(--sidebar-w)!important; min-width:var(--sidebar-w)!important;
+  margin:0!important; padding:0!important; background:var(--panel)!important;
+  border-right:1px solid var(--border); z-index:900!important; color:var(--text)!important;
 }
-section[data-testid="stSidebar"]>div{
-  height:100%!important;
-  overflow-y:auto!important;
-  padding:0 12px 12px 12px!important;
-  margin:0!important;
-}
+section[data-testid="stSidebar"] *{color:var(--text)!important}
+section[data-testid="stSidebar"]>div{height:100%!important; overflow-y:auto!important; padding:0 12px 12px 12px!important}
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
-.content{max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px}
-
-/* ===== cartão do chat: sem borda nem contorno cinza ===== */
+/* ===== Área principal (sem “quadrado”; tudo cinza como GPT) ===== */
+.content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 .chat-card{
   position:relative;
-  background:var(--panel-alt);
-  border-radius:12px 12px 0 0;
-  border:none;            /* remove contorno */
-  box-shadow:none;        /* remove sombra grande */
-  padding:20px;
-  height:var(--card-height);
+  background:transparent!important;   /* remove o quadrado */
+  border:none!important; box-shadow:none!important; border-radius:0!important;
+  padding:20px; height:var(--card-height);
   overflow-y:auto; scroll-behavior:smooth;
   padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
-  color:var(--text);
+  color:var(--text)!important;
 }
+/* garante que nada fique “apagado” */
+.chat-card *, .stMarkdown, .stMarkdown *{ color:var(--text)!important; opacity:1!important }
+
+/* ===== Mensagens ===== */
 .message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
   max-width:88%;
   padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
-  box-shadow:none; word-wrap:break-word; color:var(--text);
-  border:1px solid transparent; /* nada de borda visível */
+  word-wrap:break-word; border:1px solid transparent; box-shadow:none;
 }
 .bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
-.bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
+.bubble.assistant{background:var(--bubble-assist); border-bottom-left-radius:6px}
+.chat-card a{ text-decoration:underline; color:#c9d7ff!important }
 
-/* links no conteúdo */
-.chat-card a{ color:var(--link); text-decoration:underline }
-.chat-card a:hover{ color:var(--link-hover) }
-
-/* ===== input escuro (sem branco) ===== */
+/* ===== ChatInput CINZA e sem barra branca inferior ===== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -212,46 +191,23 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   z-index:5000; background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important;
 }
 [data-testid="stChatInput"]>div{
-  width:100%!important; margin:0!important; padding:0!important;
   background:var(--input-bg)!important; border:1px solid var(--input-border)!important;
-  border-radius:999px!important; box-shadow:0 10px 24px rgba(0,0,0,.35)!important; overflow:hidden;
-  color:var(--text);
+  border-radius:999px!important; overflow:hidden; color:var(--text)!important;
 }
 [data-testid="stChatInput"] textarea{
   width:100%!important; background:transparent!important; color:var(--text)!important;
   border:none!important; border-radius:999px!important;
-  padding:18px 20px!important; font-size:16px!important;
-  box-shadow:none!important; outline:none!important;
+  padding:18px 20px!important; font-size:16px!important; outline:none!important;
   height:auto!important; min-height:44px!important; max-height:220px!important; overflow-y:hidden!important;
 }
-[data-testid="stChatInput"] textarea::placeholder{color:var(--muted)!important}
-[data-testid="stChatInput"] button{
-  margin-right:8px!important; background:transparent!important; border:none!important; color:var(--text-dim)!important;
-}
-[data-testid="stChatInput"] button:hover{filter:brightness(1.15)}
+[data-testid="stChatInput"] textarea::placeholder{ color:var(--muted)!important }
+[data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--muted)!important; background:transparent!important }
+[data-testid="stChatInput"] svg{ fill:currentColor!important }
 
-/* ===== remover completamente a “faixa” de baixo ===== */
-.bottom-gradient-fix{ display:none !important; }
-
-/* ===== Sidebar (tipografia) ===== */
-.sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
-.sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
-.sidebar-sub{font-size:.88rem;color:var(--muted)}
-.hist-empty{color:var(--muted);font-size:.9rem;padding:8px 10px}
-div[data-testid="stSidebarContent"]{padding-top:15!important}
-div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
-.sidebar-header{margin-top:-30px!important}
-.sidebar-bar{margin-top:-24px!important}
-
-/* Histórico */
-.hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim)!important; line-height:1.35; border-radius:8px; }
-.hist-row + .hist-row{margin-top:6px}
-.hist-row:hover{background:#161a20}
-
-/* Scrollbars discretas */
+/* ===== Scrollbars ===== */
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
-*::-webkit-scrollbar-track{background:#0F1115}
+*::-webkit-scrollbar-track{background:var(--bg)}
 </style>
 """, unsafe_allow_html=True)
 
@@ -259,7 +215,7 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 logo_img_tag = (
     f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
     if logo_b64
-    else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+    else '<div style="width:44px;height:44px;border-radius:8px;background:#3b3f4b;display:inline-block;"></div>'
 )
 st.markdown(f"""
 <div class="header">
@@ -267,15 +223,15 @@ st.markdown(f"""
     {logo_img_tag}
     <div>
       Chatbot Quadra
-      <div class="title-sub">Assistente Inteligente</div>
+      <div class="title-sub" style="font-size:.85rem;color:#c1c7d0;">Assistente Inteligente</div>
     </div>
   </div>
   <div class="header-right">
-    <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
-    <div style="text-align:right;font-size:0.9rem;color:#111827;">
-      Usuário Demo<br><span style="font-weight:400;color:#6b7280;font-size:0.8rem;">usuario@exemplo.com</span>
+    <a href="#">⚙ Configurações</a>
+    <div style="text-align:right;font-size:0.9rem;">
+      Usuário Demo<br><span style="font-weight:400;opacity:.85">usuario@exemplo.com</span>
     </div>
-    <div class="user-circle">U</div>
+    <div class="user-circle" style="width:32px;height:32px;border-radius:50%;background:#232833;display:flex;align-items:center;justify-content:center;">U</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -304,7 +260,7 @@ for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
     msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
     if resposta:
-        r_html = linkify(resposta)  # <<< aqui formata **negrito** / *itálico*
+        r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if not msgs_html:
@@ -318,10 +274,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== SKIRT ======
-st.markdown('<div class="bottom-gradient-fix"></div>', unsafe_allow_html=True)
-
-# ====== JS (mantido: ajusta espaço e auto-scroll) ======
+# ====== JS (ajuste de espaço e auto-scroll) ======
 st.markdown("""
 <script>
 (function(){
@@ -362,14 +315,6 @@ st.markdown("""
   });
   setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
   setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
-  const card = document.getElementById('chatCard');
-  if(card){
-    const mo = new MutationObserver(()=>{
-      ajustaEspaco();
-      scrollToEnd(true);
-    });
-    mo.observe(card, {childList:true, subtree:false});
-  }
 })();
 </script>
 """, unsafe_allow_html=True)
@@ -377,7 +322,7 @@ st.markdown("""
 # ====== INPUT ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
-# ====== FLUXO ======
+# ====== FLUXO (inalterado) ======
 if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
