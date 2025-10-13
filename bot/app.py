@@ -8,7 +8,7 @@ from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# ====== CONFIG DA PÁGINA (mantém seu favicon e título) ======
+# ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
 st.set_page_config(
     page_title="Chatbot Quadra",
@@ -41,29 +41,21 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== MARCAÇÃO (remove **asteriscos** renderizando como HTML) ======
+# ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte marcações simples de markdown para HTML sem quebrar layout."""
     if not text:
         return ""
-    # Links clicáveis (antes de mexer em negrito/itálico)
     text = re.sub(
         r'(https?://[^\s<>"\]]+)',
         r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
         text,
     )
-    # **negrito** e *itálico*
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    # Quebras de linha
     text = text.replace("\n", "<br>")
     return text
 
-# ====== UTILS ======
-_url_re = re.compile(r'(https?://[^\s<>"\]]+)', re.IGNORECASE)
-
 def linkify(text: str) -> str:
-    # mantém seu comportamento + conversão de markdown básico
     return formatar_markdown_basico(text or "")
 
 def reenviar_pergunta(q: str):
@@ -77,7 +69,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (apenas VISUAL, não mexe no fluxo) ======
+# ====== CSS (APENAS VISUAL) ======
 st.markdown("""
 <style>
 /* ===== RESET & VARS ===== */
@@ -95,29 +87,38 @@ img.logo{height:44px!important;width:auto!important}
   --input-bottom:60px;
   --sidebar-w:270px;
 
-  /* Paleta escura estilo GPT */
-  --bg:#0F1115;            /* fundo geral (tudo fora do histórico) */
-  --panel:#0B0D10;         /* sidebar preta */
-  --panel-header:#14171C;  /* header/topo */
+  /* Cores pedidas */
+  --bg:#171a20;            /* cinza da área principal (tela) */
+  --panel:#0B0D10;         /* preto do histórico (sidebar) */
+  --panel-header:#14171C;  /* topo */
   --border:#242833;
 
-  --text:#E5E7EB;          /* padroniza textos (nada apagado) */
+  --text:#E7EAF0;          /* textos padronizados (sem “apagado”) */
   --muted:#B7C0CC;
 
-  --bubble-user:#222833;   /* bolha usuário */
-  --bubble-assist:#232833; /* bolha assistente */
+  --bubble-user:#212631;   /* bolha usuário */
+  --bubble-assist:#242b35; /* bolha assistente */
 
-  --input-bg:#20242D;      /* ChatInput CINZA */
+  --input-bg:#1f232c;      /* ChatInput CINZA, um pouco mais claro que a tela */
   --input-border:#323949;
 }
 
-/* ===== Remove barras/overlays brancos do Streamlit ===== */
+/* ===== Remove barras/overlays brancos do Streamlit (sem esconder chat) ===== */
 header[data-testid="stHeader"], div[data-testid="stToolbar"]{display:none!important}
 #MainMenu, footer{visibility:hidden;height:0!important}
+
+/* Neutraliza o container inferior sem sumir com nada */
+[data-testid="stBottomBlockContainer"]{
+  background:var(--bg)!important; border:none!important;
+  margin:0!important; padding:0!important; height:0!important;
+}
+
+/* Alguns overlays do tema que causam “faixa” */
 [data-testid="stStatusWidget"],
 [data-testid="stDecoration"],
-[data-testid="StyledFullScreenContainer"],
-[data-testid="stBottomBlockContainer"]{display:none!important}
+[data-testid="StyledFullScreenContainer"]{
+  background:transparent!important; border:none!important;
+}
 
 /* ===== Plano de fundo e containers ===== */
 html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"]{
@@ -139,33 +140,33 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
   text-decoration:none; color:var(--text)!important;
   border:1px solid var(--border); padding:8px 12px; border-radius:10px;
 }
-.header a:hover{filter:brightness(1.15)}
+.header a:hover{filter:brightness(1.12)}
 
-/* ===== Sidebar escura ===== */
+/* ===== Sidebar (Histórico PRETO) ===== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
   height:calc(100dvh - var(--header-height))!important;
   width:var(--sidebar-w)!important; min-width:var(--sidebar-w)!important;
   margin:0!important; padding:0!important; background:var(--panel)!important;
-  border-right:1px solid var(--border); z-index:900!important; color:var(--text)!important;
+  border-right:1px solid var(--border); z-index:900!important;
+  color:var(--text)!important; display:block!important; visibility:visible!important;
 }
 section[data-testid="stSidebar"] *{color:var(--text)!important}
 section[data-testid="stSidebar"]>div{height:100%!important; overflow-y:auto!important; padding:0 12px 12px 12px!important}
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
-/* ===== Área principal (sem “quadrado”; tudo cinza como GPT) ===== */
+/* ===== Área principal (sem “quadrado”; toda cinza) ===== */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 .chat-card{
   position:relative;
-  background:transparent!important;   /* remove o quadrado */
+  background:transparent!important;
   border:none!important; box-shadow:none!important; border-radius:0!important;
   padding:20px; height:var(--card-height);
   overflow-y:auto; scroll-behavior:smooth;
   padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
   color:var(--text)!important;
 }
-/* garante que nada fique “apagado” */
 .chat-card *, .stMarkdown, .stMarkdown *{ color:var(--text)!important; opacity:1!important }
 
 /* ===== Mensagens ===== */
@@ -181,7 +182,7 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 .bubble.assistant{background:var(--bubble-assist); border-bottom-left-radius:6px}
 .chat-card a{ text-decoration:underline; color:#c9d7ff!important }
 
-/* ===== ChatInput CINZA e sem barra branca inferior ===== */
+/* ===== ChatInput CINZA (um tom acima da tela) e visível ===== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -192,7 +193,8 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 }
 [data-testid="stChatInput"]>div{
   background:var(--input-bg)!important; border:1px solid var(--input-border)!important;
-  border-radius:999px!important; overflow:hidden; color:var(--text)!important;
+  border-radius:999px!important; overflow:hidden;
+  color:var(--text)!important;
 }
 [data-testid="stChatInput"] textarea{
   width:100%!important; background:transparent!important; color:var(--text)!important;
@@ -203,6 +205,17 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted)!important }
 [data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--muted)!important; background:transparent!important }
 [data-testid="stChatInput"] svg{ fill:currentColor!important }
+
+/* ===== Sidebar (tipografia) ===== */
+.sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;margin:0 4px -2px 2px}
+.sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
+.sidebar-sub{font-size:.88rem;color:var(--muted)!important}
+.hist-empty{color:var(--muted)!important;font-size:.9rem;padding:8px 10px}
+div[data-testid="stSidebarContent"]{padding-top:15!important}
+div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
+.hist-row{ padding:6px 6px; font-size:1.05rem; color:var(--text)!important; line-height:1.35; border-radius:8px }
+.hist-row + .hist-row{margin-top:6px}
+.hist-row:hover{background:#151920}
 
 /* ===== Scrollbars ===== */
 *::-webkit-scrollbar{width:10px;height:10px}
@@ -223,7 +236,7 @@ st.markdown(f"""
     {logo_img_tag}
     <div>
       Chatbot Quadra
-      <div class="title-sub" style="font-size:.85rem;color:#c1c7d0;">Assistente Inteligente</div>
+      <div class="title-sub" style="font-size:.85rem;opacity:.9">Assistente Inteligente</div>
     </div>
   </div>
   <div class="header-right">
@@ -274,7 +287,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (ajuste de espaço e auto-scroll) ======
+# ====== JS (ajuste de espaço + auto-scroll) ======
 st.markdown("""
 <script>
 (function(){
