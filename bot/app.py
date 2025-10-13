@@ -80,24 +80,29 @@ def reenviar_pergunta(q: str):
 # ====== CSS (restaurado do seu layout original) ======
 st.markdown("""
 <style>
-*{box-sizing:border-box} html,body{margin:0;padding:0} img{max-width:100%;height:auto;display:inline-block}
+/* ===== RESET / BASE ===== */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+img{max-width:100%;height:auto;display:inline-block}
 img.logo{height:44px!important;width:auto!important}
 
+/* ===== VARIÁVEIS DE LAYOUT ===== */
 :root{
   --content-max-width:min(96vw,1400px);
   --header-height:72px;
-  --skirt-h:72px;
+  --skirt-h:72px;                /* segue existindo, mas escondemos a barra */
   --chat-safe-gap:300px;
   --card-height:calc(100dvh - var(--header-height) - 24px);
   --input-max:900px;
   --input-bottom:60px;
+  --sidebar-w:270px;
 
-  /* PALETA ESCURA (estilo GPT) */
-  --bg:#0F1115;            /* fundo do app */
-  --panel:#0B0D10;         /* sidebar 100% preta */
-  --panel-header:#14171C;  /* header/topo */
-  --panel-alt:#1C1F26;     /* área do chat */
-  --border:#242833;        /* bordas discretas */
+  /* ===== PALETA DARK (estilo GPT) ===== */
+  --bg:#0F1115;                  /* fundo geral */
+  --panel:#0B0D10;               /* sidebar preta */
+  --panel-header:#14171C;        /* header/topo */
+  --panel-alt:#1C1F26;           /* área do chat */
+  --border:#242833;              /* bordas discretas */
 
   --text:#E5E7EB;
   --text-dim:#C9D1D9;
@@ -109,23 +114,21 @@ img.logo{height:44px!important;width:auto!important}
   --bubble-user:#222833;
   --bubble-assistant:#232833;
 
-  --input-bg:#1E222B;
+  --input-bg:#1E222B;            /* pill do input */
   --input-border:#323949;
-
-  --sidebar-w:270px;
 }
 
-/* remover barra padrão do Streamlit e padronizar fundo */
+/* ===== CHROME DO STREAMLIT ===== */
 header[data-testid="stHeader"]{display:none!important}
 div[data-testid="stToolbar"]{display:none!important}
 #MainMenu,footer{visibility:hidden;height:0!important}
 html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"]{
-  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none
+  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important;overscroll-behavior:none;
+  background:var(--bg)!important; color:var(--text)!important;
 }
 .block-container{padding:0!important;min-height:0!important}
-.stApp{background:var(--bg)!important;color:var(--text)!important}
 
-/* ===== header fixo ===== */
+/* ===== HEADER FIXO ===== */
 .header{
   position:fixed;inset:0 0 auto 0;height:var(--header-height);
   display:flex;align-items:center;justify-content:space-between;
@@ -134,14 +137,16 @@ html,body,.stApp,main,.stMain,.block-container,[data-testid="stAppViewContainer"
 }
 .header-left{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text)}
 .header-left .title-sub{font-weight:500;font-size:.85rem;color:var(--muted);margin-top:-4px}
-.header-right{display:flex;align-items:center;gap:12px;color:var(--text)}
+.header-right{display:flex;align-items:center;gap:12px;color:var(--text)!important}
+.header-right div{color:var(--text)!important}
+.header-right span{color:var(--muted)!important}
 .header a{
-  color:var(--link)!important;text-decoration:none;
-  border:1px solid var(--border);padding:8px 12px;border-radius:10px;display:inline-block;
+  color:var(--link)!important;text-decoration:none!important;
+  border:1px solid var(--border)!important;padding:8px 12px;border-radius:10px;display:inline-block;
 }
-.header a:hover{color:var(--link-hover)!important;border-color:#3B4250}
+.header a:hover{color:var(--link-hover)!important;border-color:#3B4250!important}
 
-/* ===== sidebar 100% preta ===== */
+/* ===== SIDEBAR FIXA (PRETA) ===== */
 section[data-testid="stSidebar"]{
   position:fixed!important; top:var(--header-height)!important; left:0!important;
   height:calc(100dvh - var(--header-height) - var(--skirt-h))!important;
@@ -150,46 +155,50 @@ section[data-testid="stSidebar"]{
   border-right:1px solid var(--border); z-index:900!important; transform:none!important;
   visibility:visible!important; overflow:hidden!important; color:var(--text);
 }
+/* Garante que nenhuma camada interna clareie a sidebar */
+section[data-testid="stSidebar"] *{
+  background:transparent!important; color:var(--text)!important;
+}
 section[data-testid="stSidebar"]>div{
   height:100%!important; overflow-y:auto!important; padding:0 12px 12px 12px!important; margin:0!important;
 }
 div[data-testid="stSidebarCollapseButton"]{display:none!important}
 div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
 
+/* ===== CONTEÚDO ===== */
 .content{max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px}
 
-/* ===== cartão do chat: sem borda nem contorno cinza ===== */
+/* ===== CARTÃO DO CHAT (sem contorno/sombra) ===== */
 .chat-card{
   position:relative;
-  background:var(--panel-alt);
+  background:var(--panel-alt)!important;
   border-radius:12px 12px 0 0;
-  border:none;                 /* remove contorno */
-  box-shadow:none;             /* remove sombra grande */
+  border:none!important;
+  box-shadow:none!important;
   padding:20px;
   height:var(--card-height);
-  overflow-y:auto;
-  scroll-behavior:smooth;
-  padding-bottom:var(--chat-safe-gap);
-  scroll-padding-bottom:var(--chat-safe-gap);
+  overflow-y:auto; scroll-behavior:smooth;
+  padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
   color:var(--text);
 }
 
+/* ===== MENSAGENS ===== */
 .message-row{display:flex;margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px)}
 .message-row.user{justify-content:flex-end}
 .message-row.assistant{justify-content:flex-start}
 .bubble{
   max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
-  box-shadow:none; word-wrap:break-word; color:var(--text);
-  border:1px solid transparent;         /* nada de borda visível */
+  word-wrap:break-word; color:var(--text);
+  border:1px solid transparent!important; box-shadow:none!important;
 }
 .bubble.user{background:var(--bubble-user); border-bottom-right-radius:6px}
 .bubble.assistant{background:var(--bubble-assistant); border-bottom-left-radius:6px}
 
-/* links no conteúdo */
+/* Links no conteúdo */
 .chat-card a{ color:var(--link); text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) }
 
-/* ===== input escuro (sem branco) ===== */
+/* ===== CHAT INPUT (100% escuro) ===== */
 [data-testid="stChatInput"]{
   position:fixed!important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2)!important;
@@ -198,32 +207,30 @@ div[data-testid="stAppViewContainer"]{margin-left:var(--sidebar-w)!important}
   width:min(var(--input-max),96vw)!important;
   z-index:5000; background:transparent!important; border:none!important; box-shadow:none!important; padding:0!important;
 }
+/* zera qualquer fundo de filhos e aplica o pill escuro no wrapper imediato */
+[data-testid="stChatInput"] *{ background:transparent!important; color:var(--text)!important }
 [data-testid="stChatInput"]>div{
-  width:100%!important; margin:0!important; padding:0!important;
   background:var(--input-bg)!important;
   border:1px solid var(--input-border)!important;
   border-radius:999px!important;
   box-shadow:0 10px 24px rgba(0,0,0,.35)!important;
-  overflow:hidden; color:var(--text);
+  overflow:hidden;
 }
 [data-testid="stChatInput"] textarea{
-  width:100%!important; background:transparent!important; color:var(--text)!important;
-  border:none!important; border-radius:999px!important;
+  width:100%!important; border:none!important; border-radius:999px!important;
   padding:18px 20px!important; font-size:16px!important;
   box-shadow:none!important; outline:none!important;
   height:auto!important; min-height:44px!important; max-height:220px!important; overflow-y:hidden!important;
+  color:var(--text)!important;
 }
-[data-testid="stChatInput"] textarea::placeholder{color:var(--muted)!important}
-[data-testid="stChatInput"] button{
-  margin-right:8px!important; background:transparent!important; border:none!important;
-  color:var(--text-dim)!important;
-}
-[data-testid="stChatInput"] button:hover{filter:brightness(1.15)}
+[data-testid="stChatInput"] textarea::placeholder{ color:var(--muted)!important }
+[data-testid="stChatInput"] button{ margin-right:8px!important; border:none!important; color:var(--text-dim)!important }
+[data-testid="stChatInput"] svg{ fill:currentColor!important }
 
-/* ===== remover completamente a “faixa” de baixo ===== */
-.bottom-gradient-fix{ display:none !important; }
+/* ===== BARRA INFERIOR (REMOVIDA) ===== */
+.bottom-gradient-fix{ display:none!important }
 
-/* ===== Sidebar (tipografia) ===== */
+/* ===== TIPOGRAFIA DA SIDEBAR ===== */
 .sidebar-header{font-size:1.1rem;font-weight:700;letter-spacing:.02em;color:var(--text);margin:0 4px -2px 2px}
 .sidebar-bar{display:flex;align-items:center;justify-content:space-between;margin:0 4px 6px 2px;height:28px}
 .sidebar-sub{font-size:.88rem;color:var(--muted)}
@@ -233,18 +240,19 @@ div[data-testid="stSidebarContent"] > *:first-child{margin-top:0!important}
 .sidebar-header{margin-top:-30px!important}
 .sidebar-bar{margin-top:-24px!important}
 
-/* Histórico */
+/* Itens do histórico */
 .hist-row{
   padding:6px 6px; font-size:1.1rem; color:var(--text-dim)!important; line-height:1.35; border-radius:8px;
 }
 .hist-row + .hist-row{margin-top:6px}
 .hist-row:hover{background:#161a20}
 
-/* Scrollbars discretas */
+/* ===== SCROLLBARS ESCURAS ===== */
 *::-webkit-scrollbar{width:10px;height:10px}
 *::-webkit-scrollbar-thumb{background:#2C3340;border-radius:8px}
 *::-webkit-scrollbar-track{background:#0F1115}
 </style>
+
 
 
 """, unsafe_allow_html=True)
