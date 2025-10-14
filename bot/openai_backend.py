@@ -1,4 +1,4 @@
-# openai_backend.py — modo ultra (rápido) com JSON/JSONL + índice pré-computado (opcional)
+# openai_backend.py — rápido e estável: JSON/JSONL + CE inteligente + índice pré-computado (opcional)
 
 import os
 import io
@@ -16,15 +16,17 @@ from google.oauth2 import service_account
 API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o-mini"
 
-# ========= PERFORMANCE SWITCHES =========
-USE_JSONL = True            # usa JSON/JSONL do Drive se existir (mais rápido que DOCX)
-USE_CE = False              # desliga CrossEncoder (maior ganho de latência)
-TOP_N_ANN = 16              # menos candidatos no estágio 1
-TOP_K = 4                   # blocos finais enviados ao LLM
-MAX_WORDS_PER_BLOCK = 320   # blocos maiores = menos itens
-GROUP_WINDOW = 5            # agrega mais blocos por item
-CE_SCORE_THRESHOLD = 0.42   # limiar de confiança
-MAX_TOKENS = 280            # resposta mais curta = mais rápida
+# ========= PERFORMANCE & QUALIDADE =========
+USE_JSONL = True              # usa JSON/JSONL do Drive se existir (mais rápido que DOCX)
+USE_CE = True                 # liga CrossEncoder (com pulo inteligente)
+SKIP_CE_IF_ANN_BEST = 0.55    # se melhor score do ANN >= 0.55, NÃO roda CE
+TOP_N_ANN = 48                # mais recall no estágio 1 (era 16)
+TOP_K = 4                     # blocos finais enviados ao LLM
+MAX_WORDS_PER_BLOCK = 220     # blocos menores para não diluir o conteúdo
+GROUP_WINDOW = 3              # agrega menos blocos por item (melhora recuperação)
+CE_SCORE_THRESHOLD = 0.42     # limiar quando CE é usado
+ANN_SCORE_THRESHOLD = 0.22    # limiar quando só ANN é usado
+MAX_TOKENS = 320
 TEMPERATURE = 0.15
 REQUEST_TIMEOUT = 25
 
@@ -33,7 +35,7 @@ REQUEST_TIMEOUT = 25
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
-USE_PRECOMPUTED = True      # procura por esses arquivos primeiro
+USE_PRECOMPUTED = True
 
 # ========= DRIVE / AUTH =========
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
@@ -46,7 +48,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-14-ultra-02"
+CACHE_BUSTER = "2025-10-14-ultra-quality-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -76,6 +78,16 @@ def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
+@st.cache_resource(show_spinner=False)
+def get_cross_encoder(_v=CACHE_BUSTER):
+    if not USE_CE:
+        return None
+    import torch
+    from sentence_transformers import CrossEncoder
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Modelo custo/benefício; se ficar pesado, tente L-2-v2
+    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
+
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _list_by_mime_query(drive_service, folder_id, mime_query):
@@ -91,7 +103,7 @@ def _list_docx_metadata(drive_service, folder_id):
     )
 
 def _list_json_metadata(drive_service, folder_id):
-    # JSON às vezes vem como text/plain; filtramos pela extensão tbm
+    # JSON às vezes vem como text/plain; filtramos pela extensão também
     files = _list_by_mime_query(
         drive_service, folder_id,
         "mimeType='application/json' or mimeType='text/plain'"
@@ -99,7 +111,6 @@ def _list_json_metadata(drive_service, folder_id):
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
 
 def _list_named_files(drive_service, folder_id, wanted_names):
-    # Busca arquivos por nome exato dentro da pasta
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     results = drive_service.files().list(
         q=f"'{folder_id}' in parents",
@@ -259,19 +270,15 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
         return None
 
     drive = get_drive_client()
-    # Baixa arquivos
     try:
         vectors = np.load(io.BytesIO(_download_bytes(drive, ids["vectors"])))
         blocks_json = json.loads(_download_text(drive, ids["blocks"]))
-        # Normaliza blocks_json para [{pagina, texto, file_id}, ...]
         blocks = _json_records_to_blocks(blocks_json, fallback_name="precomp", file_id="precomp")
-        # Carrega FAISS
         try:
             import faiss
         except Exception:
             return None
         faiss_index_bytes = _download_bytes(drive, ids["faiss"])
-        # Salva em memória temporária e lê com faiss
         tmp_path = "/tmp/faiss.index"
         with open(tmp_path, "wb") as f:
             f.write(faiss_index_bytes)
@@ -291,12 +298,12 @@ def try_import_faiss():
 
 @st.cache_resource(show_spinner=False)
 def build_vector_index(_v=CACHE_BUSTER):
-    # 0) Tenta carregar pré-computado (turbo)
+    # 0) Tenta carregar pré-computado
     pre = _load_precomputed_index()
     if pre is not None:
         return pre
 
-    # 1) Caso não exista pré-computado, gera em runtime (cacheado)
+    # 1) Gera em runtime (cacheado)
     blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
     grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
     if not grouped:
@@ -330,7 +337,6 @@ def ann_search(query_text: str, top_n: int):
     if not blocks:
         return []
 
-    from numpy.linalg import norm
     sbert = get_sbert_model()
     q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
 
@@ -343,12 +349,31 @@ def ann_search(query_text: str, top_n: int):
         emb = vecdb["emb"]
         scores_all = (emb @ q)
         idxs = np.argsort(-scores_all)[:top_n].tolist()
-        scores = scores_all[idxs].tolist()
+        scores = [float(scores_all[i]) for i in idxs]
 
     return [{"idx": i, "score": float(s), "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
 
 
-# ========================= PROMPT & ATALHOS =========================
+# ========================= RERANKING (CE OPCIONAL) =========================
+def crossencoder_rerank(query: str, candidates, top_k: int):
+    if not candidates:
+        return []
+    ce = get_cross_encoder()
+    if ce is None:
+        # fallback: usa ANN
+        packed = [{"block": c["block"], "score": float(c["score"])} for c in candidates]
+        packed.sort(key=lambda x: x["score"], reverse=True)
+        return packed[:top_k]
+
+    pairs = [(query, c["block"]["texto"]) for c in candidates]
+    # batch um pouco maior para acelerar
+    scores = ce.predict(pairs, batch_size=128)
+    packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
+    packed.sort(key=lambda x: x["score"], reverse=True)
+    return packed[:top_k]
+
+
+# ========================= ATALHO DE ETAPA & PROMPT =========================
 def responder_etapa_seguinte(pergunta, blocos_raw):
     q = pergunta.lower()
     if not any(x in q for x in ["após", "depois de", "seguinte a"]):
@@ -403,12 +428,26 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not candidates:
             return FALLBACK_MSG
 
-        # Ordena pelo score ANN e corta já no top_k (sem CE)
+        # Ordena pelo score ANN
         candidates.sort(key=lambda x: x["score"], reverse=True)
-        reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
+        best_ann = candidates[0]["score"]
 
-        best_score = reranked[0]["score"] if reranked else 0.0
-        if best_score < CE_SCORE_THRESHOLD:
+        # Decide se roda CE (pulo inteligente)
+        run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
+
+        if run_ce:
+            # Roda CE só em um subconjunto para ser rápido
+            subset = candidates[:24]
+            reranked = crossencoder_rerank(pergunta, subset, top_k=TOP_K)
+            best_score = reranked[0]["score"] if reranked else 0.0
+            pass_threshold = (best_score >= CE_SCORE_THRESHOLD)
+        else:
+            # Sem CE: usa ANN direto
+            reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:TOP_K]]
+            best_score = reranked[0]["score"] if reranked else 0.0
+            pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
+
+        if not pass_threshold:
             return FALLBACK_MSG
 
         blocos_relevantes = [r["block"] for r in reranked]
@@ -436,8 +475,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = choices[0]["message"]["content"]
 
-        # Anexa link do doc mais relevante (não custa caro)
-        if resposta.strip() != FALLBACK_MSG and best_score >= CE_SCORE_THRESHOLD and blocos_relevantes:
+        # Anexa link do doc mais relevante
+        if resposta.strip() != FALLBACK_MSG and best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD) and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
             raw_nome = primeiro.get("pagina", "?")
