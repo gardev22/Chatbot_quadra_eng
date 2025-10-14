@@ -227,4 +227,24 @@ def responder_pergunta(pergunta):
 
         resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT)
         if not resp.ok:
-            return f"❌ Erro na API:
+            return f"❌ Erro na API: {resp.status_code} - {resp.text}"
+
+        data = resp.json()
+        escolha = data.get("choices", [])
+        if not escolha or "message" not in escolha[0]:
+            return "⚠️ Resposta da API vazia ou incompleta."
+
+        resposta = escolha[0]["message"]["content"]
+
+        # link do primeiro documento relevante
+        if resposta.strip() != FALLBACK_MSG and blocos_relevantes:
+            primeiro = blocos_relevantes[0]
+            doc_id = primeiro.get("file_id")
+            doc_nome = sanitize_doc_name(primeiro.get("pagina","?"))
+            if doc_id:
+                link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
+                resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
+
+        return resposta
+    except Exception as e:
+        return f"❌ Erro interno: {e}"
