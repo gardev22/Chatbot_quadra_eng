@@ -22,7 +22,7 @@ USE_JSONL = True               # prefere JSON/JSONL do Drive (rápido)
 USE_CE = True                  # CE ligado, mas com pulo inteligente
 SKIP_CE_IF_ANN_BEST = 0.60     # se ANN >= 0.60, não roda CE
 TOP_N_ANN = 64                 # mais recall
-TOP_K = 6                      # contexto base enviado ao LLM
+TOP_K = 4                      # contexto base enviado ao LLM
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
 # Limiar quando CE é usado vs quando só ANN é usado
