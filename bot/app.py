@@ -168,7 +168,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
 .hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
-div[data-testid="stSidebarContent"]{ padding-top:-15px !important }
+div[data-testid="stSidebarContent"]{ padding-top:15px !important }
 div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
 .hist-row + .hist-row{ margin-top:6px }
@@ -304,9 +304,10 @@ st.markdown(f"""
   </div>
   <div class="header-right">
     <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
-    <div style="text-align:right;font-size:0.9rem;color:#111827;">
-      Usuário Demo<br><span style="font-weight:400;color:#6b7280;font-size:0.8rem;">usuario@exemplo.com</span>
-    </div>
+<div style="text-align:right;font-size:0.9rem;color:var(--text);">
+  <span style="font-weight:600;">Usuário Demo</span><br>
+  <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">usuario@exemplo.com</span>
+</div>
     <div class="user-circle">U</div>
   </div>
 </div>
