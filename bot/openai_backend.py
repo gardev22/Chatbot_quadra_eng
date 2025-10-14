@@ -1,4 +1,4 @@
-# openai_backend.py — anti-fallback + anti-truncamento
+# openai_backend.py — anti-fallback + anti-truncamento (ajustes mínimos)
 
 import os
 import io
@@ -89,9 +89,17 @@ def _is_fallback_output(text: str) -> bool:
     norm = "\n".join([line.strip() for line in text.strip().splitlines() if line.strip()])
     norm = _strip_accents(norm.lower())
     fallback_norm = _strip_accents(FALLBACK_MSG.lower())
-    # considera igual se começa com a primeira linha do fallback
     first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
     return (fallback_norm in norm) or norm.startswith(first_line)
+
+# >>> NOVO: detecta respostas do tipo "não há informações..." para forçar o FALLBACK
+_NOINFO_RE = re.compile(
+    r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
+    re.IGNORECASE
+)
+
+def _looks_like_noinfo(text: str) -> bool:
+    return bool(text and _NOINFO_RE.search(text))
 
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
@@ -389,17 +397,7 @@ def montar_prompt_rag(pergunta, blocos, reforco_no_fallback=False):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
-    # Prompt: só permita fallback se realmente não houver evidência
-    regra3 = (
-        "3) Somente se NÃO houver evidência em NENHUM dos trechos abaixo, responda exatamente:\n"
-        f"{FALLBACK_MSG}\n"
-    )
-    if reforco_no_fallback:
-        # reforço explícito para segunda tentativa
-        regra3 = (
-            "3) NÃO use a mensagem padrão. Se houver qualquer indício ou trecho relacionado, responda objetivamente "
-            "com base nos trechos, citando-os em MAIÚSCULAS quando útil.\n"
-        )
+    # (mantém seu prompt exatamente)
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
         "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
@@ -450,11 +448,14 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
             top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
-        # Evidência léxica permite responder mesmo se score for baixo
-        evidence_ok = _has_lexical_evidence(pergunta, top_texts) or len(_tokenize(pergunta)) <= 3
+        # >>> AJUSTE MINÍMO: evidência só se houver sobreposição lexical (sem a regra de ≤3 tokens)
+        evidence_ok = _has_lexical_evidence(pergunta, top_texts)
+
+        # Permite responder com score baixo apenas se houver evidência lexical real
         if not pass_threshold and evidence_ok:
             pass_threshold = True
 
+        # Sem evidência/score: FALLBACK imediato
         if not pass_threshold:
             return FALLBACK_MSG
 
@@ -484,36 +485,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         resposta = choices[0]["message"]["content"].strip()
 
         # =============== Guardas finais ===============
-        # 1) Nunca anexar link se for fallback
+        # Se o modelo disser "não há informações..." => força FALLBACK oficial
+        if _looks_like_noinfo(resposta):
+            return FALLBACK_MSG
+
+        # Detecta seu fallback explícito (compara textos)
         is_fb = _is_fallback_output(resposta)
+        if is_fb:
+            return FALLBACK_MSG
 
-        # 2) Se ainda cair no fallback MAS há evidência léxica, faz uma segunda tentativa rápida com mais contexto
-        if is_fb and evidence_ok:
-            # monta um prompt com MAIS contexto e reforço anti-fallback
-            top_more = [c["block"] for c in candidates[:max(top_k * 2, 10)]]
-            prompt2 = montar_prompt_rag(pergunta, top_more, reforco_no_fallback=True)
-            payload2 = {
-                "model": model_id,
-                "messages": [
-                    {"role": "system", "content": "Você responde apenas com base no conteúdo fornecido."},
-                    {"role": "user", "content": prompt2}
-                ],
-                "max_tokens": MAX_TOKENS,
-                "temperature": 0.05,  # mais determinístico
-                "n": 1
-            }
-            resp2 = session.post("https://api.openai.com/v1/chat/completions", json=payload2, timeout=REQUEST_TIMEOUT)
-            if resp2.ok:
-                data2 = resp2.json()
-                ch2 = data2.get("choices", [])
-                if ch2 and "message" in ch2[0]:
-                    resposta2 = ch2[0]["message"]["content"].strip()
-                    if resposta2 and not _is_fallback_output(resposta2):
-                        resposta = resposta2
-                        is_fb = False  # atualiza
-
-        # 3) Anexa link só se NÃO for fallback
-        if not is_fb and blocos_relevantes:
+        # Anexa link só se NÃO for fallback
+        if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
             raw_nome = primeiro.get("pagina", "?")
