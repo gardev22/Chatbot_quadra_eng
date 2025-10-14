@@ -1,3 +1,5 @@
+# openai_backend.py — lê JSON/JSONL quando disponível (fallback para DOCX)
+
 import os
 import io
 import re
@@ -15,11 +17,16 @@ from google.oauth2 import service_account
 # ========= CONFIG =========
 API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o-mini"          # modelo mais rápido e estável
+
+# ---- Ajustes de performance/qualidade (mantidos) ----
 TOP_K = 4                         # ↓ menos blocos finais enviados ao LLM
 TOP_N_ANN = 60                    # ↓ menos candidatos no estágio 1 (ANN)
 MAX_TOKENS = 350                  # ↓ resposta menor = mais rápida
 TEMPERATURE = 0.15                # ↓ ligeiramente mais objetiva
 REQUEST_TIMEOUT = 30              # ↓ timeout menor
+
+# ====== SWITCH: usar JSONL/JSON no lugar de DOCX ======
+USE_JSONL = True  # ← ligue/desligue o consumo de JSON/JSONL do Drive
 
 # Conexão HTTP persistente (mantém sessão aberta)
 session = requests.Session()
@@ -40,13 +47,13 @@ FALLBACK_MSG = (
 CE_SCORE_THRESHOLD = 0.42  # ajuste fino: 0.38~0.48 funciona bem com o MiniLM
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-09-01"
+CACHE_BUSTER = "2025-10-14-JSONL-01"
 
 # ========= UTILS =========
 def sanitize_doc_name(name: str) -> str:
     """Remove 'Cópia de', 'Copy of' e extensões (.doc/.docx/.pdf/.txt), além de espaços extras."""
     name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
-    name = re.sub(r"\.(docx?|pdf|txt)$", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\.(docx?|pdf|txt|jsonl?|JSONL?)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
 # ========= CLIENTES E MODELOS (CACHEADOS) =========
@@ -82,9 +89,24 @@ def _list_docx_metadata(drive_service, folder_id):
     results = drive_service.files().list(q=query, fields=fields).execute()
     return results.get("files", [])
 
+def _list_json_metadata(drive_service, folder_id):
+    # Alguns uploads de JSON chegam com mimeType text/plain; filtramos também por extensão
+    query = (
+        f"'{folder_id}' in parents and "
+        "(mimeType='application/json' or mimeType='text/plain')"
+    )
+    fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
+    results = drive_service.files().list(q=query, fields=fields).execute()
+    files = results.get("files", []) or []
+    return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
+
 def _download_docx_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id)
     return request.execute()
+
+def _download_file_text(drive_service, file_id) -> str:
+    request = drive_service.files().get_media(fileId=file_id)
+    return request.execute().decode("utf-8", errors="ignore")
 
 # ========= PARSE DOCX EM BLOCOS =========
 def _split_text_blocks(text, max_words=200):
@@ -104,34 +126,102 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=200):
             out.append({"pagina": file_name, "texto": chunk, "file_id": file_id})
     return out
 
+# ========= PARSE JSONL/JSON EM BLOCOS =========
+def _records_from_json_text(text: str):
+    """
+    Aceita JSONL (uma linha por objeto) ou JSON (lista de objetos).
+    Tenta ser tolerante com chaves diferentes: 'pagina'/'page', 'texto'/'text'.
+    """
+    recs = []
+    text_strip = text.lstrip()
+    if text_strip.startswith("["):
+        # JSON array
+        try:
+            data = json.loads(text_strip)
+            if isinstance(data, list):
+                recs = data
+        except Exception:
+            pass
+    else:
+        # JSONL
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                recs.append(json.loads(line))
+            except Exception:
+                continue
+    return recs
+
+def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
+    """
+    Normaliza para {pagina, texto, file_id}.
+    Se vierem outras chaves, faz o mapeamento.
+    """
+    out = []
+    for r in recs:
+        pagina = r.get("pagina") or r.get("page") or r.get("doc") or fallback_name
+        texto = r.get("texto") or r.get("text") or r.get("content") or ""
+        fid   = r.get("file_id") or r.get("source_id") or file_id
+        if texto and str(texto).strip():
+            out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
+    return out
+
 # ========= CACHE DE METADADOS E CONTEÚDO =========
 @st.cache_data(show_spinner=False)
-def _list_docx_metadata_cached(folder_id: str, _v=CACHE_BUSTER):
+def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
-    files = _list_docx_metadata(drive, folder_id)
-    return files
+    json_files = _list_json_metadata(drive, folder_id) if USE_JSONL else []
+    docx_files = _list_docx_metadata(drive, folder_id)
+    return {"json": json_files, "docx": docx_files}
 
-def _build_signature(files_meta):
-    payload = sorted(
-        [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in files_meta],
-        key=lambda x: x["id"]
-    )
+def _build_signature_from_lists(files_json, files_docx):
+    payload = {
+        "json": sorted(
+            [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files_json or [])],
+            key=lambda x: x["id"]
+        ),
+        "docx": sorted(
+            [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files_docx or [])],
+            key=lambda x: x["id"]
+        ),
+    }
     return json.dumps(payload, ensure_ascii=False)
 
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
-    """Cacheada com base na assinatura dos arquivos."""
+    """Cacheada com base na assinatura dos arquivos. Prefere JSON/JSONL se USE_JSONL=True; senão, DOCX."""
     drive = get_drive_client()
-    files = _list_docx_metadata(drive, folder_id)
+    sources = _list_sources_cached(folder_id)
+    files_json = sources.get("json", [])
+    files_docx = sources.get("docx", [])
     all_blocks = []
-    for f in files:
-        bytes_ = _download_docx_bytes(drive, f["id"])
-        all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
+
+    # 1) JSON/JSONL primeiro (se habilitado e houver arquivos)
+    if USE_JSONL and files_json:
+        for f in files_json:
+            try:
+                text = _download_file_text(drive, f["id"])
+                recs = _records_from_json_text(text)
+                all_blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"]))
+            except Exception:
+                continue
+        if all_blocks:
+            return all_blocks  # já retornamos — JSON foi usado
+
+    # 2) Fallback: DOCX
+    for f in files_docx:
+        try:
+            bytes_ = _download_docx_bytes(drive, f["id"])
+            all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
+        except Exception:
+            continue
     return all_blocks
 
 def load_all_blocks_cached(folder_id: str):
-    files = _list_docx_metadata_cached(folder_id)
-    signature = _build_signature(files)
+    src = _list_sources_cached(folder_id)
+    signature = _build_signature_from_lists(src.get("json", []), src.get("docx", []))
     all_blocks = _download_and_parse_blocks(signature, folder_id)
     return all_blocks, signature
 
@@ -212,7 +302,6 @@ def ann_search(query_text: str, top_n: int):
 def crossencoder_rerank(query: str, candidates, top_k: int):
     if not candidates:
         return []
-
     ce = get_cross_encoder()
     pairs = [(query, c["block"]["texto"]) for c in candidates]
     scores = ce.predict(pairs, batch_size=64)
@@ -258,7 +347,6 @@ def montar_prompt_rag(pergunta, blocos):
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
-
 
 # ========= PRINCIPAL =========
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
