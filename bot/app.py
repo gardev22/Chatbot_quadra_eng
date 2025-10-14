@@ -112,7 +112,7 @@ img.logo { height: 44px !important; width: auto !important }
 
   /* >>> CONTROLE FINO DO "COLAMENTO" DO CONTEÚDO DO HISTÓRICO AO TOPO <<< */
   /* aumente/diminua este valor para ajustar a distância do texto do histórico ao cabeçalho */
-  --sidebar-items-top-gap: 6px; /* <--- mude aqui (px) */
+  --sidebar-items-top-gap: 12px; /* <--- mude aqui (px) */
 }
 
 /* ========= STREAMLIT CHROME ========= */
