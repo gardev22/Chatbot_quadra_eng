@@ -130,6 +130,7 @@ def montar_prompt_rag(pergunta, blocos):
     )
 
 # ========= PRINCIPAL =========
+
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
@@ -139,22 +140,33 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         vecdb = load_blocks_from_cache()
         blocos_raw = vecdb["blocks"]
 
+        # Etapa seguinte
         seq = responder_etapa_seguinte(pergunta, blocos_raw)
         if seq:
             return seq
 
+        # Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
             return FALLBACK_MSG
 
+        # Reranking
         reranked = crossencoder_rerank(pergunta, candidates, top_k=top_k)
         best_score = reranked[0]["score"] if reranked else 0.0
         if best_score < CE_SCORE_THRESHOLD:
             return FALLBACK_MSG
 
-        blocos_relevantes = [r["block"] for r in reranked]
+        # Extrair blocos relevantes com segurança
+        blocos_relevantes = []
+        for r in reranked:
+            bloco = r.get("block") if isinstance(r, dict) else None
+            if bloco and isinstance(bloco, dict):
+                blocos_relevantes.append(bloco)
+
+        # Montar prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
+        # Requisição à OpenAI
         payload = {
             "model": model_id,
             "messages": [
@@ -176,14 +188,16 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = escolhas[0]["message"]["content"]
 
+        # Adicionar link seguro
         if resposta.strip() != FALLBACK_MSG and best_score >= CE_SCORE_THRESHOLD and blocos_relevantes:
             primeiro = blocos_relevantes[0]
-            doc_id = primeiro.get("file_id")
-            raw_nome = primeiro.get("pagina", "?")
-            doc_nome = sanitize_doc_name(raw_nome)
-            if doc_id:
-                link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
-                resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
+            if isinstance(primeiro, dict):
+                doc_id = primeiro.get("file_id")
+                raw_nome = primeiro.get("pagina", "?")
+                doc_nome = sanitize_doc_name(raw_nome)
+                if doc_id:
+                    link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
+                    resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         return resposta
 
