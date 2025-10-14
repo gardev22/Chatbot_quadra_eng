@@ -26,7 +26,7 @@ TEMPERATURE = 0.15                # ↓ ligeiramente mais objetiva
 REQUEST_TIMEOUT = 30              # ↓ timeout menor
 
 # ====== SWITCH: usar JSONL/JSON no lugar de DOCX ======
-USE_JSONL = False  # ← ligue/desligue o consumo de JSON/JSONL do Drive
+USE_JSONL = True  # ← ligue/desligue o consumo de JSON/JSONL do Drive
 
 # Conexão HTTP persistente (mantém sessão aberta)
 session = requests.Session()
