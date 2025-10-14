@@ -1,12 +1,10 @@
-# openai_backend.py — lê JSON/JSONL quando disponível (fallback para DOCX)
+# openai_backend.py — modo ultra (rápido) com JSON/JSONL + índice pré-computado (opcional)
 
 import os
 import io
 import re
-import time
 import json
 import numpy as np
-import pandas as pd
 import requests
 import streamlit as st
 from html import escape
@@ -14,49 +12,58 @@ from docx import Document
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
-# ========= CONFIG =========
+# ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"          # modelo mais rápido e estável
+MODEL_ID = "gpt-4o-mini"
 
-# ---- Ajustes de performance/qualidade (mantidos) ----
-TOP_K = 4                         # ↓ menos blocos finais enviados ao LLM
-TOP_N_ANN = 60                    # ↓ menos candidatos no estágio 1 (ANN)
-MAX_TOKENS = 350                  # ↓ resposta menor = mais rápida
-TEMPERATURE = 0.15                # ↓ ligeiramente mais objetiva
-REQUEST_TIMEOUT = 30              # ↓ timeout menor
+# ========= PERFORMANCE SWITCHES =========
+USE_JSONL = True            # usa JSON/JSONL do Drive se existir (mais rápido que DOCX)
+USE_CE = False              # desliga CrossEncoder (maior ganho de latência)
+TOP_N_ANN = 16              # menos candidatos no estágio 1
+TOP_K = 4                   # blocos finais enviados ao LLM
+MAX_WORDS_PER_BLOCK = 320   # blocos maiores = menos itens
+GROUP_WINDOW = 5            # agrega mais blocos por item
+CE_SCORE_THRESHOLD = 0.42   # limiar de confiança
+MAX_TOKENS = 280            # resposta mais curta = mais rápida
+TEMPERATURE = 0.15
+REQUEST_TIMEOUT = 25
 
-# ====== SWITCH: usar JSONL/JSON no lugar de DOCX ======
-USE_JSONL = True  # ← ligue/desligue o consumo de JSON/JSONL do Drive
+# ========= ÍNDICE PRÉ-COMPUTADO (OPCIONAL, VIA DRIVE) =========
+# Se esses 3 arquivos aparecerem no mesmo folder do Drive, o app carrega e usa direto (turbo):
+PRECOMP_FAISS_NAME = "faiss.index"
+PRECOMP_VECTORS_NAME = "vectors.npy"
+PRECOMP_BLOCKS_NAME = "blocks.json"
+USE_PRECOMPUTED = True      # procura por esses arquivos primeiro
 
-# Conexão HTTP persistente (mantém sessão aberta)
+# ========= DRIVE / AUTH =========
+FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
+SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+
+# ========= FALLBACK =========
+FALLBACK_MSG = (
+    "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
+    "Departamento de Estratégia & Inovação."
+)
+
+# ========= CACHE BUSTER =========
+CACHE_BUSTER = "2025-10-14-ultra-02"
+
+# ========= HTTP SESSION =========
 session = requests.Session()
 session.headers.update({
     "Authorization": f"Bearer {API_KEY.strip()}",
     "Content-Type": "application/json"
 })
 
-# Pasta do Google Drive
-FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# ========= MENSAGEM PADRÃO E THRESHOLD =========
-FALLBACK_MSG = (
-    "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
-    "Departamento de Estratégia & Inovação."
-)
-CE_SCORE_THRESHOLD = 0.42  # ajuste fino: 0.38~0.48 funciona bem com o MiniLM
-
-# ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-14-JSONL-01"
-
-# ========= UTILS =========
+# ========================= UTILS =========================
 def sanitize_doc_name(name: str) -> str:
-    """Remove 'Cópia de', 'Copy of' e extensões (.doc/.docx/.pdf/.txt), além de espaços extras."""
     name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\.(docx?|pdf|txt|jsonl?|JSONL?)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
-# ========= CLIENTES E MODELOS (CACHEADOS) =========
+
+# ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
 def get_drive_client(_v=CACHE_BUSTER):
     creds = service_account.Credentials.from_service_account_info(
@@ -67,83 +74,74 @@ def get_drive_client(_v=CACHE_BUSTER):
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    # modelo pequeno e rápido; ótimo custo/benefício
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    return model
+    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-@st.cache_resource(show_spinner=False)
-def get_cross_encoder(_v=CACHE_BUSTER):
-    import torch
-    from sentence_transformers import CrossEncoder
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    ce = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
-    return ce
 
-# ========= LISTAGEM E DOWNLOAD (DRIVE) =========
-def _list_docx_metadata(drive_service, folder_id):
-    query = (
-        f"'{folder_id}' in parents and "
-        "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
-    )
-    fields = "files(id, name, md5Checksum, modifiedTime)"
-    results = drive_service.files().list(q=query, fields=fields).execute()
-    return results.get("files", [])
-
-def _list_json_metadata(drive_service, folder_id):
-    # Alguns uploads de JSON chegam com mimeType text/plain; filtramos também por extensão
-    query = (
-        f"'{folder_id}' in parents and "
-        "(mimeType='application/json' or mimeType='text/plain')"
-    )
+# ========================= DRIVE LIST/DOWNLOAD =========================
+def _list_by_mime_query(drive_service, folder_id, mime_query):
+    query = f"'{folder_id}' in parents and ({mime_query})"
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     results = drive_service.files().list(q=query, fields=fields).execute()
-    files = results.get("files", []) or []
+    return results.get("files", []) or []
+
+def _list_docx_metadata(drive_service, folder_id):
+    return _list_by_mime_query(
+        drive_service, folder_id,
+        "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
+    )
+
+def _list_json_metadata(drive_service, folder_id):
+    # JSON às vezes vem como text/plain; filtramos pela extensão tbm
+    files = _list_by_mime_query(
+        drive_service, folder_id,
+        "mimeType='application/json' or mimeType='text/plain'"
+    )
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
 
-def _download_docx_bytes(drive_service, file_id):
+def _list_named_files(drive_service, folder_id, wanted_names):
+    # Busca arquivos por nome exato dentro da pasta
+    fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
+    results = drive_service.files().list(
+        q=f"'{folder_id}' in parents",
+        fields=fields
+    ).execute()
+    files = results.get("files", []) or []
+    name_map = {f["name"]: f for f in files if f.get("name") in wanted_names}
+    return name_map
+
+def _download_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id)
     return request.execute()
 
-def _download_file_text(drive_service, file_id) -> str:
-    request = drive_service.files().get_media(fileId=file_id)
-    return request.execute().decode("utf-8", errors="ignore")
+def _download_text(drive_service, file_id) -> str:
+    return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
-# ========= PARSE DOCX EM BLOCOS =========
-def _split_text_blocks(text, max_words=200):
+
+# ========================= PARSE DOCX/JSON =========================
+def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
-    blocks = []
-    for i in range(0, len(words), max_words):
-        blocks.append(" ".join(words[i:i + max_words]))
-    return blocks
+    return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
-def _docx_to_blocks(file_bytes, file_name, file_id, max_words=200):
-    doc = Document(io.BytesIO(file_bytes))
+def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
+    from docx import Document as _Docx
+    doc = _Docx(io.BytesIO(file_bytes))
     text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    small_blocks = _split_text_blocks(text, max_words=max_words)
-    out = []
-    for chunk in small_blocks:
-        if chunk.strip():
-            out.append({"pagina": file_name, "texto": chunk, "file_id": file_id})
-    return out
+    return [
+        {"pagina": file_name, "texto": chunk, "file_id": file_id}
+        for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
+    ]
 
-# ========= PARSE JSONL/JSON EM BLOCOS =========
 def _records_from_json_text(text: str):
-    """
-    Aceita JSONL (uma linha por objeto) ou JSON (lista de objetos).
-    Tenta ser tolerante com chaves diferentes: 'pagina'/'page', 'texto'/'text'.
-    """
     recs = []
-    text_strip = text.lstrip()
-    if text_strip.startswith("["):
-        # JSON array
+    t = text.lstrip()
+    if t.startswith("["):
         try:
-            data = json.loads(text_strip)
+            data = json.loads(t)
             if isinstance(data, list):
                 recs = data
         except Exception:
             pass
     else:
-        # JSONL
         for line in text.splitlines():
             line = line.strip()
             if not line:
@@ -155,92 +153,135 @@ def _records_from_json_text(text: str):
     return recs
 
 def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
-    """
-    Normaliza para {pagina, texto, file_id}.
-    Se vierem outras chaves, faz o mapeamento.
-    """
     out = []
     for r in recs:
         pagina = r.get("pagina") or r.get("page") or r.get("doc") or fallback_name
-        texto = r.get("texto") or r.get("text") or r.get("content") or ""
-        fid   = r.get("file_id") or r.get("source_id") or file_id
-        if texto and str(texto).strip():
+        texto  = r.get("texto")  or r.get("text") or r.get("content") or ""
+        fid    = r.get("file_id") or r.get("source_id") or file_id
+        if str(texto).strip():
             out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
 
-# ========= CACHE DE METADADOS E CONTEÚDO =========
+
+# ========================= CACHE DE FONTE (DOCX/JSON) =========================
 @st.cache_data(show_spinner=False)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
-    json_files = _list_json_metadata(drive, folder_id) if USE_JSONL else []
-    docx_files = _list_docx_metadata(drive, folder_id)
-    return {"json": json_files, "docx": docx_files}
+    files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
+    files_docx = _list_docx_metadata(drive, folder_id)
+    return {"json": files_json, "docx": files_docx}
 
-def _build_signature_from_lists(files_json, files_docx):
+def _signature_from_files(files):
+    return [
+        {k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])
+    ]
+
+def _build_signature_json_docx(files_json, files_docx):
     payload = {
-        "json": sorted(
-            [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files_json or [])],
-            key=lambda x: x["id"]
-        ),
-        "docx": sorted(
-            [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files_docx or [])],
-            key=lambda x: x["id"]
-        ),
+        "json": sorted(_signature_from_files(files_json), key=lambda x: x["id"]) if files_json else [],
+        "docx": sorted(_signature_from_files(files_docx), key=lambda x: x["id"]) if files_docx else [],
     }
     return json.dumps(payload, ensure_ascii=False)
 
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
-    """Cacheada com base na assinatura dos arquivos. Prefere JSON/JSONL se USE_JSONL=True; senão, DOCX."""
     drive = get_drive_client()
     sources = _list_sources_cached(folder_id)
     files_json = sources.get("json", [])
     files_docx = sources.get("docx", [])
-    all_blocks = []
 
-    # 1) JSON/JSONL primeiro (se habilitado e houver arquivos)
+    blocks = []
+    # 1) Prefere JSON/JSONL
     if USE_JSONL and files_json:
         for f in files_json:
             try:
-                text = _download_file_text(drive, f["id"])
-                recs = _records_from_json_text(text)
-                all_blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"]))
+                recs = _records_from_json_text(_download_text(drive, f["id"]))
+                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"]))
             except Exception:
                 continue
-        if all_blocks:
-            return all_blocks  # já retornamos — JSON foi usado
+        if blocks:
+            return blocks
 
-    # 2) Fallback: DOCX
+    # 2) Fallback DOCX
     for f in files_docx:
         try:
-            bytes_ = _download_docx_bytes(drive, f["id"])
-            all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
+            blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"]))
         except Exception:
             continue
-    return all_blocks
+    return blocks
 
 def load_all_blocks_cached(folder_id: str):
     src = _list_sources_cached(folder_id)
-    signature = _build_signature_from_lists(src.get("json", []), src.get("docx", []))
-    all_blocks = _download_and_parse_blocks(signature, folder_id)
-    return all_blocks, signature
+    signature = _build_signature_json_docx(src.get("json", []), src.get("docx", []))
+    blocks = _download_and_parse_blocks(signature, folder_id)
+    return blocks, signature
 
-# ========= AGRUPAMENTO =========
-def agrupar_blocos(blocos, janela=3):
+
+# ========================= AGRUPAMENTO =========================
+def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     grouped = []
-    for i in range(len(blocos)):
+    for i in range(0, len(blocos), 1):
         group = blocos[i:i+janela]
         if not group:
             continue
-        texto_agregado = " ".join([b["texto"] for b in group])
         grouped.append({
             "pagina": group[0].get("pagina", "?"),
-            "texto": texto_agregado,
+            "texto": " ".join(b["texto"] for b in group),
             "file_id": group[0].get("file_id")
         })
     return grouped
 
-# ========= ÍNDICE VETORIAL =========
+
+# ========================= ÍNDICE PRÉ-COMPUTADO (CARREGAR) =========================
+def _find_precomputed_files():
+    drive = get_drive_client()
+    want = {PRECOMP_FAISS_NAME, PRECOMP_VECTORS_NAME, PRECOMP_BLOCKS_NAME}
+    name_map = _list_named_files(drive, FOLDER_ID, want)
+    if not all(n in name_map for n in want):
+        return None
+    return {
+        "faiss": name_map[PRECOMP_FAISS_NAME]["id"],
+        "vectors": name_map[PRECOMP_VECTORS_NAME]["id"],
+        "blocks": name_map[PRECOMP_BLOCKS_NAME]["id"],
+    }
+
+@st.cache_resource(show_spinner=False)
+def _load_precomputed_index(_v=CACHE_BUSTER):
+    """
+    Carrega FAISS + vectors.npy + blocks.json do Drive se todos existirem.
+    Retorna dict compatível com o resto do pipeline.
+    """
+    if not USE_PRECOMPUTED:
+        return None
+
+    ids = _find_precomputed_files()
+    if not ids:
+        return None
+
+    drive = get_drive_client()
+    # Baixa arquivos
+    try:
+        vectors = np.load(io.BytesIO(_download_bytes(drive, ids["vectors"])))
+        blocks_json = json.loads(_download_text(drive, ids["blocks"]))
+        # Normaliza blocks_json para [{pagina, texto, file_id}, ...]
+        blocks = _json_records_to_blocks(blocks_json, fallback_name="precomp", file_id="precomp")
+        # Carrega FAISS
+        try:
+            import faiss
+        except Exception:
+            return None
+        faiss_index_bytes = _download_bytes(drive, ids["faiss"])
+        # Salva em memória temporária e lê com faiss
+        tmp_path = "/tmp/faiss.index"
+        with open(tmp_path, "wb") as f:
+            f.write(faiss_index_bytes)
+        index = faiss.read_index(tmp_path)
+        return {"blocks": blocks, "emb": vectors, "index": index, "use_faiss": True}
+    except Exception:
+        return None
+
+
+# ========================= ÍNDICE (GERAR OU USAR PRONTO) =========================
 def try_import_faiss():
     try:
         import faiss
@@ -250,8 +291,14 @@ def try_import_faiss():
 
 @st.cache_resource(show_spinner=False)
 def build_vector_index(_v=CACHE_BUSTER):
+    # 0) Tenta carregar pré-computado (turbo)
+    pre = _load_precomputed_index()
+    if pre is not None:
+        return pre
+
+    # 1) Caso não exista pré-computado, gera em runtime (cacheado)
     blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
-    grouped = agrupar_blocos(blocks_raw, janela=3)
+    grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
     if not grouped:
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
@@ -275,12 +322,15 @@ def build_vector_index(_v=CACHE_BUSTER):
 
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
+
+# ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
     vecdb = build_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
         return []
 
+    from numpy.linalg import norm
     sbert = get_sbert_model()
     q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
 
@@ -291,83 +341,72 @@ def ann_search(query_text: str, top_n: int):
         scores = D[0].tolist()
     else:
         emb = vecdb["emb"]
-        scores = (emb @ q)
-        idxs = np.argsort(-scores)[:top_n].tolist()
-        scores = scores[idxs].tolist()
+        scores_all = (emb @ q)
+        idxs = np.argsort(-scores_all)[:top_n].tolist()
+        scores = scores_all[idxs].tolist()
 
-    candidates = [{"idx": i, "score": s, "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
-    return candidates
+    return [{"idx": i, "score": float(s), "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
 
-# ========= RERANKING =========
-def crossencoder_rerank(query: str, candidates, top_k: int):
-    if not candidates:
-        return []
-    ce = get_cross_encoder()
-    pairs = [(query, c["block"]["texto"]) for c in candidates]
-    scores = ce.predict(pairs, batch_size=64)
-    packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
-    packed.sort(key=lambda x: x["score"], reverse=True)
-    return packed[:top_k]
 
-# ========= DETECÇÃO DE ETAPA =========
+# ========================= PROMPT & ATALHOS =========================
 def responder_etapa_seguinte(pergunta, blocos_raw):
-    if not any(x in pergunta.lower() for x in ["após", "depois de", "seguinte a"]):
+    q = pergunta.lower()
+    if not any(x in q for x in ["após", "depois de", "seguinte a"]):
         return None
-
-    trecho = pergunta.lower()
+    trecho = q
     for token in ["após", "depois de", "seguinte a"]:
         if token in trecho:
             trecho = trecho.split(token, 1)[-1].strip()
     if not trecho:
         return None
-
     for i, b in enumerate(blocos_raw):
-        if trecho.lower() in b["texto"].lower():
+        if trecho in b["texto"].lower():
             if i + 1 < len(blocos_raw):
                 prox = blocos_raw[i+1]['texto'].splitlines()[0]
                 return f'A etapa após "{trecho}" é "{prox}".'
-            else:
-                return f'A etapa "{trecho}" é a última registrada.'
+            return f'A etapa "{trecho}" é a última registrada.'
     return "Essa etapa não foi encontrada no conteúdo."
 
-# ========= PROMPT =========
 def montar_prompt_rag(pergunta, blocos):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
-        "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
-        "### Regras de resposta:\n"
-        "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
-        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada\n"
-        f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes totalmente em maiúsculo  sempre que possível.\n\n"
+        "Responda SOMENTE com base nos documentos.\n\n"
+        "Regras:\n"
+        "1) Não invente nada.\n"
+        "2) Se puder deduzir, explicite a dedução.\n"
+        f"3) Se não houver evidência, diga exatamente:\n{FALLBACK_MSG}\n"
+        "4) Estruture em tópicos ou frases completas; cite trechos em MAIÚSCULAS quando útil.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
 
-# ========= PRINCIPAL =========
+
+# ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # Etapa seguinte (simples e rápida)
+        # Atalho barato: sequência de etapa
         blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
         seq = responder_etapa_seguinte(pergunta, blocks_raw)
         if seq:
             return seq
 
-        # Busca ANN
+        # Busca ANN (rápida)
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
             return FALLBACK_MSG
 
-        # Reranking
-        reranked = crossencoder_rerank(pergunta, candidates, top_k=top_k)
+        # Ordena pelo score ANN e corta já no top_k (sem CE)
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
+
         best_score = reranked[0]["score"] if reranked else 0.0
         if best_score < CE_SCORE_THRESHOLD:
             return FALLBACK_MSG
@@ -378,26 +417,26 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         payload = {
             "model": model_id,
             "messages": [
-                {"role": "system", "content": "Você é um assistente que responde com base somente no conteúdo fornecido."},
+                {"role": "system", "content": "Você responde apenas com base no conteúdo fornecido."},
                 {"role": "user", "content": prompt}
             ],
             "max_tokens": MAX_TOKENS,
-            "temperature": TEMPERATURE
+            "temperature": TEMPERATURE,
+            "n": 1
         }
 
-        # requisição via sessão persistente
         resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT)
         if not resp.ok:
             return f"❌ Erro na API: {resp.status_code} - {resp.text}"
 
         data = resp.json()
-        escolhas = data.get("choices", [])
-        if not escolhas or "message" not in escolhas[0]:
+        choices = data.get("choices", [])
+        if not choices or "message" not in choices[0]:
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
-        resposta = escolhas[0]["message"]["content"]
+        resposta = choices[0]["message"]["content"]
 
-        # Anexar link do documento
+        # Anexa link do doc mais relevante (não custa caro)
         if resposta.strip() != FALLBACK_MSG and best_score >= CE_SCORE_THRESHOLD and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -412,7 +451,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
     except Exception as e:
         return f"❌ Erro interno: {e}"
 
-# ========= CLI de teste =========
+
+# ========================= CLI =========================
 if __name__ == "__main__":
     print("\nDigite sua pergunta (ou 'sair'):\n")
     while True:
