@@ -237,6 +237,13 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   caret-color:#ffffff !important;  /* “barra” interna branca */
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
+
+/* >>> NOVO: esconder placeholder ao focar <<< */
+[data-testid="stChatInput"] textarea:focus::placeholder{
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
 [data-testid="stChatInput"] button{
   margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
 }
@@ -346,7 +353,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (ajustes + placeholder some no foco) ======
+# ====== JS (ajustes de espaço / auto-scroll) ======
 st.markdown("""
 <script>
 (function(){
@@ -375,15 +382,6 @@ st.markdown("""
     if(!end) return;
     end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
-
-  // Placeholder: some no foco e volta no blur se vazio
-  const ta = document.querySelector('[data-testid="stChatInput"] textarea');
-  if (ta) {
-    const originalPh = ta.getAttribute('placeholder') || '';
-    ta.addEventListener('focus', ()=>{ ta.setAttribute('placeholder',''); });
-    ta.addEventListener('blur',  ()=>{ if(!ta.value.trim()) ta.setAttribute('placeholder', originalPh); });
-  }
-
   const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
   window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
