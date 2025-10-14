@@ -117,7 +117,7 @@ img.logo { height: 44px !important; width: auto !important }
   --sidebar-sub-top-gap: -30px;        /* 0px = colado ao "Histórico" */
 
   /* >>> NOVO: controla onde começam os itens do histórico <<< */
-  --sidebar-list-start-gap: -15px;      /* espaço entre subtítulo e 1º item */
+  --sidebar-list-start-gap: 3px;      /* espaço entre subtítulo e 1º item */
 }
 
 /* ========= STREAMLIT CHROME ========= */
