@@ -110,8 +110,14 @@ img.logo { height: 44px !important; width: auto !important }
 
   --sidebar-w:270px;
 
-  /* >>> CONTROLE DO “COLADO” DO HISTÓRICO AO TOPO <<< */
-  --sidebar-items-top-gap: -45px; /* ajuste aqui (0px cola total) */
+  /* >>> você já usa para colar o bloco todo ao topo <<< */
+  --sidebar-items-top-gap: -45px;
+
+  /* >>> NOVO: controla só o subtítulo ("Perguntas desta sessão") <<< */
+  --sidebar-sub-top-gap: 0px;        /* 0px = colado ao "Histórico" */
+
+  /* >>> NOVO: controla onde começam os itens do histórico <<< */
+  --sidebar-list-start-gap: 6px;      /* espaço entre subtítulo e 1º item */
 }
 
 /* ========= STREAMLIT CHROME ========= */
@@ -161,21 +167,35 @@ section[data-testid="stSidebar"]{
   overflow:hidden !important;
   color:var(--text);
 }
-
-/* —— zera paddings/margens que empurram o conteúdo pra baixo —— */
 section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* —— aplica o gap controlado SOMENTE no seu primeiro item (Histórico) —— */
+/* cola o bloco do título "Histórico" conforme seu knob existente */
 section[data-testid="stSidebar"] .sidebar-header{
   margin-top: var(--sidebar-items-top-gap) !important;
 }
 
-/* (restante do estilo da sidebar) */
+/* zera margens padrão do <p> que o Streamlit coloca dentro dos markups */
+.sidebar-bar p,
+.sidebar-header p{
+  margin: 0 !important;
+  line-height: 1.15 !important;  /* opcional: deixa mais justinho */
+}
+
+/* controla a distância entre "Histórico" e "Perguntas desta sessão" */
+.sidebar-bar{
+  margin-top: var(--sidebar-sub-top-gap) !important;
+}
+
+/* controla o início da lista: 1º item após o subtítulo */
+.hist-row:first-of-type{
+  margin-top: var(--sidebar-list-start-gap) !important;
+}
+
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
+
 .sidebar-header{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }
-.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
 .hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
