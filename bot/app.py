@@ -82,17 +82,17 @@ img.logo { height: 44px !important; width: auto !important }
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 72px;
-  --skirt-h: 72px;                 /* não usamos mais, pode manter */
+  --skirt-h: 72px;
   --chat-safe-gap: 300px;
   --card-height: calc(100dvh - var(--header-height) - 24px);
   --input-max: 900px;
-  --input-bottom: 60px;            /* distância do bottom para o chatinput */
+  --input-bottom: 60px;
 
   /* Paleta escura */
-  --bg:#0F1115;            /* fundo principal */
-  --panel:#0B0D10;         /* sidebar preta */
-  --panel-header:#14171C;  /* header/topo */
-  --panel-alt:#1C1F26;     /* área do chat */
+  --bg:#0F1115;
+  --panel:#0B0D10;
+  --panel-header:#14171C;
+  --panel-alt:#1C1F26;
   --border:#242833;
 
   --text:#E5E7EB;
@@ -105,7 +105,7 @@ img.logo { height: 44px !important; width: auto !important }
   --bubble-user:#222833;
   --bubble-assistant:#232833;
 
-  --input-bg:#1E222B;      /* cinza do chatinput */
+  --input-bg:#1E222B;
   --input-border:#323949;
 
   --sidebar-w:270px;
@@ -200,7 +200,7 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
 .chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
 
-/* ========= CHAT INPUT CINZA (fixo) ========= */
+/* ========= CHAT INPUT (fixo) ========= */
 [data-testid="stChatInput"]{
   position:fixed !important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
@@ -223,7 +223,14 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
   overflow:hidden;
+  transition:border-color .12s ease, box-shadow .12s ease; /* [NOVO] transição suave */
 }
+/* [NOVO] borda/luz branca quando o chatinput recebe foco */
+[data-testid="stChatInput"]:focus-within > div{
+  border-color:#ffffff !important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.18) inset, 0 10px 24px rgba(0,0,0,.35) !important;
+}
+
 [data-testid="stChatInput"] textarea{
   width:100% !important;
   border:none !important; border-radius:999px !important;
@@ -231,6 +238,7 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   outline:none !important; height:auto !important;
   min-height:44px !important; max-height:220px !important;
   overflow-y:hidden !important;
+  caret-color:#ffffff !important; /* [NOVO] cursor branco combina com a borda */
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
 [data-testid="stChatInput"] button{
@@ -262,6 +270,17 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 *::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
 *::-webkit-scrollbar-track{ background:#0F1115 }
+
+/* [NOVO] bolinha azul girando */
+.spinner{
+  width:16px; height:16px;
+  border:2px solid rgba(37,99,235,.25);
+  border-top-color:#2563eb;
+  border-radius:50%;
+  display:inline-block;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg) } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -317,6 +336,10 @@ for pergunta, resposta in st.session_state.historico:
         r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
+# [NOVO] enquanto processa, mostra SÓ a bolinha azul como mensagem do assistente
+if st.session_state.awaiting_answer and st.session_state.answering_started:
+    msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
+
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
@@ -336,8 +359,7 @@ st.markdown("""
     const card = document.getElementById('chatCard');
     if(!input||!card) return;
     const rect = input.getBoundingClientRect();
-    const gapVar = getComputedStyle(document.documentElement)
-      .getPropertyValue('--chat-safe-gap').trim();
+    const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
     const gap = parseInt(gapVar || '24', 10);
     const alturaEfetiva = (window.innerHeight - rect.top) + gap;
     card.style.paddingBottom = alturaEfetiva + 'px';
@@ -370,10 +392,7 @@ st.markdown("""
   setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
   const card = document.getElementById('chatCard');
   if(card){
-    const mo = new MutationObserver(()=>{
-      ajustaEspaco();
-      scrollToEnd(true);
-    });
+    const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
     mo.observe(card, {childList:true, subtree:false});
   }
 })();
