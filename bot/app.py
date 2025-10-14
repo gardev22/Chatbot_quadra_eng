@@ -81,7 +81,7 @@ img.logo { height: 44px !important; width: auto !important }
 /* ========= VARS ========= */
 :root{
   --content-max-width: min(96vw, 1400px);
-  --header-height: 85px;
+  --header-height: 80px;
   --skirt-h: 72px;
   --chat-safe-gap: 300px;
   --card-height: calc(100dvh - var(--header-height) - 24px);
