@@ -402,11 +402,12 @@ def montar_prompt_rag(pergunta, blocos, reforco_no_fallback=False):
         )
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
-        "Responda SOMENTE com base nos documentos fornecidos.\n\n"
-        "Regras:\n"
-        "1) Não invente; cite trechos relevantes quando possível.\n"
-        "2) Se a resposta puder ser deduzida, explique a dedução de forma objetiva.\n"
-        f"{regra3}\n"
+        "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
+        "### Regras de resposta:\n"
+        "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
+        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada\n"
+        f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
+        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes totalmente em maiúsculo  sempre que possível.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
