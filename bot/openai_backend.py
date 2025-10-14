@@ -1,4 +1,4 @@
-# openai_backend.py — robusto contra fallback precoce (evidência léxica + thresholds ajustados)
+# openai_backend.py — anti-fallback + anti-truncamento
 
 import os
 import io
@@ -22,15 +22,16 @@ USE_JSONL = True               # prefere JSON/JSONL do Drive (rápido)
 USE_CE = True                  # CE ligado, mas com pulo inteligente
 SKIP_CE_IF_ANN_BEST = 0.60     # se ANN >= 0.60, não roda CE
 TOP_N_ANN = 64                 # mais recall
-TOP_K = 6                      # manda mais blocos ao LLM (mais contexto)
+TOP_K = 6                      # contexto base enviado ao LLM
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
 # Limiar quando CE é usado vs quando só ANN é usado
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
-MAX_TOKENS = 450               # evita respostas truncadas
+# Anti-truncamento
+MAX_TOKENS = 700               # ↑ aumenta espaço pra resposta
+REQUEST_TIMEOUT = 40           # ↑ evita corte por timeout
 TEMPERATURE = 0.15
-REQUEST_TIMEOUT = 25
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -49,7 +50,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-14-robusto-01"
+CACHE_BUSTER = "2025-10-14-robusto-02"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -68,23 +69,29 @@ def _strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 def _tokenize(s: str):
-    s = _strip_accents(s.lower())
+    s = _strip_accents((s or "").lower())
     return re.findall(r"[a-zA-Z0-9_]{3,}", s)
 
 def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
-    """
-    Evidência léxica simples, acento-insensível.
-    Se qualquer token relevante da query aparece em pelo menos um texto, retorna True.
-    """
     q_tokens = set(_tokenize(query))
     if not q_tokens:
         return False
     for t in texts:
         t_tokens = set(_tokenize(t or ""))
-        # interseção mínima de 1 token
         if q_tokens & t_tokens:
             return True
     return False
+
+def _is_fallback_output(text: str) -> bool:
+    """Detecta fallback mesmo com espaços/variações mínimas."""
+    if not text:
+        return False
+    norm = "\n".join([line.strip() for line in text.strip().splitlines() if line.strip()])
+    norm = _strip_accents(norm.lower())
+    fallback_norm = _strip_accents(FALLBACK_MSG.lower())
+    # considera igual se começa com a primeira linha do fallback
+    first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
+    return (fallback_norm in norm) or norm.startswith(first_line)
 
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
@@ -378,19 +385,28 @@ def responder_etapa_seguinte(pergunta, blocos_raw):
             return f'A etapa "{trecho}" é a última registrada.'
     return "Essa etapa não foi encontrada no conteúdo."
 
-def montar_prompt_rag(pergunta, blocos):
+def montar_prompt_rag(pergunta, blocos, reforco_no_fallback=False):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
-    # Prompt mais permissivo: só permite fallback se não houver evidência
+    # Prompt: só permita fallback se realmente não houver evidência
+    regra3 = (
+        "3) Somente se NÃO houver evidência em NENHUM dos trechos abaixo, responda exatamente:\n"
+        f"{FALLBACK_MSG}\n"
+    )
+    if reforco_no_fallback:
+        # reforço explícito para segunda tentativa
+        regra3 = (
+            "3) NÃO use a mensagem padrão. Se houver qualquer indício ou trecho relacionado, responda objetivamente "
+            "com base nos trechos, citando-os em MAIÚSCULAS quando útil.\n"
+        )
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
         "Responda SOMENTE com base nos documentos fornecidos.\n\n"
         "Regras:\n"
-        "1) Não invente; cite os trechos relevantes quando possível.\n"
+        "1) Não invente; cite trechos relevantes quando possível.\n"
         "2) Se a resposta puder ser deduzida, explique a dedução de forma objetiva.\n"
-        "3) Somente se NÃO houver evidência em NENHUM dos trechos abaixo, responda exatamente:\n"
-        f"{FALLBACK_MSG}\n\n"
+        f"{regra3}\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
@@ -433,10 +449,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
             top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
-        # NOVO: se houver evidência léxica nas passagens top, ignorar threshold
-        if not pass_threshold:
-            if _has_lexical_evidence(pergunta, top_texts) or len(_tokenize(pergunta)) <= 3:
-                pass_threshold = True  # não bloqueia respostas curtas tipo "ferias"
+        # Evidência léxica permite responder mesmo se score for baixo
+        evidence_ok = _has_lexical_evidence(pergunta, top_texts) or len(_tokenize(pergunta)) <= 3
+        if not pass_threshold and evidence_ok:
+            pass_threshold = True
 
         if not pass_threshold:
             return FALLBACK_MSG
@@ -464,10 +480,39 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not choices or "message" not in choices[0]:
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
-        resposta = choices[0]["message"]["content"]
+        resposta = choices[0]["message"]["content"].strip()
 
-        # Anexa link do doc mais relevante
-        if resposta.strip() != FALLBACK_MSG and blocos_relevantes:
+        # =============== Guardas finais ===============
+        # 1) Nunca anexar link se for fallback
+        is_fb = _is_fallback_output(resposta)
+
+        # 2) Se ainda cair no fallback MAS há evidência léxica, faz uma segunda tentativa rápida com mais contexto
+        if is_fb and evidence_ok:
+            # monta um prompt com MAIS contexto e reforço anti-fallback
+            top_more = [c["block"] for c in candidates[:max(top_k * 2, 10)]]
+            prompt2 = montar_prompt_rag(pergunta, top_more, reforco_no_fallback=True)
+            payload2 = {
+                "model": model_id,
+                "messages": [
+                    {"role": "system", "content": "Você responde apenas com base no conteúdo fornecido."},
+                    {"role": "user", "content": prompt2}
+                ],
+                "max_tokens": MAX_TOKENS,
+                "temperature": 0.05,  # mais determinístico
+                "n": 1
+            }
+            resp2 = session.post("https://api.openai.com/v1/chat/completions", json=payload2, timeout=REQUEST_TIMEOUT)
+            if resp2.ok:
+                data2 = resp2.json()
+                ch2 = data2.get("choices", [])
+                if ch2 and "message" in ch2[0]:
+                    resposta2 = ch2[0]["message"]["content"].strip()
+                    if resposta2 and not _is_fallback_output(resposta2):
+                        resposta = resposta2
+                        is_fb = False  # atualiza
+
+        # 3) Anexa link só se NÃO for fallback
+        if not is_fb and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
             raw_nome = primeiro.get("pagina", "?")
