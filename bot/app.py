@@ -1,26 +1,41 @@
 import streamlit as st
-import base64, os, re, warnings
+import base64
+import os
+import re
+import warnings
 from html import escape
 from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# ====== CONFIG ======
+# ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
-st.set_page_config(page_title="Chatbot Quadra", page_icon=LOGO_PATH, layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Chatbot Quadra",
+    page_icon=LOGO_PATH,
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 def do_rerun():
-    if hasattr(st, "rerun"): st.rerun()
-    else: st.experimental_rerun()
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
 
-# ====== LOGO ======
+# ====== LOGO (para cabeçalho) ======
 def carregar_imagem_base64(path):
-    if not os.path.exists(path): return None
-    with open(path, "rb") as f: return base64.b64encode(f.read()).decode()
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # ====== ESTADO ======
-st.session_state.setdefault("historico", [])
+if "historico" not in st.session_state:
+    st.session_state.historico = []
+
 st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
@@ -28,116 +43,264 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
-    if not text: return ""
-    text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', text)
+    if not text:
+        return ""
+    text = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
+        text,
+    )
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    return text.replace("\n", "<br>")
+    text = text.replace("\n", "<br>")
+    return text
 
-def linkify(text: str) -> str: return formatar_markdown_basico(text or "")
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
+
+def reenviar_pergunta(q: str):
+    q = (q or "").trim() if hasattr(str, "trim") else (q or "").strip()
+    if not q:
+        return
+    st.session_state.historico.append((q, ""))
+    st.session_state.pending_index = len(st.session_state.historico) - 1
+    st.session_state.pending_question = q
+    st.session_state.awaiting_answer = True
+    st.session_state.answering_started = False
+    do_rerun()
 
 # ====== CSS ======
 st.markdown("""
 <style>
+/* ========= RESET / BASE ========= */
+* { box-sizing: border-box }
+html, body { margin: 0; padding: 0 }
+img { max-width: 100%; height: auto; display: inline-block }
+img.logo { height: 44px !important; width: auto !important }
+
+/* ========= VARS ========= */
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 72px;
+  --skirt-h: 72px;
   --chat-safe-gap: 300px;
   --card-height: calc(100dvh - var(--header-height) - 24px);
-  --input-max: 900px; --input-bottom: 60px;
+  --input-max: 900px;
+  --input-bottom: 60px;
 
-  --bg:#0F1115; --panel:#0B0D10; --panel-header:#14171C; --panel-alt:#1C1F26; --border:#242833;
-  --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
-  --link:#B9C0CA; --link-hover:#FFFFFF;
-  --bubble-user:#222833; --bubble-assistant:#232833;
-  --input-bg:#1E222B; --input-border:#323949;
+  /* Paleta escura */
+  --bg:#0F1115;
+  --panel:#0B0D10;
+  --panel-header:#14171C;
+  --panel-alt:#1C1F26;
+  --border:#242833;
+
+  --text:#E5E7EB;
+  --text-dim:#C9D1D9;
+  --muted:#9AA4B2;
+
+  --link:#B9C0CA;
+  --link-hover:#FFFFFF;
+
+  --bubble-user:#222833;
+  --bubble-assistant:#232833;
+
+  --input-bg:#1E222B;
+  --input-border:#323949;
+
   --sidebar-w:270px;
 }
 
-/* CHROME STREAMLIT */
-header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important }
-html, body, .stApp, .block-container, [data-testid="stAppViewContainer"]{ height:100dvh !important; overflow:hidden !important }
-.block-container{ padding:0 !important }
+/* ========= STREAMLIT CHROME ========= */
+header[data-testid="stHeader"]{ display:none !important }
+div[data-testid="stToolbar"]{ display:none !important }
+#MainMenu, footer{ visibility:hidden; height:0 !important }
+
+html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{
+  height:100dvh !important;
+  max-height:100dvh !important;
+  overflow:hidden !important;
+  overscroll-behavior:none;
+}
+.block-container{ padding:0 !important; min-height:0 !important }
 .stApp{ background:var(--bg) !important; color:var(--text) !important }
 
-/* HEADER */
-.header{ position:fixed; inset:0 0 auto 0; height:var(--header-height); display:flex; align-items:center; justify-content:space-between; padding:10px 16px; background:var(--panel-header); z-index:1000; border-bottom:1px solid var(--border) }
-img.logo{ height:44px }
-
-/* SIDEBAR */
-section[data-testid="stSidebar"]{
-  position:fixed !important; top:var(--header-height) !important; left:0 !important;
-  height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important;
-  background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !important; overflow:hidden !important; color:var(--text);
+/* ========= HEADER FIXO ========= */
+.header{
+  position:fixed; inset:0 0 auto 0; height:var(--header-height);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 16px; background:var(--panel-header); z-index:1000;
+  border-bottom:1px solid var(--border);
 }
-section[data-testid="stSidebar"]>div{ height:100%; overflow-y:auto; padding:0 12px 12px }
+.header-left{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }
+.header-left .title-sub{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }
+.header-right{ display:flex; align-items:center; gap:12px; color:var(--text) }
+.header a{
+  color:var(--link) !important; text-decoration:none;
+  border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
+}
+.header a:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
+
+/* ========= SIDEBAR ========= */
+section[data-testid="stSidebar"]{
+  position:fixed !important;
+  top:var(--header-height) !important;
+  left:0 !important;
+  height:calc(100dvh - var(--header-height)) !important;
+  width:var(--sidebar-w) !important;
+  min-width:var(--sidebar-w) !important;
+  margin:0 !important; padding:0 !important;
+  background:var(--panel) !important;
+  border-right:1px solid var(--border);
+  z-index:900 !important;
+  transform:none !important;
+  visibility:visible !important;
+  overflow:hidden !important;
+  color:var(--text);
+}
+section[data-testid="stSidebar"]>div{
+  height:100% !important; overflow-y:auto !important; padding:0 12px 12px 12px !important; margin:0 !important;
+}
 div[data-testid="stSidebarCollapseButton"]{ display:none !important }
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
-.sidebar-header{ font-size:1.1rem; font-weight:700; margin:0 4px -2px 2px }
+.sidebar-header{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }
+.sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
-.hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim); border-radius:8px }
-.hist-row+.hist-row{ margin-top:6px }
+.hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
+div[data-testid="stSidebarContent"]{ padding-top:15 !important }
+div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
+.hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
+.hist-row + .hist-row{ margin-top:6px }
 .hist-row:hover{ background:#161a20 }
 
-/* CHAT */
+/* ========= CONTEÚDO / CHAT ========= */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
-#chatCard{ position:relative; background:var(--panel-alt); border-radius:12px 12px 0 0; padding:20px; height:var(--card-height); overflow-y:auto; padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap) }
-.message-row{ display:flex; margin:12px 4px }
-.message-row.user{ justify-content:flex-end } .message-row.assistant{ justify-content:flex-start }
-.bubble{ max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45; color:var(--text) }
+#chatCard, .chat-card{
+  position:relative;
+  z-index:50 !important;
+  background:var(--panel-alt) !important;
+  border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
+  padding:20px;
+  height:var(--card-height);
+  overflow-y:auto; scroll-behavior:smooth;
+  padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
+  color:var(--text);
+}
+#chatCard *, .chat-card *{ position:relative; z-index:51 !important }
+
+.message-row{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px) }
+.message-row.user{ justify-content:flex-end }
+.message-row.assistant{ justify-content:flex-start }
+.bubble{
+  max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
+  color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important;
+}
 .bubble.user{ background:var(--bubble-user); border-bottom-right-radius:6px }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
-#chatCard a{ color:var(--link); text-decoration:underline } #chatCard a:hover{ color:var(--link-hover) }
+.chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
 
-/* CHAT INPUT (fixo) */
+/* ========= CHAT INPUT (fixo) ========= */
 [data-testid="stChatInput"]{
-  position:fixed !important; left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important; transform:translateX(-50%) !important;
-  bottom:var(--input-bottom) !important; width:min(var(--input-max), 96vw) !important; z-index:5000 !important; background:transparent !important;
+  position:fixed !important;
+  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
+  transform:translateX(-50%) !important;
+  bottom:var(--input-bottom) !important;
+  width:min(var(--input-max), 96vw) !important;
+  z-index:5000 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
+[data-testid="stChatInput"] *{
+  background:transparent !important;
+  color:var(--text) !important;
 }
 [data-testid="stChatInput"] > div{
   background:var(--input-bg) !important;
-  border:1px solid var(--input-border) !important;  /* mantém a borda padrão, sem highlight de foco */
-  border-radius:999px !important; box-shadow:0 10px 24px rgba(0,0,0,.35) !important; overflow:hidden;
+  border:1px solid var(--input-border) !important;   /* mantém a mesma borda SEM mudar no foco */
+  border-radius:999px !important;
+  box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
+  overflow:hidden;
+  transition:border-color .12s ease, box-shadow .12s ease;
 }
-/* REMOVE qualquer highlight/outline/brilho no foco */
-[data-testid="stChatInput"] *:focus{ outline:none !important; box-shadow:none !important }
-[data-testid="stChatInput"]:focus-within > div{ border-color:var(--input-border) !important; box-shadow:0 10px 24px rgba(0,0,0,.35) !important }
+/* —— sem estilo especial no foco (removemos a borda branca) —— */
 
-/* textarea */
 [data-testid="stChatInput"] textarea{
-  width:100% !important; border:none !important; border-radius:999px !important;
-  padding:18px 20px !important; font-size:16px !important; outline:none !important;
-  min-height:44px !important; max-height:220px !important; overflow-y:hidden !important;
-  caret-color:#ffffff !important; /* barra branca */
-  color:var(--text) !important;
+  width:100% !important;
+  border:none !important; border-radius:999px !important;
+  padding:18px 20px !important; font-size:16px !important;
+  outline:none !important; height:auto !important;
+  min-height:44px !important; max-height:220px !important;
+  overflow-y:hidden !important;
+  caret-color:#ffffff !important;  /* “barra” interna branca */
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
-[data-testid="stChatInput"] button{ margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important }
+[data-testid="stChatInput"] button{
+  margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
+}
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
-/* remover faixa branca do fundo do app */
-[data-testid="stBottomBlockContainer"]{ height:0 !important; min-height:0 !important; padding:0 !important; margin:0 !important; background:transparent !important; box-shadow:none !important; border:none !important }
+/* ========= MATA DEFINITIVAMENTE A FAIXA BRANCA ========= */
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
+[data-testid="stBottomBlockContainer"] [class*="block-container"],
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{
+  background:transparent !important;
+  box-shadow:none !important;
+  border:none !important;
+}
+[data-testid="stBottomBlockContainer"]{
+  padding:0 !important;
+  margin:0 !important;
+  height:0 !important;
+  min-height:0 !important;
+}
 
-/* Spinner */
-.spinner{ width:16px; height:16px; border:2px solid rgba(37,99,235,.25); border-top-color:#2563eb; border-radius:50%; display:inline-block; animation:spin .8s linear infinite }
+/* ========= EXTRAS ========= */
+[data-testid="stDecoration"], [data-testid="stStatusWidget"]{ display:none !important }
+
+*::-webkit-scrollbar{ width:10px; height:10px }
+*::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
+*::-webkit-scrollbar-track{ background:#0F1115 }
+
+/* bolinha azul girando (sem texto) */
+.spinner{
+  width:16px; height:16px;
+  border:2px solid rgba(37,99,235,.25);
+  border-top-color:#2563eb;
+  border-radius:50%;
+  display:inline-block;
+  animation:spin .8s linear infinite;
+}
 @keyframes spin{ to{ transform:rotate(360deg) } }
-
-*::-webkit-scrollbar{ width:10px; height:10px } *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px } *::-webkit-scrollbar-track{ background:#0F1115 }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER ======
-logo_tag = (f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
-            if logo_b64 else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff"></div>')
+# ====== HEADER HTML ======
+logo_img_tag = (
+    f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
+    if logo_b64
+    else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+)
 st.markdown(f"""
 <div class="header">
-  <div class="header-left">{logo_tag}
-    <div>Chatbot Quadra<div class="title-sub" style="font-size:.85rem;color:#9aa4b2">Assistente Inteligente</div></div>
+  <div class="header-left">
+    {logo_img_tag}
+    <div>
+      Chatbot Quadra
+      <div class="title-sub">Assistente Inteligente</div>
+    </div>
   </div>
-  <div class="header-right" style="display:flex;align-items:center;gap:12px;color:#e5e7eb">
-    <div style="text-align:right;font-size:0.9rem;">Usuário Demo<br><span style="font-weight:400;color:#94a3b8;font-size:0.8rem;">usuario@exemplo.com</span></div>
-    <div class="user-circle" style="width:36px;height:36px;border-radius:50%;background:#1f2937;display:flex;align-items:center;justify-content:center">U</div>
+  <div class="header-right">
+    <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
+    <div style="text-align:right;font-size:0.9rem;color:#111827;">
+      Usuário Demo<br><span style="font-weight:400;color:#6b7280;font-size:0.8rem;">usuario@exemplo.com</span>
+    </div>
+    <div class="user-circle">U</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -145,32 +308,45 @@ st.markdown(f"""
 # ====== SIDEBAR ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Perguntas desta sessão</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     if not st.session_state.historico:
-        st.markdown('<div style="color:#9aa4b2;padding:8px 10px">Sem perguntas ainda.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        for pergunta_hist, _ in st.session_state.historico:
+        for pergunta_hist, _resp in st.session_state.historico:
             titulo = pergunta_hist.strip().replace("\n", " ")
-            if len(titulo) > 80: titulo = titulo[:80] + "…"
+            if len(titulo) > 80:
+                titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
-# ====== RENDER ======
-msgs = []
+# ====== RENDER MENSAGENS ======
+msgs_html = []
 for pergunta, resposta in st.session_state.historico:
-    msgs.append(f'<div class="message-row user"><div class="bubble user">{linkify(pergunta)}</div></div>')
+    p_html = linkify(pergunta)
+    msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
     if resposta:
-        msgs.append(f'<div class="message-row assistant"><div class="bubble assistant">{linkify(resposta)}</div></div>')
+        r_html = linkify(resposta)
+        msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
-# spinner do assistente enquanto carrega (sem texto)
+# enquanto processa, mostra SÓ a bolinha azul
 if st.session_state.awaiting_answer and st.session_state.answering_started:
-    msgs.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
+    msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
-if not msgs:
-    msgs.append('<div style="color:#9ca3af;text-align:center;margin-top:20px;">.</div>')
-msgs.append('<div id="chatEnd" style="height:1px;"></div>')
-st.markdown(f'<div class="content"><div id="chatCard">{"".join(msgs)}</div></div>', unsafe_allow_html=True)
+if not msgs_html:
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-# ====== JS (placeholder some ao focar + autogrow/scroll) ======
+msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
+
+st.markdown(
+    f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
+    unsafe_allow_html=True
+)
+
+# ====== JS (ajustes + placeholder some no foco) ======
 st.markdown("""
 <script>
 (function(){
@@ -179,7 +355,8 @@ st.markdown("""
     const card = document.getElementById('chatCard');
     if(!input||!card) return;
     const rect = input.getBoundingClientRect();
-    const gap = 300;
+    const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
+    const gap = parseInt(gapVar || '24', 10);
     const alturaEfetiva = (window.innerHeight - rect.top) + gap;
     card.style.paddingBottom = alturaEfetiva + 'px';
     card.style.scrollPaddingBottom = alturaEfetiva + 'px';
@@ -188,44 +365,36 @@ st.markdown("""
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
     if(!ta) return;
     const MAX = 220;
-    ta.style.height = 'auto';
+    ta.style.height='auto';
     const desired = Math.min(ta.scrollHeight, MAX);
-    ta.style.height = desired + 'px';
-    ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
+    ta.style.height = desired+'px';
+    ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
   }
   function scrollToEnd(smooth=true){
     const end = document.getElementById('chatEnd');
-    if(end) end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
+    if(!end) return;
+    end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
 
-  // ===== Placeholder: some no foco e volta no blur se vazio
-  function hookTextarea(){
-    const ta = document.querySelector('[data-testid="stChatInput"] textarea');
-    if(!ta){ setTimeout(hookTextarea, 150); return; }  // tenta de novo se o elemento ainda não existe
+  // Placeholder: some no foco e volta no blur se vazio
+  const ta = document.querySelector('[data-testid="stChatInput"] textarea');
+  if (ta) {
     const originalPh = ta.getAttribute('placeholder') || '';
-    // Evita adicionar handlers duplicados
-    if(!ta.dataset.phHandled){
-      ta.addEventListener('focus', ()=>{ ta.setAttribute('placeholder',''); });
-      ta.addEventListener('blur',  ()=>{ if(!ta.value.trim()) ta.setAttribute('placeholder', originalPh); });
-      ta.dataset.phHandled = '1';
-    }
+    ta.addEventListener('focus', ()=>{ ta.setAttribute('placeholder',''); });
+    ta.addEventListener('blur',  ()=>{ if(!ta.value.trim()) ta.setAttribute('placeholder', originalPh); });
   }
-  hookTextarea();
-
-  // Reanexa se o Streamlit recriar o input
-  const root = document.querySelector('[data-testid="stChatInput"]') || document.body;
-  const moInput = new MutationObserver(()=>hookTextarea());
-  moInput.observe(root, {childList:true, subtree:true});
 
   const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
-
   window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
-  window.addEventListener('resize',()=>{ autoGrow(); ajustaEspaco(); });
-  document.addEventListener('input',(e)=>{ if(e.target && e.target.matches('[data-testid="stChatInput"] textarea')){ autoGrow(); ajustaEspaco(); }});
-
-  setTimeout(()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(true); }, 150);
-
+  window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
+  document.addEventListener('input',(e)=>{
+    if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
+      autoGrow();ajustaEspaco();
+    }
+  });
+  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
+  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
   const card = document.getElementById('chatCard');
   if(card){
     const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
@@ -244,12 +413,12 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
     st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
-    st.session_state.answering_started = False
+    st.session_state.awaiting_answer=True
+    st.session_state.answering_started=False
     do_rerun()
 
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started = True
+    st.session_state.answering_started=True
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
