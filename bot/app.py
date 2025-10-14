@@ -81,7 +81,7 @@ img.logo { height: 44px !important; width: auto !important }
 /* ========= VARS ========= */
 :root{
   --content-max-width: min(96vw, 1400px);
-  --header-height: 72px;
+  --header-height: 85px;
   --skirt-h: 72px;
   --chat-safe-gap: 300px;
   --card-height: calc(100dvh - var(--header-height) - 24px);
@@ -168,7 +168,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
 .hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
-div[data-testid="stSidebarContent"]{ padding-top:18 !important }
+div[data-testid="stSidebarContent"]{ padding-top:15 !important }
 div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
 .hist-row + .hist-row{ margin-top:6px }
