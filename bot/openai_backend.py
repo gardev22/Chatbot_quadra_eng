@@ -1,226 +1,96 @@
 import os
-import io
 import re
 import time
 import json
 import numpy as np
-import pandas as pd
 import requests
 import streamlit as st
-from html import escape
-from docx import Document
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 
 # ========= CONFIG =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"          # modelo mais rápido e estável
-TOP_K = 4                         # ↓ menos blocos finais enviados ao LLM
-TOP_N_ANN = 60                    # ↓ menos candidatos no estágio 1 (ANN)
-MAX_TOKENS = 350                  # ↓ resposta menor = mais rápida
-TEMPERATURE = 0.15                # ↓ ligeiramente mais objetiva
-REQUEST_TIMEOUT = 30              # ↓ timeout menor
+MODEL_ID = "gpt-4o-mini"
+TOP_K = 4
+TOP_N_ANN = 60
+MAX_TOKENS = 350
+TEMPERATURE = 0.15
+REQUEST_TIMEOUT = 30
 
-# Conexão HTTP persistente (mantém sessão aberta)
+CACHE_BUSTER = "2025-10-14-01"
+
+# ========= MENSAGEM PADRÃO =========
+FALLBACK_MSG = (
+    "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
+    "Departamento de Estratégia & Inovação."
+)
+CE_SCORE_THRESHOLD = 0.42
+
+# ========= HTTP SESSION =========
 session = requests.Session()
 session.headers.update({
     "Authorization": f"Bearer {API_KEY.strip()}",
     "Content-Type": "application/json"
 })
 
-# Pasta do Google Drive
-FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-
-# ========= MENSAGEM PADRÃO E THRESHOLD =========
-FALLBACK_MSG = (
-    "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
-    "Departamento de Estratégia & Inovação."
-)
-CE_SCORE_THRESHOLD = 0.42  # ajuste fino: 0.38~0.48 funciona bem com o MiniLM
-
-# ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-09-01"
-
-# ========= UTILS =========
+# ========= UTIL =========
 def sanitize_doc_name(name: str) -> str:
-    """Remove 'Cópia de', 'Copy of' e extensões (.doc/.docx/.pdf/.txt), além de espaços extras."""
     name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\.(docx?|pdf|txt)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
-# ========= CLIENTES E MODELOS (CACHEADOS) =========
-@st.cache_resource(show_spinner=False)
-def get_drive_client(_v=CACHE_BUSTER):
-    creds = service_account.Credentials.from_service_account_info(
-        dict(st.secrets["gcp_service_account"]), scopes=SCOPES
-    )
-    return build('drive', 'v3', credentials=creds)
-
+# ========= MODELOS =========
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    # modelo pequeno e rápido; ótimo custo/benefício
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    return model
+    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
     import torch
     from sentence_transformers import CrossEncoder
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ce = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
-    return ce
+    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
 
-# ========= LISTAGEM E DOWNLOAD (DRIVE) =========
-def _list_docx_metadata(drive_service, folder_id):
-    query = (
-        f"'{folder_id}' in parents and "
-        "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
-    )
-    fields = "files(id, name, md5Checksum, modifiedTime)"
-    results = drive_service.files().list(q=query, fields=fields).execute()
-    return results.get("files", [])
-
-def _download_docx_bytes(drive_service, file_id):
-    request = drive_service.files().get_media(fileId=file_id)
-    return request.execute()
-
-# ========= PARSE DOCX EM BLOCOS =========
-def _split_text_blocks(text, max_words=200):
-    words = text.split()
-    blocks = []
-    for i in range(0, len(words), max_words):
-        blocks.append(" ".join(words[i:i + max_words]))
-    return blocks
-
-def _docx_to_blocks(file_bytes, file_name, file_id, max_words=200):
-    doc = Document(io.BytesIO(file_bytes))
-    text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    small_blocks = _split_text_blocks(text, max_words=max_words)
-    out = []
-    for chunk in small_blocks:
-        if chunk.strip():
-            out.append({"pagina": file_name, "texto": chunk, "file_id": file_id})
-    return out
-
-# ========= CACHE DE METADADOS E CONTEÚDO =========
-@st.cache_data(show_spinner=False)
-def _list_docx_metadata_cached(folder_id: str, _v=CACHE_BUSTER):
-    drive = get_drive_client()
-    files = _list_docx_metadata(drive, folder_id)
-    return files
-
-def _build_signature(files_meta):
-    payload = sorted(
-        [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in files_meta],
-        key=lambda x: x["id"]
-    )
-    return json.dumps(payload, ensure_ascii=False)
-
-@st.cache_data(show_spinner=False)
-def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
-    """Cacheada com base na assinatura dos arquivos."""
-    drive = get_drive_client()
-    files = _list_docx_metadata(drive, folder_id)
-    all_blocks = []
-    for f in files:
-        bytes_ = _download_docx_bytes(drive, f["id"])
-        all_blocks.extend(_docx_to_blocks(bytes_, f["name"], f["id"], max_words=200))
-    return all_blocks
-
-def load_all_blocks_cached(folder_id: str):
-    files = _list_docx_metadata_cached(folder_id)
-    signature = _build_signature(files)
-    all_blocks = _download_and_parse_blocks(signature, folder_id)
-    return all_blocks, signature
-
-# ========= AGRUPAMENTO =========
-def agrupar_blocos(blocos, janela=3):
-    grouped = []
-    for i in range(len(blocos)):
-        group = blocos[i:i+janela]
-        if not group:
-            continue
-        texto_agregado = " ".join([b["texto"] for b in group])
-        grouped.append({
-            "pagina": group[0].get("pagina", "?"),
-            "texto": texto_agregado,
-            "file_id": group[0].get("file_id")
-        })
-    return grouped
-
-# ========= ÍNDICE VETORIAL =========
-def try_import_faiss():
-    try:
-        import faiss
-        return faiss
-    except Exception:
-        return None
-
+# ========= BLOCO CACHEADO =========
 @st.cache_resource(show_spinner=False)
-def build_vector_index(_v=CACHE_BUSTER):
-    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
-    grouped = agrupar_blocos(blocks_raw, janela=3)
-    if not grouped:
-        return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
+def load_blocks_from_cache(_v=CACHE_BUSTER):
+    """Lê os blocos processados de blocks_cache.json."""
+    path = os.path.join("bot", "blocks_cache.json")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    blocks = data.get("blocks", [])
+    emb = np.array(data.get("embeddings", []), dtype=np.float32)
+    return {"blocks": blocks, "emb": emb}
 
-    sbert = get_sbert_model()
-    texts = [b["texto"] for b in grouped]
-
-    @st.cache_data(show_spinner=False)
-    def _embed_texts_cached(texts_, _v2=CACHE_BUSTER):
-        return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
-
-    emb = _embed_texts_cached(texts)
-
-    faiss = try_import_faiss()
-    use_faiss = False
-    index = None
-    if faiss is not None:
-        dim = emb.shape[1]
-        index = faiss.IndexFlatIP(dim)
-        index.add(emb.astype(np.float32))
-        use_faiss = True
-
-    return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
-
+# ========= VETORIAL (ANN) =========
 def ann_search(query_text: str, top_n: int):
-    vecdb = build_vector_index()
+    vecdb = load_blocks_from_cache()
     blocks = vecdb["blocks"]
-    if not blocks:
+    emb = vecdb["emb"]
+    if not blocks or emb.size == 0:
         return []
 
     sbert = get_sbert_model()
     q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
 
-    if vecdb["use_faiss"]:
-        import faiss
-        D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
-        idxs = I[0].tolist()
-        scores = D[0].tolist()
-    else:
-        emb = vecdb["emb"]
-        scores = (emb @ q)
-        idxs = np.argsort(-scores)[:top_n].tolist()
-        scores = scores[idxs].tolist()
-
-    candidates = [{"idx": i, "score": s, "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
+    scores = emb @ q
+    idxs = np.argsort(-scores)[:top_n]
+    candidates = [{"idx": int(i), "score": float(scores[i]), "block": blocks[i]} for i in idxs]
     return candidates
 
 # ========= RERANKING =========
 def crossencoder_rerank(query: str, candidates, top_k: int):
     if not candidates:
         return []
-
     ce = get_cross_encoder()
     pairs = [(query, c["block"]["texto"]) for c in candidates]
     scores = ce.predict(pairs, batch_size=64)
-    packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
-    packed.sort(key=lambda x: x["score"], reverse=True)
-    return packed[:top_k]
+    ranked = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
+    ranked.sort(key=lambda x: x["score"], reverse=True)
+    return ranked[:top_k]
 
-# ========= DETECÇÃO DE ETAPA =========
+# ========= ETAPA SEGUINTE =========
 def responder_etapa_seguinte(pergunta, blocos_raw):
     if not any(x in pergunta.lower() for x in ["após", "depois de", "seguinte a"]):
         return None
@@ -251,14 +121,13 @@ def montar_prompt_rag(pergunta, blocos):
         "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
         "### Regras de resposta:\n"
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
-        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada\n"
+        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada.\n"
         f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes totalmente em maiúsculo  sempre que possível.\n\n"
+        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes totalmente em maiúsculo sempre que possível.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
-
 
 # ========= PRINCIPAL =========
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
@@ -267,18 +136,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # Etapa seguinte (simples e rápida)
-        blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
-        seq = responder_etapa_seguinte(pergunta, blocks_raw)
+        vecdb = load_blocks_from_cache()
+        blocos_raw = vecdb["blocks"]
+
+        seq = responder_etapa_seguinte(pergunta, blocos_raw)
         if seq:
             return seq
 
-        # Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
             return FALLBACK_MSG
 
-        # Reranking
         reranked = crossencoder_rerank(pergunta, candidates, top_k=top_k)
         best_score = reranked[0]["score"] if reranked else 0.0
         if best_score < CE_SCORE_THRESHOLD:
@@ -297,7 +165,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "temperature": TEMPERATURE
         }
 
-        # requisição via sessão persistente
         resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT)
         if not resp.ok:
             return f"❌ Erro na API: {resp.status_code} - {resp.text}"
@@ -309,7 +176,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = escolhas[0]["message"]["content"]
 
-        # Anexar link do documento
         if resposta.strip() != FALLBACK_MSG and best_score >= CE_SCORE_THRESHOLD and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
