@@ -110,9 +110,8 @@ img.logo { height: 44px !important; width: auto !important }
 
   --sidebar-w:270px;
 
-  /* >>> CONTROLE FINO DO "COLAMENTO" DO CONTEÚDO DO HISTÓRICO AO TOPO <<< */
-  /* aumente/diminua este valor para ajustar a distância do texto do histórico ao cabeçalho */
-  --sidebar-items-top-gap: 22px; /* <--- mude aqui (px) */
+  /* >>> CONTROLE DO “COLADO” DO HISTÓRICO AO TOPO <<< */
+  --sidebar-items-top-gap: 4px; /* ajuste aqui (0px cola total) */
 }
 
 /* ========= STREAMLIT CHROME ========= */
@@ -162,20 +161,19 @@ section[data-testid="stSidebar"]{
   overflow:hidden !important;
   color:var(--text);
 }
-section[data-testid="stSidebar"]>div{
-  height:100% !important; overflow-y:auto !important; padding:0 12px 12px 12px !important; margin:0 !important;
+
+/* —— zera paddings/margens que empurram o conteúdo pra baixo —— */
+section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
+div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
+
+/* —— aplica o gap controlado SOMENTE no seu primeiro item (Histórico) —— */
+section[data-testid="stSidebar"] .sidebar-header{
+  margin-top: var(--sidebar-items-top-gap) !important;
 }
-div[data-testid="stSidebarCollapseButton"]{ display:none !important }
+
+/* (restante do estilo da sidebar) */
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
-
-/* >>> aplica o "colamento" do texto ao topo usando a variável <<< */
-div[data-testid="stSidebarContent"]{
-  padding-top: var(--sidebar-items-top-gap) !important;
-}
-
-/* mantém o primeiro item sem margem superior extra */
-div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
-
 .sidebar-header{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
@@ -229,13 +227,12 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 }
 [data-testid="stChatInput"] > div{
   background:var(--input-bg) !important;
-  border:1px solid var(--input-border) !important;   /* mantém a mesma borda SEM mudar no foco */
+  border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
   overflow:hidden;
   transition:border-color .12s ease, box-shadow .12s ease;
 }
-
 [data-testid="stChatInput"] textarea{
   width:100% !important;
   border:none !important; border-radius:999px !important;
@@ -246,9 +243,7 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   caret-color:#ffffff !important;
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
-/* Esconder placeholder ao focar */
 [data-testid="stChatInput"] textarea:focus::placeholder{ color:transparent !important; opacity:0 !important }
-
 [data-testid="stChatInput"] button{
   margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
 }
