@@ -111,7 +111,7 @@ img.logo { height: 44px !important; width: auto !important }
   --sidebar-w:270px;
 
   /* >>> CONTROLE DO “COLADO” DO HISTÓRICO AO TOPO <<< */
-  --sidebar-items-top-gap: -15px; /* ajuste aqui (0px cola total) */
+  --sidebar-items-top-gap: -30px; /* ajuste aqui (0px cola total) */
 }
 
 /* ========= STREAMLIT CHROME ========= */
