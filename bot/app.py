@@ -59,7 +59,7 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 def reenviar_pergunta(q: str):
-    q = (q or "").trim() if hasattr(str, "trim") else (q or "").strip()
+    q = (q or "").strip()
     if not q:
         return
     st.session_state.historico.append((q, ""))
@@ -109,6 +109,10 @@ img.logo { height: 44px !important; width: auto !important }
   --input-border:#323949;
 
   --sidebar-w:270px;
+
+  /* >>> CONTROLE FINO DO "COLAMENTO" DO CONTEÚDO DO HISTÓRICO AO TOPO <<< */
+  /* aumente/diminua este valor para ajustar a distância do texto do histórico ao cabeçalho */
+  --sidebar-items-top-gap: 6px; /* <--- mude aqui (px) */
 }
 
 /* ========= STREAMLIT CHROME ========= */
@@ -164,12 +168,18 @@ section[data-testid="stSidebar"]>div{
 div[data-testid="stSidebarCollapseButton"]{ display:none !important }
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
+/* >>> aplica o "colamento" do texto ao topo usando a variável <<< */
+div[data-testid="stSidebarContent"]{
+  padding-top: var(--sidebar-items-top-gap) !important;
+}
+
+/* mantém o primeiro item sem margem superior extra */
+div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
+
 .sidebar-header{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }
 .sidebar-bar{ display:flex; align-items:center; justify-content:space-between; margin:0 4px 6px 2px; height:28px }
 .sidebar-sub{ font-size:.88rem; color:var(--muted) }
 .hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
-div[data-testid="stSidebarContent"]{ padding-top:15px !important }
-div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
 .hist-row + .hist-row{ margin-top:6px }
 .hist-row:hover{ background:#161a20 }
@@ -225,7 +235,6 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   overflow:hidden;
   transition:border-color .12s ease, box-shadow .12s ease;
 }
-/* —— sem estilo especial no foco (removemos a borda branca) —— */
 
 [data-testid="stChatInput"] textarea{
   width:100% !important;
@@ -234,15 +243,11 @@ div[data-testid="stSidebarContent"] > *:first-child{ margin-top:0 !important }
   outline:none !important; height:auto !important;
   min-height:44px !important; max-height:220px !important;
   overflow-y:hidden !important;
-  caret-color:#ffffff !important;  /* “barra” interna branca */
+  caret-color:#ffffff !important;
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
-
-/* >>> NOVO: esconder placeholder ao focar <<< */
-[data-testid="stChatInput"] textarea:focus::placeholder{
-  color: transparent !important;
-  opacity: 0 !important;
-}
+/* Esconder placeholder ao focar */
+[data-testid="stChatInput"] textarea:focus::placeholder{ color:transparent !important; opacity:0 !important }
 
 [data-testid="stChatInput"] button{
   margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
@@ -304,10 +309,10 @@ st.markdown(f"""
   </div>
   <div class="header-right">
     <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
-<div style="text-align:right;font-size:0.9rem;color:var(--text);">
-  <span style="font-weight:600;">Usuário Demo</span><br>
-  <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">usuario@exemplo.com</span>
-</div>
+    <div style="text-align:right;font-size:0.9rem;color:var(--text);">
+      <span style="font-weight:600;">Usuário Demo</span><br>
+      <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">usuario@exemplo.com</span>
+    </div>
     <div class="user-circle">U</div>
   </div>
 </div>
@@ -383,6 +388,7 @@ st.markdown("""
     if(!end) return;
     end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
+
   const ro = new ResizeObserver(()=>{ajustaEspaco();});
   ro.observe(document.body);
   window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
