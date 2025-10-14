@@ -1,9 +1,10 @@
-# openai_backend.py — rápido e estável: JSON/JSONL + CE inteligente + índice pré-computado (opcional)
+# openai_backend.py — robusto contra fallback precoce (evidência léxica + thresholds ajustados)
 
 import os
 import io
 import re
 import json
+import unicodedata
 import numpy as np
 import requests
 import streamlit as st
@@ -17,21 +18,21 @@ API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o-mini"
 
 # ========= PERFORMANCE & QUALIDADE =========
-USE_JSONL = True              # usa JSON/JSONL do Drive se existir (mais rápido que DOCX)
-USE_CE = True                 # liga CrossEncoder (com pulo inteligente)
-SKIP_CE_IF_ANN_BEST = 0.55    # se melhor score do ANN >= 0.55, NÃO roda CE
-TOP_N_ANN = 48                # mais recall no estágio 1 (era 16)
-TOP_K = 4                     # blocos finais enviados ao LLM
-MAX_WORDS_PER_BLOCK = 220     # blocos menores para não diluir o conteúdo
-GROUP_WINDOW = 3              # agrega menos blocos por item (melhora recuperação)
-CE_SCORE_THRESHOLD = 0.42     # limiar quando CE é usado
-ANN_SCORE_THRESHOLD = 0.22    # limiar quando só ANN é usado
-MAX_TOKENS = 320
+USE_JSONL = True               # prefere JSON/JSONL do Drive (rápido)
+USE_CE = True                  # CE ligado, mas com pulo inteligente
+SKIP_CE_IF_ANN_BEST = 0.60     # se ANN >= 0.60, não roda CE
+TOP_N_ANN = 64                 # mais recall
+TOP_K = 6                      # manda mais blocos ao LLM (mais contexto)
+MAX_WORDS_PER_BLOCK = 220
+GROUP_WINDOW = 3
+# Limiar quando CE é usado vs quando só ANN é usado
+CE_SCORE_THRESHOLD = 0.38
+ANN_SCORE_THRESHOLD = 0.18
+MAX_TOKENS = 450               # evita respostas truncadas
 TEMPERATURE = 0.15
 REQUEST_TIMEOUT = 25
 
-# ========= ÍNDICE PRÉ-COMPUTADO (OPCIONAL, VIA DRIVE) =========
-# Se esses 3 arquivos aparecerem no mesmo folder do Drive, o app carrega e usa direto (turbo):
+# ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
@@ -48,7 +49,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-14-ultra-quality-01"
+CACHE_BUSTER = "2025-10-14-robusto-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -57,13 +58,33 @@ session.headers.update({
     "Content-Type": "application/json"
 })
 
-
 # ========================= UTILS =========================
 def sanitize_doc_name(name: str) -> str:
     name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\.(docx?|pdf|txt|jsonl?|JSONL?)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
+def _strip_accents(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+def _tokenize(s: str):
+    s = _strip_accents(s.lower())
+    return re.findall(r"[a-zA-Z0-9_]{3,}", s)
+
+def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
+    """
+    Evidência léxica simples, acento-insensível.
+    Se qualquer token relevante da query aparece em pelo menos um texto, retorna True.
+    """
+    q_tokens = set(_tokenize(query))
+    if not q_tokens:
+        return False
+    for t in texts:
+        t_tokens = set(_tokenize(t or ""))
+        # interseção mínima de 1 token
+        if q_tokens & t_tokens:
+            return True
+    return False
 
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
@@ -85,9 +106,7 @@ def get_cross_encoder(_v=CACHE_BUSTER):
     import torch
     from sentence_transformers import CrossEncoder
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # Modelo custo/benefício; se ficar pesado, tente L-2-v2
     return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
-
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _list_by_mime_query(drive_service, folder_id, mime_query):
@@ -103,7 +122,6 @@ def _list_docx_metadata(drive_service, folder_id):
     )
 
 def _list_json_metadata(drive_service, folder_id):
-    # JSON às vezes vem como text/plain; filtramos pela extensão também
     files = _list_by_mime_query(
         drive_service, folder_id,
         "mimeType='application/json' or mimeType='text/plain'"
@@ -112,13 +130,9 @@ def _list_json_metadata(drive_service, folder_id):
 
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
-    results = drive_service.files().list(
-        q=f"'{folder_id}' in parents",
-        fields=fields
-    ).execute()
+    results = drive_service.files().list(q=f"'{folder_id}' in parents", fields=fields).execute()
     files = results.get("files", []) or []
-    name_map = {f["name"]: f for f in files if f.get("name") in wanted_names}
-    return name_map
+    return {f["name"]: f for f in files if f.get("name") in wanted_names}
 
 def _download_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id)
@@ -126,7 +140,6 @@ def _download_bytes(drive_service, file_id):
 
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
-
 
 # ========================= PARSE DOCX/JSON =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
@@ -173,7 +186,6 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
             out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
 
-
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
 @st.cache_data(show_spinner=False)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
@@ -183,9 +195,7 @@ def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     return {"json": files_json, "docx": files_docx}
 
 def _signature_from_files(files):
-    return [
-        {k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])
-    ]
+    return [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])]
 
 def _build_signature_json_docx(files_json, files_docx):
     payload = {
@@ -202,7 +212,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     files_docx = sources.get("docx", [])
 
     blocks = []
-    # 1) Prefere JSON/JSONL
     if USE_JSONL and files_json:
         for f in files_json:
             try:
@@ -213,7 +222,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         if blocks:
             return blocks
 
-    # 2) Fallback DOCX
+    # Fallback DOCX
     for f in files_docx:
         try:
             blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"]))
@@ -226,7 +235,6 @@ def load_all_blocks_cached(folder_id: str):
     signature = _build_signature_json_docx(src.get("json", []), src.get("docx", []))
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
-
 
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
@@ -242,43 +250,30 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
         })
     return grouped
 
-
-# ========================= ÍNDICE PRÉ-COMPUTADO (CARREGAR) =========================
-def _find_precomputed_files():
+# ========================= ÍNDICE PRÉ-COMPUTADO =========================
+def _list_named_files_map():
     drive = get_drive_client()
     want = {PRECOMP_FAISS_NAME, PRECOMP_VECTORS_NAME, PRECOMP_BLOCKS_NAME}
     name_map = _list_named_files(drive, FOLDER_ID, want)
-    if not all(n in name_map for n in want):
-        return None
-    return {
-        "faiss": name_map[PRECOMP_FAISS_NAME]["id"],
-        "vectors": name_map[PRECOMP_VECTORS_NAME]["id"],
-        "blocks": name_map[PRECOMP_BLOCKS_NAME]["id"],
-    }
+    return name_map if all(n in name_map for n in want) else None
 
 @st.cache_resource(show_spinner=False)
 def _load_precomputed_index(_v=CACHE_BUSTER):
-    """
-    Carrega FAISS + vectors.npy + blocks.json do Drive se todos existirem.
-    Retorna dict compatível com o resto do pipeline.
-    """
     if not USE_PRECOMPUTED:
         return None
-
-    ids = _find_precomputed_files()
-    if not ids:
+    ids_map = _list_named_files_map()
+    if not ids_map:
         return None
-
     drive = get_drive_client()
     try:
-        vectors = np.load(io.BytesIO(_download_bytes(drive, ids["vectors"])))
-        blocks_json = json.loads(_download_text(drive, ids["blocks"]))
+        vectors = np.load(io.BytesIO(_download_bytes(drive, ids_map[PRECOMP_VECTORS_NAME]["id"])))
+        blocks_json = json.loads(_download_text(drive, ids_map[PRECOMP_BLOCKS_NAME]["id"]))
         blocks = _json_records_to_blocks(blocks_json, fallback_name="precomp", file_id="precomp")
         try:
             import faiss
         except Exception:
             return None
-        faiss_index_bytes = _download_bytes(drive, ids["faiss"])
+        faiss_index_bytes = _download_bytes(drive, ids_map[PRECOMP_FAISS_NAME]["id"])
         tmp_path = "/tmp/faiss.index"
         with open(tmp_path, "wb") as f:
             f.write(faiss_index_bytes)
@@ -286,7 +281,6 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
         return {"blocks": blocks, "emb": vectors, "index": index, "use_faiss": True}
     except Exception:
         return None
-
 
 # ========================= ÍNDICE (GERAR OU USAR PRONTO) =========================
 def try_import_faiss():
@@ -298,12 +292,10 @@ def try_import_faiss():
 
 @st.cache_resource(show_spinner=False)
 def build_vector_index(_v=CACHE_BUSTER):
-    # 0) Tenta carregar pré-computado
     pre = _load_precomputed_index()
     if pre is not None:
         return pre
 
-    # 1) Gera em runtime (cacheado)
     blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
     grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
     if not grouped:
@@ -329,7 +321,6 @@ def build_vector_index(_v=CACHE_BUSTER):
 
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
-
 # ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
     vecdb = build_vector_index()
@@ -353,25 +344,20 @@ def ann_search(query_text: str, top_n: int):
 
     return [{"idx": i, "score": float(s), "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
 
-
 # ========================= RERANKING (CE OPCIONAL) =========================
 def crossencoder_rerank(query: str, candidates, top_k: int):
     if not candidates:
         return []
     ce = get_cross_encoder()
     if ce is None:
-        # fallback: usa ANN
         packed = [{"block": c["block"], "score": float(c["score"])} for c in candidates]
         packed.sort(key=lambda x: x["score"], reverse=True)
         return packed[:top_k]
-
     pairs = [(query, c["block"]["texto"]) for c in candidates]
-    # batch um pouco maior para acelerar
-    scores = ce.predict(pairs, batch_size=128)
+    scores = ce.predict(pairs, batch_size=96)
     packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
     packed.sort(key=lambda x: x["score"], reverse=True)
     return packed[:top_k]
-
 
 # ========================= ATALHO DE ETAPA & PROMPT =========================
 def responder_etapa_seguinte(pergunta, blocos_raw):
@@ -396,19 +382,19 @@ def montar_prompt_rag(pergunta, blocos):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
+    # Prompt mais permissivo: só permite fallback se não houver evidência
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
-        "Responda SOMENTE com base nos documentos.\n\n"
+        "Responda SOMENTE com base nos documentos fornecidos.\n\n"
         "Regras:\n"
-        "1) Não invente nada.\n"
-        "2) Se puder deduzir, explicite a dedução.\n"
-        f"3) Se não houver evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        "4) Estruture em tópicos ou frases completas; cite trechos em MAIÚSCULAS quando útil.\n\n"
+        "1) Não invente; cite os trechos relevantes quando possível.\n"
+        "2) Se a resposta puder ser deduzida, explique a dedução de forma objetiva.\n"
+        "3) Somente se NÃO houver evidência em NENHUM dos trechos abaixo, responda exatamente:\n"
+        f"{FALLBACK_MSG}\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
-
 
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
@@ -423,7 +409,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if seq:
             return seq
 
-        # Busca ANN (rápida)
+        # Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
             return FALLBACK_MSG
@@ -432,20 +418,25 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
 
-        # Decide se roda CE (pulo inteligente)
+        # Decide CE com pulo inteligente
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
 
         if run_ce:
-            # Roda CE só em um subconjunto para ser rápido
             subset = candidates[:24]
-            reranked = crossencoder_rerank(pergunta, subset, top_k=TOP_K)
+            reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
             best_score = reranked[0]["score"] if reranked else 0.0
             pass_threshold = (best_score >= CE_SCORE_THRESHOLD)
+            top_texts = [r["block"]["texto"] for r in reranked]
         else:
-            # Sem CE: usa ANN direto
-            reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:TOP_K]]
+            reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
             best_score = reranked[0]["score"] if reranked else 0.0
             pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
+            top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
+
+        # NOVO: se houver evidência léxica nas passagens top, ignorar threshold
+        if not pass_threshold:
+            if _has_lexical_evidence(pergunta, top_texts) or len(_tokenize(pergunta)) <= 3:
+                pass_threshold = True  # não bloqueia respostas curtas tipo "ferias"
 
         if not pass_threshold:
             return FALLBACK_MSG
@@ -476,7 +467,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         resposta = choices[0]["message"]["content"]
 
         # Anexa link do doc mais relevante
-        if resposta.strip() != FALLBACK_MSG and best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD) and blocos_relevantes:
+        if resposta.strip() != FALLBACK_MSG and blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
             raw_nome = primeiro.get("pagina", "?")
@@ -489,7 +480,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
-
 
 # ========================= CLI =========================
 if __name__ == "__main__":
