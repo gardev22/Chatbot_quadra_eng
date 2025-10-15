@@ -1,4 +1,4 @@
-# openai_backend.py — atualiza com docs novos do Drive (sem índice pré-computado) + TTL e clear manual
+# openai_backend.py — anti-fallback + anti-truncamento (ajustes mínimos)
 
 import os
 import io
@@ -22,21 +22,22 @@ USE_JSONL = True               # prefere JSON/JSONL do Drive (rápido)
 USE_CE = True                  # CE ligado, mas com pulo inteligente
 SKIP_CE_IF_ANN_BEST = 0.60     # se ANN >= 0.60, não roda CE
 TOP_N_ANN = 64                 # mais recall
-TOP_K = 6                      # contexto base enviado ao LLM
+TOP_K = 6                     # contexto base enviado ao LLM
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
+# Limiar quando CE é usado vs quando só ANN é usado
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
-MAX_TOKENS = 700               # anti-truncamento
-REQUEST_TIMEOUT = 40
+# Anti-truncamento
+MAX_TOKENS = 700               # ↑ aumenta espaço pra resposta
+REQUEST_TIMEOUT = 40           # ↑ evita corte por timeout
 TEMPERATURE = 0.15
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
-# ⚠️ DESLIGADO para enxergar arquivos novos do Drive automaticamente
-USE_PRECOMPUTED = False
+USE_PRECOMPUTED = True
 
 # ========= DRIVE / AUTH =========
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
@@ -49,7 +50,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-15-refresh-01"
+CACHE_BUSTER = "2025-10-14-robusto-02"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -82,6 +83,7 @@ def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
     return False
 
 def _is_fallback_output(text: str) -> bool:
+    """Detecta fallback mesmo com espaços/variações mínimas."""
     if not text:
         return False
     norm = "\n".join([line.strip() for line in text.strip().splitlines() if line.strip()])
@@ -90,10 +92,12 @@ def _is_fallback_output(text: str) -> bool:
     first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
     return (fallback_norm in norm) or norm.startswith(first_line)
 
+# >>> NOVO: detecta respostas do tipo "não há informações..." para forçar o FALLBACK
 _NOINFO_RE = re.compile(
     r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
     re.IGNORECASE
 )
+
 def _looks_like_noinfo(text: str) -> bool:
     return bool(text and _NOINFO_RE.search(text))
 
@@ -198,8 +202,7 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     return out
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
-# ⚠️ Antes esta listagem ficava “presa” no cache; agora tem TTL para pegar arquivos novos
-@st.cache_data(show_spinner=False, ttl=60)
+@st.cache_data(show_spinner=False)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
@@ -219,7 +222,7 @@ def _build_signature_json_docx(files_json, files_docx):
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
-    sources = _list_sources_cached(folder_id)  # já tem TTL
+    sources = _list_sources_cached(folder_id)
     files_json = sources.get("json", [])
     files_docx = sources.get("docx", [])
 
@@ -228,7 +231,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         for f in files_json:
             try:
                 recs = _records_from_json_text(_download_text(drive, f["id"]))
-                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"])))
+                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"]))
             except Exception:
                 continue
         if blocks:
@@ -243,7 +246,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     return blocks
 
 def load_all_blocks_cached(folder_id: str):
-    src = _list_sources_cached(folder_id)  # TTL 60s
+    src = _list_sources_cached(folder_id)
     signature = _build_signature_json_docx(src.get("json", []), src.get("docx", []))
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
@@ -394,6 +397,7 @@ def montar_prompt_rag(pergunta, blocos, reforco_no_fallback=False):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
+    # (mantém seu prompt exatamente)
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
         "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
@@ -425,9 +429,11 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not candidates:
             return FALLBACK_MSG
 
+        # Ordena pelo score ANN
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
 
+        # Decide CE com pulo inteligente
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
 
         if run_ce:
@@ -442,10 +448,14 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
             top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
+        # >>> AJUSTE MINÍMO: evidência só se houver sobreposição lexical (sem a regra de ≤3 tokens)
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
+
+        # Permite responder com score baixo apenas se houver evidência lexical real
         if not pass_threshold and evidence_ok:
             pass_threshold = True
 
+        # Sem evidência/score: FALLBACK imediato
         if not pass_threshold:
             return FALLBACK_MSG
 
@@ -474,12 +484,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = choices[0]["message"]["content"].strip()
 
+        # =============== Guardas finais ===============
+        # Se o modelo disser "não há informações..." => força FALLBACK oficial
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
 
-        if _is_fallback_output(resposta):
+        # Detecta seu fallback explícito (compara textos)
+        is_fb = _is_fallback_output(resposta)
+        if is_fb:
             return FALLBACK_MSG
 
+        # Anexa link só se NÃO for fallback
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -493,16 +508,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
-
-# ========================= CLEAR MANUAL (opcional) =========================
-def clear_rag_caches():
-    """Use se quiser forçar atualização imediata (por exemplo, após subir um arquivo no Drive)."""
-    try:
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        return "✅ Caches limpos (data + resource)."
-    except Exception as e:
-        return f"⚠️ Falha ao limpar caches: {e}"
 
 # ========================= CLI =========================
 if __name__ == "__main__":
