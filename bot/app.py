@@ -1,4 +1,4 @@
-# app.py — Streamlit Cloud (sidebar preta, chat cinza #1C1F26, input um tom mais claro)
+# app.py — links azuis (alteração simples nas CSS vars)
 
 import streamlit as st
 import base64
@@ -71,7 +71,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (apenas estética) ======
+# ====== CSS (sidebar preta, chat cinza, input um tom mais claro + LINKS AZUIS) ======
 st.markdown("""
 <style>
 /* ========= RESET / BASE ========= */
@@ -98,14 +98,18 @@ img.logo { height: 44px !important; width: auto !important }
   --panel-header: var(--panel-alt);
 
   /* Sidebar PRETA */
-  --sidebar-bg: #000000;         /* preto puro para o histórico */
+  --sidebar-bg: #000000;
 
   /* Chat input: um tom MAIS CLARO que a tela do chat */
-  --input-bg-light:#262D38;      /* ~ um pouco mais claro que #1C1F26 */
+  --input-bg-light:#262D38;
 
   --border:#242833;
   --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
-  --link:#B9C0CA; --link-hover:#FFFFFF;
+
+  /* >>> LINKS AZUIS (alteração simples) <<< */
+  --link:#3B82F6;        /* azul (blue-500) */
+  --link-hover:#93C5FD;  /* azul claro (blue-300) */
+
   --bubble-user:#222833; --bubble-assistant:#232833;
   --input-border:#323949;
 
@@ -185,7 +189,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .hist-row + .hist-row{ margin-top:6px }
 .hist-row:hover{ background:rgba(255,255,255,0.04) }
 
-/* ========= CONTEÚDO / CHAT (mantido) ========= */
+/* ========= CONTEÚDO / CHAT ========= */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 #chatCard, .chat-card{
   position:relative;
@@ -204,6 +208,10 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 }
 #chatCard *, .chat-card *{ position:relative; z-index:51 !important }
 
+/* >>> LINKS AZUIS no chat (usa as vars acima) */
+.chat-card a{ color:var(--link) !important; text-decoration:underline }
+.chat-card a:hover{ color:var(--link-hover) !important }
+
 .message-row{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--input-bottom) + var(--input-h) + var(--extra-gap) + 16px) }
 .message-row.user{ justify-content:flex-end }
 .message-row.assistant{ justify-content:flex-start }
@@ -213,7 +221,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 }
 .bubble.user{ background:var(--bubble-user); border-bottom-right-radius:6px }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
-.chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
 
 /* ========= CHAT INPUT (um tom mais claro que a tela) ========= */
 [data-testid="stChatInput"]{
@@ -231,7 +238,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   color:var(--text) !important;
 }
 [data-testid="stChatInput"] > div{
-  background:var(--input-bg-light) !important;      /* <— CLARO */
+  background:var(--input-bg-light) !important;      /* mais claro que o chat */
   border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
