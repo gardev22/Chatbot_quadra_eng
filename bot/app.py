@@ -1,4 +1,4 @@
-# app.py — Streamlit Cloud (chat nunca atrás do chatinput)
+# app.py — Streamlit Cloud (tela toda no mesmo cinza do card, sem faixas)
 
 import streamlit as st
 import base64
@@ -71,7 +71,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (com altura dinâmica do input) ======
+# ====== CSS (visual unificado no cinza do card) ======
 st.markdown("""
 <style>
 /* ========= RESET / BASE ========= */
@@ -87,14 +87,23 @@ img.logo { height: 44px !important; width: auto !important }
   --sidebar-w:270px;
 
   /* posição do input e buffers */
-  --input-bottom: 60px;    /* distância do input até a borda inferior */
-  --input-h: 72px;         /* ATUALIZADA via JS com a altura real do input */
-  --extra-gap: 20px;       /* folguinha extra pra nunca sobrepor */
+  --input-bottom: 60px;
+  --input-h: 72px;         /* atualizado via JS */
+  --extra-gap: 20px;
 
-  /* paleta */
-  --bg:#0F1115; --panel:#0B0D10; --panel-header:#14171C; --panel-alt:#1C1F26; --border:#242833;
-  --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2; --link:#B9C0CA; --link-hover:#FFFFFF;
-  --bubble-user:#222833; --bubble-assistant:#232833; --input-bg:#1E222B; --input-border:#323949;
+  /* paleta base (as três abaixo serão sobrescritas mais ao fim p/ igualar a tela) */
+  --bg:#0F1115;
+  --panel:#0B0D10;
+  --panel-header:#14171C;
+
+  /* o cinza do card (vamos uniformizar tudo nele) */
+  --panel-alt:#1C1F26;
+
+  --border:#242833;
+  --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
+  --link:#B9C0CA; --link-hover:#FFFFFF;
+  --bubble-user:#222833; --bubble-assistant:#232833;
+  --input-bg:#1E222B; --input-border:#323949;
 
   /* knobs da sidebar */
   --sidebar-items-top-gap: -45px;
@@ -188,7 +197,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   height: calc(100dvh - var(--header-height) - var(--input-bottom) - var(--input-h) - var(--extra-gap));
   overflow-y:auto; scroll-behavior:smooth;
 
-  /* Folga inferior que garante que nada fique atrás do input */
+  /* Folga inferior para nunca ficar atrás do input */
   padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
   scroll-padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
 
@@ -269,7 +278,8 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
 *::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
-*::-webkit-scrollbar-track{ background:#0F1115 }
+/* track no mesmo cinza do card */
+*::-webkit-scrollbar-track{ background:var(--panel-alt) }
 
 /* bolinha azul girando */
 .spinner{
@@ -281,6 +291,20 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   animation:spin .8s linear infinite;
 }
 @keyframes spin{ to{ transform:rotate(360deg) } }
+
+/* ======== OVERRIDES DE TEMA PARA UNIFICAR TUDO NO CINZA DO CARD ======== */
+/* deixa TODA a tela na mesma cor do card interno (sem faixas escuras) */
+:root{
+  --bg: var(--panel-alt) !important;
+  --panel: var(--panel-alt) !important;
+  --panel-header: var(--panel-alt) !important;
+}
+html, body, .stApp, [data-testid="stAppViewContainer"], main, .stMain{
+  background: var(--panel-alt) !important;
+}
+section[data-testid="stSidebar"], .header{
+  background: var(--panel-alt) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -375,11 +399,9 @@ st.markdown("""
     if(end) end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
 
-  // Observers
   const ro = new ResizeObserver(()=>{ setInputVars(); autoGrow(); scrollToEnd(false); });
   ro.observe(document.body);
 
-  // Eventos comuns
   window.addEventListener('load', ()=>{ setInputVars(); autoGrow(); scrollToEnd(false); });
   window.addEventListener('resize', ()=>{ setInputVars(); autoGrow(); });
   document.addEventListener('input',(e)=>{
@@ -388,14 +410,12 @@ st.markdown("""
     }
   });
 
-  // Mutations no chat (novas mensagens)
   const card = document.getElementById('chatCard');
   if(card){
     const mo = new MutationObserver(()=>{ setInputVars(); scrollToEnd(true); });
     mo.observe(card, {childList:true, subtree:false});
   }
 
-  // Ajustes assíncronos iniciais
   setTimeout(()=>{ setInputVars(); autoGrow(); scrollToEnd(false); }, 0);
   setTimeout(()=>{ setInputVars(); autoGrow(); scrollToEnd(true); }, 150);
 })();
