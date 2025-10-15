@@ -1,3 +1,5 @@
+# app.py — Streamlit Cloud (chat nunca atrás do chatinput)
+
 import streamlit as st
 import base64
 import os
@@ -69,7 +71,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS ======
+# ====== CSS (com altura dinâmica do input) ======
 st.markdown("""
 <style>
 /* ========= RESET / BASE ========= */
@@ -82,42 +84,22 @@ img.logo { height: 44px !important; width: auto !important }
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 68px;
-  --skirt-h: 72px;
-  --chat-safe-gap: 300px;
-  --card-height: calc(100dvh - var(--header-height) - 24px);
-  --input-max: 900px;
-  --input-bottom: 60px;
-
-  /* Paleta escura */
-  --bg:#0F1115;
-  --panel:#0B0D10;
-  --panel-header:#14171C;
-  --panel-alt:#1C1F26;
-  --border:#242833;
-
-  --text:#E5E7EB;
-  --text-dim:#C9D1D9;
-  --muted:#9AA4B2;
-
-  --link:#B9C0CA;
-  --link-hover:#FFFFFF;
-
-  --bubble-user:#222833;
-  --bubble-assistant:#232833;
-
-  --input-bg:#1E222B;
-  --input-border:#323949;
-
   --sidebar-w:270px;
 
-  /* >>> você já usa para colar o bloco todo ao topo <<< */
+  /* posição do input e buffers */
+  --input-bottom: 60px;    /* distância do input até a borda inferior */
+  --input-h: 72px;         /* ATUALIZADA via JS com a altura real do input */
+  --extra-gap: 20px;       /* folguinha extra pra nunca sobrepor */
+
+  /* paleta */
+  --bg:#0F1115; --panel:#0B0D10; --panel-header:#14171C; --panel-alt:#1C1F26; --border:#242833;
+  --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2; --link:#B9C0CA; --link-hover:#FFFFFF;
+  --bubble-user:#222833; --bubble-assistant:#232833; --input-bg:#1E222B; --input-border:#323949;
+
+  /* knobs da sidebar */
   --sidebar-items-top-gap: -45px;
-
-  /* >>> NOVO: controla só o subtítulo ("Perguntas desta sessão") <<< */
-  --sidebar-sub-top-gap: -30px;        /* 0px = colado ao "Histórico" */
-
-  /* >>> NOVO: controla onde começam os itens do histórico <<< */
-  --sidebar-list-start-gap: 5px;      /* espaço entre subtítulo e 1º item */
+  --sidebar-sub-top-gap: -30px;
+  --sidebar-list-start-gap: 5px;
 }
 
 /* ========= STREAMLIT CHROME ========= */
@@ -171,27 +153,18 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* cola o bloco do título "Histórico" conforme seu knob existente */
 section[data-testid="stSidebar"] .sidebar-header{
   margin-top: var(--sidebar-items-top-gap) !important;
 }
 
-/* zera margens padrão do <p> que o Streamlit coloca dentro dos markups */
-.sidebar-bar p,
-.sidebar-header p{
-  margin: 0 !important;
-  line-height: 1.15 !important;  /* opcional: deixa mais justinho */
-}
+/* zera margens que o Streamlit injeta nos parágrafos do sidebar */
+.sidebar-bar p, .sidebar-header p{ margin:0 !important; line-height:1.15 !important; }
 
-/* controla a distância entre "Histórico" e "Perguntas desta sessão" */
-.sidebar-bar{
-  margin-top: var(--sidebar-sub-top-gap) !important;
-}
+/* distância entre "Histórico" e "Perguntas desta sessão" */
+.sidebar-bar{ margin-top: var(--sidebar-sub-top-gap) !important; }
 
-/* controla o início da lista: 1º item após o subtítulo */
-.hist-row:first-of-type{
-  margin-top: var(--sidebar-list-start-gap) !important;
-}
+/* início dos itens do histórico */
+.hist-row:first-of-type{ margin-top: var(--sidebar-list-start-gap) !important; }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
@@ -210,14 +183,20 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   background:var(--panel-alt) !important;
   border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
   padding:20px;
-  height:var(--card-height);
+
+  /* Altura baseada na janela MENOS header MENOS input dinâmico */
+  height: calc(100dvh - var(--header-height) - var(--input-bottom) - var(--input-h) - var(--extra-gap));
   overflow-y:auto; scroll-behavior:smooth;
-  padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
+
+  /* Folga inferior que garante que nada fique atrás do input */
+  padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
+  scroll-padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
+
   color:var(--text);
 }
 #chatCard *, .chat-card *{ position:relative; z-index:51 !important }
 
-.message-row{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px) }
+.message-row{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--input-bottom) + var(--input-h) + var(--extra-gap) + 16px) }
 .message-row.user{ justify-content:flex-end }
 .message-row.assistant{ justify-content:flex-start }
 .bubble{
@@ -234,12 +213,10 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
   transform:translateX(-50%) !important;
   bottom:var(--input-bottom) !important;
-  width:min(var(--input-max), 96vw) !important;
+  width:min(900px, 96vw) !important;
   z-index:5000 !important;
   background:transparent !important;
-  border:none !important;
-  box-shadow:none !important;
-  padding:0 !important;
+  border:none !important; box-shadow:none !important; padding:0 !important;
 }
 [data-testid="stChatInput"] *{
   background:transparent !important;
@@ -269,7 +246,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
-/* ========= MATA DEFINITIVAMENTE A FAIXA BRANCA ========= */
+/* ========= MATA A FAIXA BRANCA DE BAIXO ========= */
 [data-testid="stBottomBlockContainer"],
 [data-testid="stBottomBlockContainer"] > div,
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
@@ -294,7 +271,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
 *::-webkit-scrollbar-track{ background:#0F1115 }
 
-/* bolinha azul girando (sem texto) */
+/* bolinha azul girando */
 .spinner{
   width:16px; height:16px;
   border:2px solid rgba(37,99,235,.25);
@@ -346,7 +323,7 @@ with st.sidebar:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
         for pergunta_hist, _resp in st.session_state.historico:
-            titulo = pergunta_hist.strip().replace("\n", " ")
+            titulo = pergunta_hist.strip().replace("\\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
@@ -374,20 +351,15 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (ajustes de espaço / auto-scroll) ======
+# ====== JS (altura dinâmica do input + scroll seguro) ======
 st.markdown("""
 <script>
 (function(){
-  function ajustaEspaco(){
-    const input = document.querySelector('[data-testid="stChatInput"]');
-    const card = document.getElementById('chatCard');
-    if(!input||!card) return;
-    const rect = input.getBoundingClientRect();
-    const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
-    const gap = parseInt(gapVar || '24', 10);
-    const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-    card.style.paddingBottom = alturaEfetiva + 'px';
-    card.style.scrollPaddingBottom = alturaEfetiva + 'px';
+  function setInputVars(){
+    const wrap = document.querySelector('[data-testid="stChatInput"] > div');
+    if(!wrap) return;
+    const h = Math.ceil(wrap.getBoundingClientRect().height || 72);
+    document.documentElement.style.setProperty('--input-h', h + 'px');
   }
   function autoGrow(){
     const ta = document.querySelector('[data-testid="stChatInput"] textarea');
@@ -400,26 +372,32 @@ st.markdown("""
   }
   function scrollToEnd(smooth=true){
     const end = document.getElementById('chatEnd');
-    if(!end) return;
-    end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
+    if(end) end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
   }
 
-  const ro = new ResizeObserver(()=>{ajustaEspaco();});
+  // Observers
+  const ro = new ResizeObserver(()=>{ setInputVars(); autoGrow(); scrollToEnd(false); });
   ro.observe(document.body);
-  window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
-  window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
+
+  // Eventos comuns
+  window.addEventListener('load', ()=>{ setInputVars(); autoGrow(); scrollToEnd(false); });
+  window.addEventListener('resize', ()=>{ setInputVars(); autoGrow(); });
   document.addEventListener('input',(e)=>{
-    if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
-      autoGrow();ajustaEspaco();
+    if(e.target && e.target.matches('[data-testid="stChatInput"] textarea')){
+      autoGrow(); setInputVars();
     }
   });
-  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
-  setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
+
+  // Mutations no chat (novas mensagens)
   const card = document.getElementById('chatCard');
   if(card){
-    const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
+    const mo = new MutationObserver(()=>{ setInputVars(); scrollToEnd(true); });
     mo.observe(card, {childList:true, subtree:false});
   }
+
+  // Ajustes assíncronos iniciais
+  setTimeout(()=>{ setInputVars(); autoGrow(); scrollToEnd(false); }, 0);
+  setTimeout(()=>{ setInputVars(); autoGrow(); scrollToEnd(true); }, 150);
 })();
 </script>
 """, unsafe_allow_html=True)
