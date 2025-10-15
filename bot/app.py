@@ -1,4 +1,4 @@
-# app.py — Streamlit Cloud (tela toda no mesmo cinza do card, sem faixas)
+# app.py — Streamlit Cloud (sidebar preta, chat cinza #1C1F26, input um tom mais claro)
 
 import streamlit as st
 import base64
@@ -71,7 +71,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (visual unificado no cinza do card) ======
+# ====== CSS (apenas estética) ======
 st.markdown("""
 <style>
 /* ========= RESET / BASE ========= */
@@ -88,22 +88,26 @@ img.logo { height: 44px !important; width: auto !important }
 
   /* posição do input e buffers */
   --input-bottom: 60px;
-  --input-h: 72px;         /* atualizado via JS */
+  --input-h: 72px;               /* atualizado via JS */
   --extra-gap: 20px;
 
-  /* paleta base (as três abaixo serão sobrescritas mais ao fim p/ igualar a tela) */
-  --bg:#0F1115;
-  --panel:#0B0D10;
-  --panel-header:#14171C;
+  /* PALETA PRINCIPAL */
+  --panel-alt:#1C1F26;           /* cinza do card e da tela do chat */
+  --bg: var(--panel-alt);        /* tela inteira no mesmo cinza do chat */
+  --panel: var(--panel-alt);
+  --panel-header: var(--panel-alt);
 
-  /* o cinza do card (vamos uniformizar tudo nele) */
-  --panel-alt:#1C1F26;
+  /* Sidebar PRETA */
+  --sidebar-bg: #000000;         /* preto puro para o histórico */
+
+  /* Chat input: um tom MAIS CLARO que a tela do chat */
+  --input-bg-light:#262D38;      /* ~ um pouco mais claro que #1C1F26 */
 
   --border:#242833;
   --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
   --link:#B9C0CA; --link-hover:#FFFFFF;
   --bubble-user:#222833; --bubble-assistant:#232833;
-  --input-bg:#1E222B; --input-border:#323949;
+  --input-border:#323949;
 
   /* knobs da sidebar */
   --sidebar-items-top-gap: -45px;
@@ -141,7 +145,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 }
 .header a:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
 
-/* ========= SIDEBAR ========= */
+/* ========= SIDEBAR (histórico PRETO) ========= */
 section[data-testid="stSidebar"]{
   position:fixed !important;
   top:var(--header-height) !important;
@@ -150,29 +154,26 @@ section[data-testid="stSidebar"]{
   width:var(--sidebar-w) !important;
   min-width:var(--sidebar-w) !important;
   margin:0 !important; padding:0 !important;
-  background:var(--panel) !important;
-  border-right:1px solid var(--border);
+
+  background:var(--sidebar-bg) !important;               /* PRETO */
+  border-right:1px solid rgba(255,255,255,0.06);         /* divisor sutil */
   z-index:900 !important;
   transform:none !important;
   visibility:visible !important;
   overflow:hidden !important;
   color:var(--text);
 }
-section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
-div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
+section[data-testid="stSidebar"] > div,
+div[data-testid="stSidebarContent"],
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
+  padding-top:0 !important; margin-top:0 !important;
+}
 
 section[data-testid="stSidebar"] .sidebar-header{
   margin-top: var(--sidebar-items-top-gap) !important;
 }
-
-/* zera margens que o Streamlit injeta nos parágrafos do sidebar */
 .sidebar-bar p, .sidebar-header p{ margin:0 !important; line-height:1.15 !important; }
-
-/* distância entre "Histórico" e "Perguntas desta sessão" */
 .sidebar-bar{ margin-top: var(--sidebar-sub-top-gap) !important; }
-
-/* início dos itens do histórico */
 .hist-row:first-of-type{ margin-top: var(--sidebar-list-start-gap) !important; }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -182,22 +183,20 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .hist-empty{ color:var(--muted); font-size:.9rem; padding:8px 10px }
 .hist-row{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }
 .hist-row + .hist-row{ margin-top:6px }
-.hist-row:hover{ background:#161a20 }
+.hist-row:hover{ background:rgba(255,255,255,0.04) }
 
-/* ========= CONTEÚDO / CHAT ========= */
+/* ========= CONTEÚDO / CHAT (mantido) ========= */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 #chatCard, .chat-card{
   position:relative;
   z-index:50 !important;
-  background:var(--panel-alt) !important;
+  background:var(--panel-alt) !important;  /* cinza do chat */
   border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
   padding:20px;
 
-  /* Altura baseada na janela MENOS header MENOS input dinâmico */
   height: calc(100dvh - var(--header-height) - var(--input-bottom) - var(--input-h) - var(--extra-gap));
   overflow-y:auto; scroll-behavior:smooth;
 
-  /* Folga inferior para nunca ficar atrás do input */
   padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
   scroll-padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
 
@@ -216,7 +215,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
 .chat-card a{ color:var(--link); text-decoration:underline } .chat-card a:hover{ color:var(--link-hover) }
 
-/* ========= CHAT INPUT (fixo) ========= */
+/* ========= CHAT INPUT (um tom mais claro que a tela) ========= */
 [data-testid="stChatInput"]{
   position:fixed !important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
@@ -232,7 +231,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   color:var(--text) !important;
 }
 [data-testid="stChatInput"] > div{
-  background:var(--input-bg) !important;
+  background:var(--input-bg-light) !important;      /* <— CLARO */
   border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
@@ -278,10 +277,8 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
 *::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
-/* track no mesmo cinza do card */
-*::-webkit-scrollbar-track{ background:var(--panel-alt) }
+*::-webkit-scrollbar-track{ background:var(--panel-alt) } /* track no cinza do chat */
 
-/* bolinha azul girando */
 .spinner{
   width:16px; height:16px;
   border:2px solid rgba(37,99,235,.25);
@@ -291,20 +288,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   animation:spin .8s linear infinite;
 }
 @keyframes spin{ to{ transform:rotate(360deg) } }
-
-/* ======== OVERRIDES DE TEMA PARA UNIFICAR TUDO NO CINZA DO CARD ======== */
-/* deixa TODA a tela na mesma cor do card interno (sem faixas escuras) */
-:root{
-  --bg: var(--panel-alt) !important;
-  --panel: var(--panel-alt) !important;
-  --panel-header: var(--panel-alt) !important;
-}
-html, body, .stApp, [data-testid="stAppViewContainer"], main, .stMain{
-  background: var(--panel-alt) !important;
-}
-section[data-testid="stSidebar"], .header{
-  background: var(--panel-alt) !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
