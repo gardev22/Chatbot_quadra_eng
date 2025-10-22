@@ -1,5 +1,5 @@
-# app.py — Gate por e-mail (domínio quadra.com.vc) + header com SAIR (mesma aba)
-# Visual do gate padronizado (cartão central, botão Google) e logout sem loop.
+# app.py — Gate visual padronizado (cartão 460px, sem borda dupla/tooltip) + logout mesma aba
+# Funcionalidade permanece: valida e-mail @quadra.com.vc antes do app.
 
 import streamlit as st
 import base64
@@ -47,14 +47,12 @@ def set_query_params(**kwargs):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# ====== LOGOUT via query param (SEM LOOP) ======
+# ====== LOGOUT (sem loop; mesma aba) ======
 params = get_query_params()
 if "logout" in params:
     for k in ["gate_ok", "user", "historico", "awaiting_answer",
               "answering_started", "pending_index", "pending_question"]:
         st.session_state.pop(k, None)
-
-    # limpa querystring e remove ?logout=1 da barra de endereço (sem recarregar)
     try:
         st.query_params.clear()
     except Exception:
@@ -68,16 +66,15 @@ if "logout" in params:
       })();
     </script>
     """, unsafe_allow_html=True)
-    # NÃO chamamos rerun; a execução continua e o gate aparece.
 
 # ===================== GATE (ANTES DO APP) =====================
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # CSS do overlay + cartão centralizado (padrão da 2ª imagem)
+    # ===== VISUAL: igual à 2ª imagem (card 460px, input clean, sem tooltip, botão Google) =====
     st.markdown(f"""
     <style>
-      /* Full viewport e fundo com gradiente */
+      /* Fundo e ocupação */
       html, body, .stApp, [data-testid="stAppViewContainer"] {{
         height: 100dvh !important; max-height: 100dvh !important; overflow: hidden !important;
       }}
@@ -90,48 +87,52 @@ def render_gate():
         z-index: 0;
       }}
 
-      /* Some tudo do Chrome do Streamlit (header/toolbar/rodapé) */
+      /* Some chrome e sidebar */
       header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
       #MainMenu, footer {{ visibility:hidden; height:0 !important }}
-
-      /* Esconde a sidebar no gate e zera margem do container */
       section[data-testid="stSidebar"] {{ display:none !important }}
       div[data-testid="stAppViewContainer"] {{ margin-left:0 !important }}
       .block-container {{ padding:0 !important }}
 
-      /* Cartão do gate (centrado) */
+      /* Cartão central (máx 460px) */
       [data-testid="stForm"] {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        width: min(520px, 94vw); max-width: 520px;
+        width: min(460px, 94vw);
         background: #ffffff;
         border-radius: 16px;
-        box-shadow: 0 30px 80px rgba(0,0,0,.35);
-        padding: 30px 28px 20px;
+        box-shadow: 0 28px 80px rgba(0,0,0,.35);
+        padding: 26px 26px 18px;
         z-index: 1;
       }}
 
       .gate-logo {{
-        width:80px; height:80px; border-radius:20px; display:grid; place-items:center;
-        background:#eef2ff; margin:6px auto 14px; overflow:hidden;
+        width:76px; height:76px; border-radius:20px; display:grid; place-items:center;
+        background:#eef2ff; margin:2px auto 12px; overflow:hidden;
       }}
-      .gate-title {{ font-weight:800; font-size:26px; color:#0f172a; text-align:center; margin:2px 0 6px }}
-      .gate-sub {{ color:#475569; text-align:center; margin-bottom:10px }}
-      .gate-helper {{ color:#64748b; text-align:center; margin:4px 0 18px }}
+      .gate-title  {{ font-weight:800; font-size:24px; color:#0f172a; text-align:center; margin:2px 0 6px }}
+      .gate-sub    {{ color:#475569; text-align:center; margin-bottom:8px }}
+      .gate-helper {{ color:#64748b; text-align:center; margin:2px 0 16px }}
 
-      /* Campo de e-mail limpo e padronizado */
+      /* ====== INPUT: sem borda duplicada + sem tooltip ====== */
+      /* remove "Press Enter to submit form" */
+      [data-testid="InputInstructions"] {{ display:none !important }}
+
+      /* zera borda/sombra do container do TextInput */
+      [data-testid="stTextInput"] > div {{ border:none !important; box-shadow:none !important; background:transparent !important; }}
+
+      /* campo em si */
       [data-testid="stTextInput"] label {{ display:none !important }}
-      [data-testid="stTextInput"] div[class*="stTextInputContainer"] {{ border:none !important; background:transparent !important }}
       [data-testid="stTextInput"] input {{
         width: 100%; height: 44px; padding: 0 14px; font-size: 15px;
-        border: 1px solid #e2e8f0; border-radius: 12px; outline: none; background:#fff;
+        border: 1px solid #e5e7eb; border-radius: 12px; outline: none; background:#fff;
+        box-shadow: none !important;
       }}
       [data-testid="stTextInput"] input:focus {{
-        border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66;
+        border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66 !important;
       }}
-      /* Espaçamento consistente entre input e botão */
       [data-testid="stTextInput"] {{ margin-bottom: 12px !important }}
 
-      /* Botão Google largo, branco, com ícone à esquerda */
+      /* ====== Botão Google ====== */
       .stButton > button {{
         width: 100%; height: 48px; border-radius: 12px;
         border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
@@ -139,7 +140,7 @@ def render_gate():
         display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         transition: box-shadow .15s ease, transform .02s ease;
       }}
-      .stButton > button:hover {{ box-shadow: 0 10px 28px rgba(2,6,23,.10) }}
+      .stButton > button:hover  {{ box-shadow: 0 10px 28px rgba(2,6,23,.10) }}
       .stButton > button:active {{ transform: translateY(1px) }}
       .stButton > button::before {{
         content:""; width:18px; height:18px; display:inline-block;
@@ -203,7 +204,6 @@ if not st.session_state.get("gate_ok", False):
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
-
 st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
@@ -233,16 +233,16 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (APP: sidebar preta, chat cinza, links azuis) ======
+# ====== CSS do APP (inalterado do seu) ======
 st.markdown("""
 <style>
-/* ========= RESET / BASE ========= */
+/* RESET / BASE */
 * { box-sizing: border-box }
 html, body { margin: 0; padding: 0 }
 img { max-width: 100%; height: auto; display: inline-block }
 img.logo { height: 44px !important; width: auto !important }
 
-/* ========= VARS ========= */
+/* VARS */
 :root{
   --content-max-width: min(96vw, 1400px);
   --header-height: 68px;
@@ -264,8 +264,7 @@ img.logo { height: 44px !important; width: auto !important }
   --border:#242833;
   --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
 
-  --link:#3B82F6;
-  --link-hover:#93C5FD;
+  --link:#3B82F6; --link-hover:#93C5FD;
 
   --bubble-user:#222833; --bubble-assistant:#232833;
   --input-border:#323949;
@@ -275,7 +274,7 @@ img.logo { height: 44px !important; width: auto !important }
   --sidebar-list-start-gap: 5px;
 }
 
-/* ========= STREAMLIT CHROME ========= */
+/* CHROME */
 header[data-testid="stHeader"]{ display:none !important }
 div[data-testid="stToolbar"]{ display:none !important }
 #MainMenu, footer{ visibility:hidden; height:0 !important }
@@ -286,7 +285,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .block-container{ padding:0 !important; min-height:0 !important }
 .stApp{ background:var(--bg) !important; color:var(--text) !important }
 
-/* ========= HEADER FIXO ========= */
+/* HEADER */
 .header{
   position:fixed; inset:0 0 auto 0; height:var(--header-height);
   display:flex; align-items:center; justify-content:space-between;
@@ -308,7 +307,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .user-circle{ width:28px; height:28px; border-radius:50%; background:#0ea5e9; color:#001018;
   display:grid; place-items:center; font-weight:800; }
 
-/* ========= SIDEBAR ========= */
+/* SIDEBAR */
 section[data-testid="stSidebar"]{
   position:fixed !important; top:var(--header-height) !important; left:0 !important;
   height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important;
@@ -335,7 +334,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .hist-row + .hist-row{ margin-top:6px }
 .hist-row:hover{ background:rgba(255,255,255,0.04) }
 
-/* ========= CONTEÚDO / CHAT ========= */
+/* CONTEÚDO / CHAT */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 #chatCard, .chat-card{
   position:relative; z-index:50 !important; background:var(--panel-alt) !important;
@@ -358,7 +357,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .bubble.user{ background:var(--bubble-user); border-bottom-right-radius:6px }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
 
-/* ========= CHAT INPUT ========= */
+/* CHAT INPUT */
 [data-testid="stChatInput"]{
   position:fixed !important; left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
   transform:translateX(-50%) !important; bottom:var(--input-bottom) !important;
@@ -381,16 +380,18 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 [data-testid="stChatInput"] button{ margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important; }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
-/* ========= MATA A FAIXA BRANCA ========= */
-[data-testid="stBottomBlockContainer"], [data-testid="stBottomBlockContainer"] > div,
+/* MATA A FAIXA BRANCA */
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
 [data-testid="stBottomBlockContainer"] [class*="block-container"],
-[data-testid="stBottomBlockContainer"]::before, [data-testid="stBottomBlockContainer"]::after{
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{
   background:transparent !important; box-shadow:none !important; border:none !important;
 }
 [data-testid="stBottomBlockContainer"]{ padding:0 !important; margin:0 !important; height:0 !important; min-height:0 !important }
 
-/* ========= EXTRAS ========= */
+/* EXTRAS */
 [data-testid="stDecoration"], [data-testid="stStatusWidget"]{ display:none !important }
 *::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
@@ -402,7 +403,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (com SAIR na mesma aba) ======
+# ====== HEADER (Sair) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
