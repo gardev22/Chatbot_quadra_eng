@@ -1,5 +1,5 @@
-# app.py — Gate visual padronizado (cartão 460px, sem borda dupla/tooltip) + logout mesma aba
-# Funcionalidade permanece: valida e-mail @quadra.com.vc antes do app.
+# app.py — Gate compacto (380px) centralizado, botão "Entrar", sem termos.
+# Funcional: valida @quadra.com.vc; app e botão "Sair" (mesma aba) intactos.
 
 import streamlit as st
 import base64
@@ -39,12 +39,6 @@ def get_query_params():
     except Exception:
         return st.experimental_get_query_params()
 
-def set_query_params(**kwargs):
-    try:
-        st.query_params.update(kwargs)
-    except Exception:
-        st.experimental_set_query_params(**kwargs)
-
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # ====== LOGOUT (sem loop; mesma aba) ======
@@ -71,7 +65,7 @@ if "logout" in params:
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # ===== VISUAL: igual à 2ª imagem (card 460px, input clean, sem tooltip, botão Google) =====
+    # ===== VISUAL: cartão menor (380px) centralizado; sem termos; input clean =====
     st.markdown(f"""
     <style>
       /* Fundo e ocupação */
@@ -94,33 +88,37 @@ def render_gate():
       div[data-testid="stAppViewContainer"] {{ margin-left:0 !important }}
       .block-container {{ padding:0 !important }}
 
-      /* Cartão central (máx 460px) */
+      /* Deixa o wrapper do st.form transparente (evita "faixa" branca alta) */
       [data-testid="stForm"] {{
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }}
+
+      /* Cartão nosso (fica por cima e centralizado) */
+      .gate-card {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        width: min(460px, 94vw);
+        width: min(380px, 92vw);
         background: #ffffff;
         border-radius: 16px;
-        box-shadow: 0 28px 80px rgba(0,0,0,.35);
-        padding: 26px 26px 18px;
-        z-index: 1;
+        box-shadow: 0 24px 70px rgba(0,0,0,.35);
+        padding: 22px 22px 18px;
+        z-index: 2;
       }}
 
       .gate-logo {{
-        width:76px; height:76px; border-radius:20px; display:grid; place-items:center;
-        background:#eef2ff; margin:2px auto 12px; overflow:hidden;
+        width:72px; height:72px; border-radius:18px; display:grid; place-items:center;
+        background:#eef2ff; margin:2px auto 10px; overflow:hidden;
       }}
-      .gate-title  {{ font-weight:800; font-size:24px; color:#0f172a; text-align:center; margin:2px 0 6px }}
-      .gate-sub    {{ color:#475569; text-align:center; margin-bottom:8px }}
-      .gate-helper {{ color:#64748b; text-align:center; margin:2px 0 16px }}
+      .gate-title  {{ font-weight:800; font-size:22px; color:#0f172a; text-align:center; margin:0 0 6px }}
+      .gate-sub    {{ color:#475569; text-align:center; margin-bottom:6px }}
+      .gate-helper {{ color:#64748b; text-align:center; margin:2px 0 14px }}
 
-      /* ====== INPUT: sem borda duplicada + sem tooltip ====== */
-      /* remove "Press Enter to submit form" */
+      /* Remove tooltip "Press Enter to submit form" */
       [data-testid="InputInstructions"] {{ display:none !important }}
 
-      /* zera borda/sombra do container do TextInput */
+      /* Container do TextInput sem bordas/sombra duplicadas */
       [data-testid="stTextInput"] > div {{ border:none !important; box-shadow:none !important; background:transparent !important; }}
-
-      /* campo em si */
       [data-testid="stTextInput"] label {{ display:none !important }}
       [data-testid="stTextInput"] input {{
         width: 100%; height: 44px; padding: 0 14px; font-size: 15px;
@@ -130,41 +128,35 @@ def render_gate():
       [data-testid="stTextInput"] input:focus {{
         border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66 !important;
       }}
-      [data-testid="stTextInput"] {{ margin-bottom: 12px !important }}
+      [data-testid="stTextInput"] {{ margin-bottom: 10px !important }}
 
-      /* ====== Botão Google ====== */
+      /* Botão "Entrar" centralizado e proporcional */
       .stButton > button {{
-        width: 100%; height: 48px; border-radius: 12px;
+        width: 100%; height: 46px; border-radius: 12px;
         border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
         font-weight: 700; font-size: 15px; color: #0f172a;
-        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        display: inline-flex; align-items: center; justify-content: center;
         transition: box-shadow .15s ease, transform .02s ease;
       }}
-      .stButton > button:hover  {{ box-shadow: 0 10px 28px rgba(2,6,23,.10) }}
+      .stButton > button:hover  {{ box-shadow: 0 10px 26px rgba(2,6,23,.10) }}
       .stButton > button:active {{ transform: translateY(1px) }}
-      .stButton > button::before {{
-        content:""; width:18px; height:18px; display:inline-block;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
-        background-size: cover; background-repeat: no-repeat;
-        margin-right: 6px;
-      }}
-
-      .gate-terms {{ color:#94a3b8; font-size:12px; text-align:center; margin-top:14px }}
     </style>
     """, unsafe_allow_html=True)
 
     logo_tag = (
-        f'<img src="data:image/png;base64,{logo_b64}" style="width:56px;height:56px"/>'
+        f'<img src="data:image/png;base64,{logo_b64}" style="width:52px;height:52px"/>'
         if logo_b64 else "🔷"
     )
 
     with st.form("quadra_gate_form", clear_on_submit=False):
+        # Abrimos nosso cartão e colocamos os widgets dentro
         st.markdown(
             f"""
-            <div class="gate-logo">{logo_tag}</div>
-            <div class="gate-title">Quadra Engenharia</div>
-            <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
-            <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
+            <div class="gate-card">
+              <div class="gate-logo">{logo_tag}</div>
+              <div class="gate-title">Quadra Engenharia</div>
+              <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
+              <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
             """,
             unsafe_allow_html=True,
         )
@@ -175,7 +167,10 @@ def render_gate():
             label_visibility="collapsed",
             key="gate_email_input",
         )
-        ok = st.form_submit_button("Entrar com Google")
+        ok = st.form_submit_button("Entrar")
+
+        # fecha o cartão
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if ok:
             e = (email or "").strip().lower()
@@ -188,11 +183,6 @@ def render_gate():
                 do_rerun()
             else:
                 st.error(f"Use um email @{ALLOWED_DOMAIN}")
-
-        st.markdown(
-            '<div class="gate-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
-            unsafe_allow_html=True,
-        )
 
     st.stop()
 
@@ -233,7 +223,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS do APP (inalterado do seu) ======
+# ====== CSS do APP (seu estilo original) ======
 st.markdown("""
 <style>
 /* RESET / BASE */
