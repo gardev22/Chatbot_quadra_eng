@@ -275,7 +275,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
   appearance:none; -webkit-appearance:none; -moz-appearance:none;
   background:transparent; color:var(--link) !important;
   border:1px solid var(--border); padding:8px 12px; border-radius:10px;
-  font:inherit; cursor:pointer;
+  font:inherit; cursor:pointer; text-decoration:none; display:inline-block;
 }
 .header .btn:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
 .user-info{ text-align:right; font-size:0.9rem; color:var(--text) }
@@ -417,7 +417,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (com SAIR que não abre nova aba) ======
+# ====== HEADER HTML (Sair MESMA ABA, sem mexer no visual) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
@@ -438,7 +438,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="header-right">
-    <button id="logoutBtn" class="btn" style="cursor:pointer;">⎋ Sair</button>
+    <a href="?logout=1" target="_self" class="btn">Sair</a>
     <div class="user-info">
       <span class="user-name">{escape(user_name)}</span><br>
       <span class="user-email">{escape(user_email)}</span>
@@ -446,19 +446,6 @@ st.markdown(f"""
     <div class="user-circle">{escape(user_initial)}</div>
   </div>
 </div>
-
-<script>
-(function(){{
-  const b = document.getElementById('logoutBtn');
-  if (!b) return;
-  b.addEventListener('click', function(ev){{
-    ev.preventDefault();
-    const url = new URL(window.location.href);
-    url.searchParams.set('logout','1');
-    window.location.href = url.pathname + '?' + url.searchParams.toString();
-  }});
-}})();
-</script>
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
