@@ -1,4 +1,4 @@
-# app.py — Gate compacto (380px), centralizado, botão "Entrar", sem termos
+# app.py — Gate compacto centralizado (tamanho similar ao mock), botão "Entrar", sem termos
 # Funcional: valida @quadra.com.vc; app e botão "Sair" (mesma aba) intactos.
 
 import streamlit as st
@@ -65,7 +65,7 @@ if "logout" in params:
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # ===== VISUAL do gate (aplica só aqui) =====
+    # ===== VISUAL do gate (cartão menor, centralizado) =====
     st.markdown(f"""
     <style>
       /* Fundo e ocupação */
@@ -88,29 +88,38 @@ def render_gate():
       div[data-testid="stAppViewContainer"] {{ margin-left:0 !important }}
       .block-container {{ padding:0 !important }}
 
-      /* FORM COMO CARTÃO (tudo fica dentro dele) */
+      /* FORM COMO CARTÃO (tudo fica dentro dele) — tamanho similar ao mock */
       [data-testid="stForm"] {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        width: min(380px, 92vw);
+        width: min(520px, 94vw);       /* <- ajuste de largura do card */
         background: #ffffff;
         border-radius: 16px;
         box-shadow: 0 24px 70px rgba(0,0,0,.35);
-        padding: 22px 22px 18px;
+        padding: 26px 26px 22px;
         z-index: 2;
+        height: auto !important;
+        max-height: none !important;
+        display: block;
       }}
+
+      /* zera os paddings/margens do conteúdo interno do form
+         (senão o card fica alto demais) */
+      [data-testid="stForm"] > div {{ padding:0 !important; margin:0 !important }}
+      [data-testid="stForm"] [data-testid="stVerticalBlock"] {{ padding:0 !important; margin:0 !important; gap: 8px !important }}
+      [data-testid="stForm"] [data-testid="stVerticalBlock"] > div {{ padding:0 !important; margin:0 !important }}
 
       .gate-logo {{
         width:72px; height:72px; border-radius:18px; display:grid; place-items:center;
         background:#eef2ff; margin:2px auto 10px; overflow:hidden;
       }}
-      .gate-title  {{ font-weight:800; font-size:22px; color:#0f172a; text-align:center; margin:0 0 6px }}
-      .gate-sub    {{ color:#475569; text-align:center; margin-bottom:6px }}
-      .gate-helper {{ color:#64748b; text-align:center; margin:2px 0 14px }}
+      .gate-title  {{ font-weight:800; font-size:24px; color:#0f172a; text-align:center; margin:0 0 6px }}
+      .gate-sub    {{ color:#475569; text-align:center; margin-bottom:6px; font-size:14px }}
+      .gate-helper {{ color:#64748b; text-align:center; margin:2px 0 14px; font-size:14px }}
 
       /* Remove tooltip "Press Enter to submit form" */
       [data-testid="InputInstructions"] {{ display:none !important }}
 
-      /* Evita borda/sombra duplicadas no TextInput */
+      /* Input "clean" dentro do card */
       [data-testid="stTextInput"] > div {{ border:none !important; box-shadow:none !important; background:transparent !important; }}
       [data-testid="stTextInput"] label {{ display:none !important }}
       [data-testid="stTextInput"] input {{
@@ -123,9 +132,9 @@ def render_gate():
       }}
       [data-testid="stTextInput"] {{ margin-bottom: 10px !important }}
 
-      /* Botão "Entrar" */
+      /* Botão "Entrar" proporcional e centralizado */
       .stButton > button {{
-        width: 100%; height: 46px; border-radius: 12px;
+        width: 100%; height: 52px; border-radius: 12px;
         border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
         font-weight: 700; font-size: 15px; color: #0f172a;
         display: inline-flex; align-items: center; justify-content: center;
@@ -214,6 +223,8 @@ def reenviar_pergunta(q: str):
 # ====== CSS do APP (seu estilo original) ======
 st.markdown("""
 <style>
+/* (… todo o seu CSS do app original, inalterado …) */
+
 /* RESET / BASE */
 * { box-sizing: border-box }
 html, body { margin: 0; padding: 0 }
