@@ -59,7 +59,7 @@ if "logout" in params:
 
     # remove a querystring na MESMA aba, sem disparar rerun
     try:
-        st.query_params.clear()  # streamlit >= 1.33
+        st.query_params.clear()  # streamlit novo
     except Exception:
         st.experimental_set_query_params()  # compatibilidade
 
