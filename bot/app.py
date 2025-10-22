@@ -49,14 +49,31 @@ def clear_query_params():
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# ====== LOGOUT via query param ======
+# ====== LOGOUT via query param (SEM LOOP) ======
 params = get_query_params()
 if "logout" in params:
+    # limpa estado da sessão
     for k in ["gate_ok", "user", "historico", "awaiting_answer",
               "answering_started", "pending_index", "pending_question"]:
         st.session_state.pop(k, None)
-    clear_query_params()
-    do_rerun()
+
+    # remove a querystring na MESMA aba, sem disparar rerun
+    try:
+        st.query_params.clear()  # streamlit >= 1.33
+    except Exception:
+        st.experimental_set_query_params()  # compatibilidade
+
+    # garante que ?logout=1 sai da barra de endereço
+    st.markdown("""
+    <script>
+    (function(){
+      const u = new URL(window.location.href);
+      u.search = ""; // remove ?logout=1
+      window.history.replaceState({}, "", u.pathname);
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+    # NÃO chama do_rerun(); a execução continua e o gate aparece
 
 # ===================== GATE (ANTES DO APP) =====================
 ALLOWED_DOMAIN = "quadra.com.vc"
@@ -417,7 +434,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (Sair MESMA ABA, sem mexer no visual) ======
+# ====== HEADER HTML (Sair MESMA ABA) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
