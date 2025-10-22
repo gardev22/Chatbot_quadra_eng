@@ -109,6 +109,12 @@ def render_gate():
       }}
       .stButton > button:hover {{ box-shadow: 0 8px 24px rgba(2,6,23,.08) }}
       .stButton > button:active {{ transform: translateY(1px) }}
+      .stButton > button::before {{
+        content:""; width:18px; height:18px; display:inline-block;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
+        background-size: cover; background-repeat: no-repeat;
+        margin-right: 6px;
+      }}
       header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
       #MainMenu, footer {{ visibility:hidden; height:0 !important }}
     </style>
@@ -252,7 +258,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
   overscroll-behavior:none;
 }
 .block-container{ padding:0 !important; min-height:0 !important }
-stApp{ background:var(--bg) !important; color:var(--text) !important }
+.stApp{ background:var(--bg) !important; color:var(--text) !important }
 
 /* ========= HEADER FIXO ========= */
 .header{
@@ -269,7 +275,7 @@ stApp{ background:var(--bg) !important; color:var(--text) !important }
   appearance:none; -webkit-appearance:none; -moz-appearance:none;
   background:transparent; color:var(--link) !important;
   border:1px solid var(--border); padding:8px 12px; border-radius:10px;
-  font:inherit; cursor:pointer; text-decoration:none;
+  font:inherit; cursor:pointer;
 }
 .header .btn:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
 .user-info{ text-align:right; font-size:0.9rem; color:var(--text) }
@@ -411,7 +417,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (Sair na MESMA aba, sem ícone) ======
+# ====== HEADER HTML (com SAIR que não abre nova aba) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
@@ -432,7 +438,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="header-right">
-    <a href="?logout=1" target="_self" class="btn">Sair</a>
+    <button id="logoutBtn" class="btn" style="cursor:pointer;">⎋ Sair</button>
     <div class="user-info">
       <span class="user-name">{escape(user_name)}</span><br>
       <span class="user-email">{escape(user_email)}</span>
@@ -440,6 +446,19 @@ st.markdown(f"""
     <div class="user-circle">{escape(user_initial)}</div>
   </div>
 </div>
+
+<script>
+(function(){{
+  const b = document.getElementById('logoutBtn');
+  if (!b) return;
+  b.addEventListener('click', function(ev){{
+    ev.preventDefault();
+    const url = new URL(window.location.href);
+    url.searchParams.set('logout','1');
+    window.location.href = url.pathname + '?' + url.searchParams.toString();
+  }});
+}})();
+</script>
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
