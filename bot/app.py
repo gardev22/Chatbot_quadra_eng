@@ -1,4 +1,4 @@
-# app.py — Gate compacto (380px) centralizado, botão "Entrar", sem termos.
+# app.py — Gate compacto (380px), centralizado, botão "Entrar", sem termos
 # Funcional: valida @quadra.com.vc; app e botão "Sair" (mesma aba) intactos.
 
 import streamlit as st
@@ -41,7 +41,7 @@ def get_query_params():
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# ====== LOGOUT (sem loop; mesma aba) ======
+# ====== LOGOUT (mesma aba) ======
 params = get_query_params()
 if "logout" in params:
     for k in ["gate_ok", "user", "historico", "awaiting_answer",
@@ -65,7 +65,7 @@ if "logout" in params:
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # ===== VISUAL: cartão menor (380px) centralizado; sem termos; input clean =====
+    # ===== VISUAL do gate (aplica só aqui) =====
     st.markdown(f"""
     <style>
       /* Fundo e ocupação */
@@ -81,22 +81,15 @@ def render_gate():
         z-index: 0;
       }}
 
-      /* Some chrome e sidebar */
+      /* Some chrome e sidebar durante o gate */
       header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
       #MainMenu, footer {{ visibility:hidden; height:0 !important }}
       section[data-testid="stSidebar"] {{ display:none !important }}
       div[data-testid="stAppViewContainer"] {{ margin-left:0 !important }}
       .block-container {{ padding:0 !important }}
 
-      /* Deixa o wrapper do st.form transparente (evita "faixa" branca alta) */
+      /* FORM COMO CARTÃO (tudo fica dentro dele) */
       [data-testid="stForm"] {{
-        background: transparent !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-      }}
-
-      /* Cartão nosso (fica por cima e centralizado) */
-      .gate-card {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
         width: min(380px, 92vw);
         background: #ffffff;
@@ -117,7 +110,7 @@ def render_gate():
       /* Remove tooltip "Press Enter to submit form" */
       [data-testid="InputInstructions"] {{ display:none !important }}
 
-      /* Container do TextInput sem bordas/sombra duplicadas */
+      /* Evita borda/sombra duplicadas no TextInput */
       [data-testid="stTextInput"] > div {{ border:none !important; box-shadow:none !important; background:transparent !important; }}
       [data-testid="stTextInput"] label {{ display:none !important }}
       [data-testid="stTextInput"] input {{
@@ -130,7 +123,7 @@ def render_gate():
       }}
       [data-testid="stTextInput"] {{ margin-bottom: 10px !important }}
 
-      /* Botão "Entrar" centralizado e proporcional */
+      /* Botão "Entrar" */
       .stButton > button {{
         width: 100%; height: 46px; border-radius: 12px;
         border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
@@ -149,14 +142,12 @@ def render_gate():
     )
 
     with st.form("quadra_gate_form", clear_on_submit=False):
-        # Abrimos nosso cartão e colocamos os widgets dentro
         st.markdown(
             f"""
-            <div class="gate-card">
-              <div class="gate-logo">{logo_tag}</div>
-              <div class="gate-title">Quadra Engenharia</div>
-              <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
-              <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
+            <div class="gate-logo">{logo_tag}</div>
+            <div class="gate-title">Quadra Engenharia</div>
+            <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
+            <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
             """,
             unsafe_allow_html=True,
         )
@@ -168,9 +159,6 @@ def render_gate():
             key="gate_email_input",
         )
         ok = st.form_submit_button("Entrar")
-
-        # fecha o cartão
-        st.markdown("</div>", unsafe_allow_html=True)
 
         if ok:
             e = (email or "").strip().lower()
