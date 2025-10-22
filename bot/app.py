@@ -34,6 +34,106 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
+# ====== GATE SIMPLES POR DOMÍNIO (ANTES DO APP) ======
+ALLOWED_DOMAIN = "quadra.com.vc"
+
+def _render_gate():
+    st.markdown("""
+    <style>
+      #quadra-gate-body {
+        position: fixed; inset: 0;
+        background: radial-gradient(1200px 600px at 30% 20%, #1f3a8a33, transparent),
+                    radial-gradient(1000px 700px at 80% 80%, #1d4ed833, transparent),
+                    linear-gradient(135deg, #0f172a 0%, #0b122a 100%);
+        display: grid; place-items: center;
+        z-index: 99999;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      }
+      .quadra-card {
+        width: min(520px, 94vw);
+        background: #ffffff;
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(0,0,0,.35);
+        padding: 28px 28px 18px;
+        text-align: center;
+      }
+      .quadra-logo {
+        width: 72px; height: 72px; border-radius: 18px;
+        display: inline-grid; place-items: center;
+        background: #eef2ff; margin: 6px auto 10px;
+        overflow: hidden;
+      }
+      .quadra-title { font-weight: 800; font-size: 24px; color: #0f172a; margin: 6px 0 4px }
+      .quadra-sub { color:#475569; margin-bottom: 14px }
+      .quadra-helper { color:#64748b; margin: 6px 0 18px }
+      .quadra-input-row { margin: 0 auto 12px; width: min(380px, 84vw); }
+      .quadra-input-row input {
+        width: 100%; padding: 14px 16px; font-size: 15px;
+        border: 1px solid #e2e8f0; border-radius: 12px; outline: none;
+      }
+      .quadra-input-row input:focus { border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66 }
+      .quadra-btn-wrap .stButton > button {
+        width: min(380px, 84vw); height: 44px; border-radius: 12px;
+        border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
+        font-weight: 600; font-size: 15px; color: #0f172a;
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        transition: box-shadow .15s ease, transform .02s ease;
+      }
+      .quadra-btn-wrap .stButton > button:hover { box-shadow: 0 8px 24px rgba(2,6,23,.08) }
+      .quadra-btn-wrap .stButton > button:active { transform: translateY(1px) }
+      .quadra-btn-wrap .stButton > button:before {
+        content:""; width:18px; height:18px; display:inline-block; margin-right:6px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
+        background-size: cover; background-repeat: no-repeat;
+      }
+      .quadra-terms { color:#94a3b8; font-size:12px; margin-top: 12px }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div id="quadra-gate-body">', unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="quadra-card">', unsafe_allow_html=True)
+
+        if logo_b64:
+            st.markdown(f'<div class="quadra-logo"><img src="data:image/png;base64,{logo_b64}" style="width:48px;height:48px"/></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="quadra-logo">🔷</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="quadra-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+        st.markdown('<div class="quadra-sub">Faça login para acessar nosso assistente virtual</div>', unsafe_allow_html=True)
+        st.markdown('<div class="quadra-helper">Entre com seu email corporativo</div>', unsafe_allow_html=True)
+
+        with st.form("quadra_gate_form", clear_on_submit=False):
+            st.markdown('<div class="quadra-input-row">', unsafe_allow_html=True)
+            email = st.text_input("Email corporativo", key="gate_email",
+                                  placeholder=f"seu.email@{ALLOWED_DOMAIN}",
+                                  label_visibility="collapsed")
+            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('<div class="quadra-btn-wrap">', unsafe_allow_html=True)
+            ok = st.form_submit_button("Entrar com Google")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        if ok:
+            e = (email or "").strip().lower()
+            if re.match(rf"^[^@\s]+@{re.escape(ALLOWED_DOMAIN)}$", e):
+                st.session_state["gate_ok"] = True
+                st.session_state.setdefault("user", {})
+                st.session_state["user"]["email"] = e
+                username = e.split("@")[0].replace(".", " ").replace("_", " ").title()
+                st.session_state["user"]["name"] = username or "Usuário Quadra"
+                st.rerun()
+            else:
+                st.error(f"Use um email @{ALLOWED_DOMAIN}")
+
+        st.markdown('<div class="quadra-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if not st.session_state.get("gate_ok", False):
+    _render_gate()
+    st.stop()
+# ====== FIM DO GATE ======
+
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
