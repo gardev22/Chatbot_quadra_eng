@@ -25,7 +25,7 @@ def do_rerun():
     else:
         st.experimental_rerun()
 
-# ====== UTIS ======
+# ====== UTILS ======
 def carregar_imagem_base64(path):
     if not os.path.exists(path):
         return None
@@ -34,10 +34,8 @@ def carregar_imagem_base64(path):
 
 def get_query_params():
     try:
-        # Streamlit novo
         return st.query_params.to_dict()
     except Exception:
-        # Streamlit antigo
         return st.experimental_get_query_params()
 
 def set_query_params(**kwargs):
@@ -47,7 +45,7 @@ def set_query_params(**kwargs):
         st.experimental_set_query_params(**kwargs)
 
 def clear_query_params():
-    set_query_params()  # zera
+    set_query_params()  # zera tudo
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
@@ -55,7 +53,7 @@ logo_b64 = carregar_imagem_base64(LOGO_PATH)
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # Se voltou de um submit GET (?email=...)
+    # Trata retorno do submit GET (?email=...)
     params = get_query_params()
     email_param = params.get("email")
     if isinstance(email_param, list):
@@ -65,7 +63,6 @@ def render_gate():
     if email_param is not None:
         e = (email_param or "").strip().lower()
         if re.match(rf"^[^@\s]+@{re.escape(ALLOWED_DOMAIN)}$", e):
-            # OK -> cria "usuário" básico e libera app
             st.session_state["gate_ok"] = True
             st.session_state.setdefault("user", {})
             st.session_state["user"]["email"] = e
@@ -77,88 +74,80 @@ def render_gate():
         else:
             error_html = f"<div style='color:#ef4444; margin-top:8px;'>Use um email @{ALLOWED_DOMAIN}</div>"
 
-    # Estilos + overlay e card (puro HTML)
-    st.markdown(f"""
-    <style>
-      /* some reset */
-      html, body, .stApp, [data-testid="stAppViewContainer"] {{
-        height: 100dvh !important; max-height: 100dvh !important; overflow: hidden !important;
-      }}
-      /* overlay ocupa tudo */
-      #quadra-gate {{
-        position: fixed; inset: 0;
-        background:
-          radial-gradient(1200px 600px at 30% 20%, #1f3a8a33, transparent),
-          radial-gradient(1000px 700px at 80% 80%, #1d4ed833, transparent),
-          linear-gradient(135deg, #0f172a 0%, #0b1226 100%);
-        display: grid; place-items: center;
-        z-index: 999999;  /* acima de todo o app */
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      }}
-      .gate-card {{
-        width: min(520px, 94vw);
-        background: #ffffff;
-        border-radius: 14px;
-        box-shadow: 0 24px 60px rgba(0,0,0,.35);
-        padding: 28px 28px 18px;
-        text-align: center;
-      }}
-      .gate-logo {{
-        width: 72px; height: 72px; border-radius: 18px;
-        display: inline-grid; place-items: center;
-        background: #eef2ff; margin: 6px auto 10px; overflow: hidden;
-      }}
-      .gate-title {{ font-weight: 800; font-size: 24px; color: #0f172a; margin: 6px 0 4px }}
-      .gate-sub {{ color:#475569; margin-bottom: 14px }}
-      .gate-helper {{ color:#64748b; margin: 6px 0 18px }}
-      .gate-input {{ margin: 0 auto 12px; width: min(380px, 84vw); }}
-      .gate-input input {{
-        width: 100%; padding: 14px 16px; font-size: 15px;
-        border: 1px solid #e2e8f0; border-radius: 12px; outline: none;
-      }}
-      .gate-input input:focus {{ border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66 }}
-      .gate-btn {{
-        width: min(380px, 84vw); height: 44px; border-radius: 12px;
-        border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
-        font-weight: 600; font-size: 15px; color: #0f172a;
-        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-        transition: box-shadow .15s ease, transform .02s ease;
-      }}
-      .gate-btn:hover {{ box-shadow: 0 8px 24px rgba(2,6,23,.08) }}
-      .gate-btn:active {{ transform: translateY(1px) }}
-      .gate-btn:before {{
-        content:""; width:18px; height:18px; display:inline-block;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
-        background-size: cover; background-repeat: no-repeat; margin-right:6px;
-      }}
-      .gate-terms {{ color:#94a3b8; font-size:12px; margin-top: 12px }}
-    </style>
+    # CSS do overlay (sem f-string para não conflitar com chaves)
+    st.markdown("""
+<style>
+html, body, .stApp, [data-testid="stAppViewContainer"]{
+  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important
+}
+#quadra-gate{
+  position:fixed;inset:0;
+  background:
+    radial-gradient(1200px 600px at 30% 20%, #1f3a8a33, transparent),
+    radial-gradient(1000px 700px at 80% 80%, #1d4ed833, transparent),
+    linear-gradient(135deg,#0f172a 0%,#0b1226 100%);
+  display:grid;place-items:center;z-index:999999;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial
+}
+.gate-card{
+  width:min(520px,94vw);background:#fff;border-radius:14px;
+  box-shadow:0 24px 60px rgba(0,0,0,.35);padding:28px 28px 18px;text-align:center
+}
+.gate-logo{
+  width:72px;height:72px;border-radius:18px;display:inline-grid;place-items:center;
+  background:#eef2ff;margin:6px auto 10px;overflow:hidden
+}
+.gate-title{font-weight:800;font-size:24px;color:#0f172a;margin:6px 0 4px}
+.gate-sub{color:#475569;margin-bottom:14px}
+.gate-helper{color:#64748b;margin:6px 0 18px}
+.gate-input{margin:0 auto 12px;width:min(380px,84vw)}
+.gate-input input{
+  width:100%;padding:14px 16px;font-size:15px;border:1px solid #e2e8f0;border-radius:12px;outline:none
+}
+.gate-input input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #93c5fd66}
+.gate-btn{
+  width:min(380px,84vw);height:44px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;
+  font-weight:600;font-size:15px;color:#0f172a;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  transition:box-shadow .15s,transform .02s
+}
+.gate-btn:hover{box-shadow:0 8px 24px rgba(2,6,23,.08)}
+.gate-btn:active{transform:translateY(1px)}
+.gate-btn:before{
+  content:"";width:18px;height:18px;display:inline-block;margin-right:6px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
+  background-size:cover;background-repeat:no-repeat
+}
+.gate-terms{color:#94a3b8;font-size:12px;margin-top:12px}
+</style>
+""", unsafe_allow_html=True)
 
-    <div id="quadra-gate">
-      <div class="gate-card">
-        <div class="gate-logo">{('<img src="data:image/png;base64,' + logo_b64 + '" style="width:48px;height:48px"/>') if logo_b64 else '🔷'}</div>
-        <div class="gate-title">Quadra Engenharia</div>
-        <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
-        <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
+    # HTML do card + formulário (f-string OK)
+    logo_tag = f'<img src="data:image/png;base64,{logo_b64}" style="width:48px;height:48px"/>' if logo_b64 else '🔷'
+    gate_html = f"""
+<div id="quadra-gate">
+  <div class="gate-card">
+    <div class="gate-logo">{logo_tag}</div>
+    <div class="gate-title">Quadra Engenharia</div>
+    <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
+    <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
 
-        <!-- Formulário HTML puro: envia por GET ?email=... -->
-        <form method="get">
-          <div class="gate-input">
-            <input type="email" name="email" placeholder="seu.email@{ALLOWED_DOMAIN}" required />
-          </div>
-          <button class="gate-btn" type="submit">Entrar com Google</button>
-        </form>
-
-        {error_html}
-        <div class="gate-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>
+    <form method="get" class="gate-form">
+      <div class="gate-input">
+        <input type="email" name="email" placeholder="seu.email@{ALLOWED_DOMAIN}" required />
       </div>
-    </div>
-    """, unsafe_allow_html=True)
+      <button class="gate-btn" type="submit">Entrar com Google</button>
+    </form>
 
-    # Bloqueia o resto do app
+    {error_html}
+    <div class="gate-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>
+  </div>
+</div>
+"""
+    st.markdown(gate_html, unsafe_allow_html=True)
+
+    # Interrompe o app até passar
     st.stop()
 
-# Gate ativo?
 if not st.session_state.get("gate_ok", False):
     render_gate()
 
@@ -179,12 +168,12 @@ def formatar_markdown_basico(text: str) -> str:
         return ""
     text = re.sub(
         r'(https?://[^\s<>"\]]+)',
-        r'<a href="\\1" target="_blank" rel="noopener noreferrer">\\1</a>',
+        r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
         text,
     )
-    text = re.sub(r"\\*\\*(.*?)\\*\\*", r"<b>\\1</b>", text)
-    text = re.sub(r"\\*(.*?)\\*", r"<i>\\1</i>", text)
-    text = text.replace("\\n", "<br>")
+    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
+    text = text.replace("\n", "<br>")
     return text
 
 def linkify(text: str) -> str:
@@ -456,13 +445,6 @@ st.markdown(f"""
 
 # ====== SIDEBAR ======
 with st.sidebar:
-    # Botão de Sair (para voltar ao gate)
-    if st.button("Sair"):
-        for k in ["gate_ok", "user"]:
-            if k in st.session_state:
-                del st.session_state[k]
-        st.rerun()
-
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
@@ -474,7 +456,7 @@ with st.sidebar:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
         for pergunta_hist, _resp in st.session_state.historico:
-            titulo = pergunta_hist.strip().replace("\\n", " ")
+            titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
