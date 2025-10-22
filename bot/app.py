@@ -1,4 +1,4 @@
-# app.py — Gate por e-mail + header com botão SAIR + app intacto
+# app.py — Gate por e-mail + header com botão SAIR (mesma aba) + app intacto
 
 import streamlit as st
 import base64
@@ -62,7 +62,7 @@ if "logout" in params:
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # CSS do overlay e do cartão (somente nesta tela; damos st.stop())
+    # CSS do overlay e do cartão
     st.markdown(f"""
     <style>
       html, body, .stApp, [data-testid="stAppViewContainer"] {{
@@ -270,9 +270,12 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .header-left{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }
 .header-left .title-sub{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }
 .header-right{ display:flex; align-items:center; gap:12px; color:var(--text) }
+/* botão estilo link no header */
 .header .btn{
-  color:var(--link) !important; text-decoration:none;
-  border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  background:transparent; color:var(--link) !important;
+  border:1px solid var(--border); padding:8px 12px; border-radius:10px;
+  font:inherit; cursor:pointer;
 }
 .header .btn:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
 .user-info{ text-align:right; font-size:0.9rem; color:var(--text) }
@@ -414,7 +417,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (com SAIR) ======
+# ====== HEADER HTML (com SAIR que não abre nova aba) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
@@ -424,6 +427,7 @@ logo_img_tag = (
     f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
     if logo_b64 else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
 )
+
 st.markdown(f"""
 <div class="header">
   <div class="header-left">
@@ -434,7 +438,7 @@ st.markdown(f"""
     </div>
   </div>
   <div class="header-right">
-    <a href="?logout=1" class="btn">⎋ Sair</a>
+    <button id="logoutBtn" class="btn" style="cursor:pointer;">⎋ Sair</button>
     <div class="user-info">
       <span class="user-name">{escape(user_name)}</span><br>
       <span class="user-email">{escape(user_email)}</span>
@@ -442,11 +446,23 @@ st.markdown(f"""
     <div class="user-circle">{escape(user_initial)}</div>
   </div>
 </div>
+
+<script>
+(function(){{
+  const b = document.getElementById('logoutBtn');
+  if (!b) return;
+  b.addEventListener('click', function(ev){{
+    ev.preventDefault();
+    const url = new URL(window.location.href);
+    url.searchParams.set('logout','1');
+    window.location.href = url.pathname + '?' + url.searchParams.toString();
+  }});
+}})();
+</script>
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
 with st.sidebar:
-    # (REMOVIDO) botão estranho de Sair
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
