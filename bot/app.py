@@ -6,6 +6,7 @@ import os
 import re
 import warnings
 from html import escape
+from streamlit.components.v1 import html as st_html
 from openai_backend import responder_pergunta
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
@@ -49,11 +50,11 @@ def clear_query_params():
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# ====== GATE SIMPLES POR DOMÍNIO (ANTES DO APP) ======
+# ===================== GATE SIMPLES (ANTES DO APP) =====================
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # Trata retorno do submit GET (?email=...)
+    # Trata retorno do submit (via ?email=...)
     params = get_query_params()
     email_param = params.get("email")
     if isinstance(email_param, list):
@@ -72,86 +73,112 @@ def render_gate():
             st.rerun()
             return
         else:
-            error_html = f"<div style='color:#ef4444; margin-top:8px;'>Use um email @{ALLOWED_DOMAIN}</div>"
+            error_html = f"<div class='err'>Use um email @{ALLOWED_DOMAIN}</div>"
 
-    # CSS do overlay (sem f-string para não conflitar com chaves)
-    st.markdown("""
-<style>
-html, body, .stApp, [data-testid="stAppViewContainer"]{
-  height:100dvh!important;max-height:100dvh!important;overflow:hidden!important
-}
-#quadra-gate{
-  position:fixed;inset:0;
-  background:
-    radial-gradient(1200px 600px at 30% 20%, #1f3a8a33, transparent),
-    radial-gradient(1000px 700px at 80% 80%, #1d4ed833, transparent),
-    linear-gradient(135deg,#0f172a 0%,#0b1226 100%);
-  display:grid;place-items:center;z-index:999999;
-  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial
-}
-.gate-card{
-  width:min(520px,94vw);background:#fff;border-radius:14px;
-  box-shadow:0 24px 60px rgba(0,0,0,.35);padding:28px 28px 18px;text-align:center
-}
-.gate-logo{
-  width:72px;height:72px;border-radius:18px;display:inline-grid;place-items:center;
-  background:#eef2ff;margin:6px auto 10px;overflow:hidden
-}
-.gate-title{font-weight:800;font-size:24px;color:#0f172a;margin:6px 0 4px}
-.gate-sub{color:#475569;margin-bottom:14px}
-.gate-helper{color:#64748b;margin:6px 0 18px}
-.gate-input{margin:0 auto 12px;width:min(380px,84vw)}
-.gate-input input{
-  width:100%;padding:14px 16px;font-size:15px;border:1px solid #e2e8f0;border-radius:12px;outline:none
-}
-.gate-input input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #93c5fd66}
-.gate-btn{
-  width:min(380px,84vw);height:44px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;
-  font-weight:600;font-size:15px;color:#0f172a;display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  transition:box-shadow .15s,transform .02s
-}
-.gate-btn:hover{box-shadow:0 8px 24px rgba(2,6,23,.08)}
-.gate-btn:active{transform:translateY(1px)}
-.gate-btn:before{
-  content:"";width:18px;height:18px;display:inline-block;margin-right:6px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
-  background-size:cover;background-repeat:no-repeat
-}
-.gate-terms{color:#94a3b8;font-size:12px;margin-top:12px}
-</style>
-""", unsafe_allow_html=True)
-
-    # HTML do card + formulário (f-string OK)
     logo_tag = f'<img src="data:image/png;base64,{logo_b64}" style="width:48px;height:48px"/>' if logo_b64 else '🔷'
-    gate_html = f"""
-<div id="quadra-gate">
-  <div class="gate-card">
-    <div class="gate-logo">{logo_tag}</div>
-    <div class="gate-title">Quadra Engenharia</div>
-    <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
-    <div class="gate-helper">Entre com sua conta do domínio <b>@{ALLOWED_DOMAIN}</b></div>
 
-    <form method="get" class="gate-form">
+    # Usamos placeholders para evitar problemas com chaves em f-strings
+    html_template = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  html,body { margin:0; padding:0; height:100vh; }
+  #quadra-gate {
+    position:fixed; inset:0;
+    background:
+      radial-gradient(1200px 600px at 30% 20%, #1f3a8a33, transparent),
+      radial-gradient(1000px 700px at 80% 80%, #1d4ed833, transparent),
+      linear-gradient(135deg,#0f172a 0%,#0b1226 100%);
+    display:grid; place-items:center;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  .gate-card {
+    width:min(520px,94vw);
+    background:#fff; border-radius:14px;
+    box-shadow:0 24px 60px rgba(0,0,0,.35);
+    padding:28px 28px 18px; text-align:center;
+  }
+  .gate-logo {
+    width:72px; height:72px; border-radius:18px;
+    display:inline-grid; place-items:center;
+    background:#eef2ff; margin:6px auto 10px; overflow:hidden;
+  }
+  .gate-title { font-weight:800; font-size:24px; color:#0f172a; margin:6px 0 4px }
+  .gate-sub { color:#475569; margin-bottom:14px }
+  .gate-helper { color:#64748b; margin:6px 0 18px }
+  .gate-input { margin:0 auto 12px; width:min(380px,84vw) }
+  .gate-input input {
+    width:100%; padding:14px 16px; font-size:15px;
+    border:1px solid #e2e8f0; border-radius:12px; outline:none;
+  }
+  .gate-input input:focus { border-color:#3b82f6; box-shadow:0 0 0 3px #93c5fd66 }
+  .gate-btn {
+    width:min(380px,84vw); height:44px; border-radius:12px;
+    border:1px solid #e2e8f0; background:#fff; cursor:pointer;
+    font-weight:600; font-size:15px; color:#0f172a;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    transition: box-shadow .15s ease, transform .02s ease;
+  }
+  .gate-btn:hover { box-shadow:0 8px 24px rgba(2,6,23,.08) }
+  .gate-btn:active { transform: translateY(1px) }
+  .gate-btn:before {
+    content:""; width:18px; height:18px; display:inline-block; margin-right:6px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 48 48'%3E%3Cpath fill='%234285F4' d='M24 9.5c3.1 0 5.9 1.1 8.1 3.2l6-6C34.9 3 29.7 1 24 1 14.6 1 6.7 6.3 3 14.1l7 5.4C11.5 13.8 17.3 9.5 24 9.5z'/%3E%3Cpath fill='%2334A853' d='M46.5 24.5c0-1.5-.1-2.6-.4-3.8H24v7.3h12.7c-.6 3.4-2.5 6.3-5.4 8.2l6.6 5.1c3.9-3.6 6.6-8.9 6.6-16.8z'/%3E%3Cpath fill='%23FBBC05' d='M10 28.7c-1-3-1-6.3 0-9.3l-7-5.4C-1.2 19.1-1.2 28.9 3 35.9l7-5.4z'/%3E%3Cpath fill='%23EA4335' d='M24 47c6.5 0 12.1-2.1 16.1-5.8l-6.6-5.1c-3 2-6.8 3.2-9.5 3.2-6.7 0-12.5-4.3-14.5-10.2l-7 5.4C6.8 41.7 14.6 47 24 47z'/%3E%3C/svg%3E");
+    background-size:cover; background-repeat:no-repeat;
+  }
+  .gate-terms { color:#94a3b8; font-size:12px; margin-top: 12px }
+  .err { color:#ef4444; margin-top:8px }
+</style>
+</head>
+<body>
+  <div id="quadra-gate">
+    <div class="gate-card">
+      <div class="gate-logo">%%LOGO_TAG%%</div>
+      <div class="gate-title">Quadra Engenharia</div>
+      <div class="gate-sub">Faça login para acessar nosso assistente virtual</div>
+      <div class="gate-helper">Entre com sua conta do domínio <b>@%%ALLOWED_DOMAIN%%</b></div>
+
       <div class="gate-input">
-        <input type="email" name="email" placeholder="seu.email@{ALLOWED_DOMAIN}" required />
+        <input id="gate_email" type="email" placeholder="seu.email@%%ALLOWED_DOMAIN%%" required />
       </div>
-      <button class="gate-btn" type="submit">Entrar com Google</button>
-    </form>
+      <button class="gate-btn" onclick="submitGate()">Entrar com Google</button>
 
-    {error_html}
-    <div class="gate-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>
+      %%ERROR_HTML%%
+      <div class="gate-terms">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>
+    </div>
   </div>
-</div>
-"""
-    st.markdown(gate_html, unsafe_allow_html=True)
 
-    # Interrompe o app até passar
-    st.stop()
+  <script>
+    function submitGate(){
+      var e = document.getElementById('gate_email').value.trim().toLowerCase();
+      if(!e) return;
+      // Atualiza a URL da página-mãe (fora do iframe)
+      window.top.location.search = '?email=' + encodeURIComponent(e);
+    }
+    // Enter para enviar
+    document.getElementById('gate_email').addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter') submitGate();
+    });
+  </script>
+</body>
+</html>
+    """
+
+    html_final = (
+        html_template
+        .replace("%%LOGO_TAG%%", logo_tag)
+        .replace("%%ALLOWED_DOMAIN%%", ALLOWED_DOMAIN)
+        .replace("%%ERROR_HTML%%", error_html)
+    )
+
+    st_html(html_final, height=720, scrolling=False)
+    st.stop()  # impede o resto do app enquanto não liberar
 
 if not st.session_state.get("gate_ok", False):
     render_gate()
-
-# ====== (DAQUI PRA BAIXO É O SEU APP INTACTO) ======
+# =================== FIM DO GATE / INÍCIO DO APP ======================
 
 # ====== ESTADO ======
 if "historico" not in st.session_state:
