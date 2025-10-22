@@ -1,4 +1,5 @@
-# app.py — Gate por e-mail + header com botão SAIR (mesma aba) + app intacto
+# app.py — Gate por e-mail (domínio quadra.com.vc) + header com SAIR (mesma aba)
+# Visual do gate padronizado (cartão central, botão Google) e logout sem loop.
 
 import streamlit as st
 import base64
@@ -44,44 +45,39 @@ def set_query_params(**kwargs):
     except Exception:
         st.experimental_set_query_params(**kwargs)
 
-def clear_query_params():
-    set_query_params()  # limpa tudo
-
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # ====== LOGOUT via query param (SEM LOOP) ======
 params = get_query_params()
 if "logout" in params:
-    # limpa estado da sessão
     for k in ["gate_ok", "user", "historico", "awaiting_answer",
               "answering_started", "pending_index", "pending_question"]:
         st.session_state.pop(k, None)
 
-    # remove a querystring na MESMA aba, sem disparar rerun
+    # limpa querystring e remove ?logout=1 da barra de endereço (sem recarregar)
     try:
-        st.query_params.clear()  # streamlit novo
+        st.query_params.clear()
     except Exception:
-        st.experimental_set_query_params()  # compatibilidade
-
-    # garante que ?logout=1 sai da barra de endereço
+        st.experimental_set_query_params()
     st.markdown("""
     <script>
-    (function(){
-      const u = new URL(window.location.href);
-      u.search = ""; // remove ?logout=1
-      window.history.replaceState({}, "", u.pathname);
-    })();
+      (function(){
+        const u = new URL(window.location.href);
+        u.search = "";
+        window.history.replaceState({}, "", u.pathname);
+      })();
     </script>
     """, unsafe_allow_html=True)
-    # NÃO chama do_rerun(); a execução continua e o gate aparece
+    # NÃO chamamos rerun; a execução continua e o gate aparece.
 
 # ===================== GATE (ANTES DO APP) =====================
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # CSS do overlay e do cartão
+    # CSS do overlay + cartão centralizado (padrão da 2ª imagem)
     st.markdown(f"""
     <style>
+      /* Full viewport e fundo com gradiente */
       html, body, .stApp, [data-testid="stAppViewContainer"] {{
         height: 100dvh !important; max-height: 100dvh !important; overflow: hidden !important;
       }}
@@ -93,38 +89,57 @@ def render_gate():
           linear-gradient(135deg, #0f172a 0%, #0b1226 100%);
         z-index: 0;
       }}
+
+      /* Some tudo do Chrome do Streamlit (header/toolbar/rodapé) */
+      header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
+      #MainMenu, footer {{ visibility:hidden; height:0 !important }}
+
+      /* Esconde a sidebar no gate e zera margem do container */
+      section[data-testid="stSidebar"] {{ display:none !important }}
+      div[data-testid="stAppViewContainer"] {{ margin-left:0 !important }}
+      .block-container {{ padding:0 !important }}
+
+      /* Cartão do gate (centrado) */
       [data-testid="stForm"] {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        width: min(520px, 94vw);
+        width: min(520px, 94vw); max-width: 520px;
         background: #ffffff;
-        border-radius: 14px;
-        box-shadow: 0 24px 60px rgba(0,0,0,.35);
-        padding: 28px 28px 18px;
+        border-radius: 16px;
+        box-shadow: 0 30px 80px rgba(0,0,0,.35);
+        padding: 30px 28px 20px;
         z-index: 1;
       }}
-      .gate-title {{ font-weight:800; font-size:24px; color:#0f172a; text-align:center; margin:6px 0 4px }}
-      .gate-sub {{ color:#475569; text-align:center; margin-bottom:14px }}
-      .gate-helper {{ color:#64748b; text-align:center; margin:6px 0 18px }}
+
       .gate-logo {{
-        width:72px; height:72px; border-radius:18px; display:grid; place-items:center;
-        background:#eef2ff; margin:6px auto 10px; overflow:hidden;
+        width:80px; height:80px; border-radius:20px; display:grid; place-items:center;
+        background:#eef2ff; margin:6px auto 14px; overflow:hidden;
       }}
-      .gate-terms {{ color:#94a3b8; font-size:12px; text-align:center; margin-top:12px }}
+      .gate-title {{ font-weight:800; font-size:26px; color:#0f172a; text-align:center; margin:2px 0 6px }}
+      .gate-sub {{ color:#475569; text-align:center; margin-bottom:10px }}
+      .gate-helper {{ color:#64748b; text-align:center; margin:4px 0 18px }}
+
+      /* Campo de e-mail limpo e padronizado */
+      [data-testid="stTextInput"] label {{ display:none !important }}
+      [data-testid="stTextInput"] div[class*="stTextInputContainer"] {{ border:none !important; background:transparent !important }}
       [data-testid="stTextInput"] input {{
-        width: 100%; padding: 14px 16px; font-size: 15px;
+        width: 100%; height: 44px; padding: 0 14px; font-size: 15px;
         border: 1px solid #e2e8f0; border-radius: 12px; outline: none; background:#fff;
       }}
       [data-testid="stTextInput"] input:focus {{
         border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66;
       }}
+      /* Espaçamento consistente entre input e botão */
+      [data-testid="stTextInput"] {{ margin-bottom: 12px !important }}
+
+      /* Botão Google largo, branco, com ícone à esquerda */
       .stButton > button {{
-        width: 100%; height: 44px; border-radius: 12px;
+        width: 100%; height: 48px; border-radius: 12px;
         border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer;
-        font-weight: 600; font-size: 15px; color: #0f172a;
+        font-weight: 700; font-size: 15px; color: #0f172a;
         display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         transition: box-shadow .15s ease, transform .02s ease;
       }}
-      .stButton > button:hover {{ box-shadow: 0 8px 24px rgba(2,6,23,.08) }}
+      .stButton > button:hover {{ box-shadow: 0 10px 28px rgba(2,6,23,.10) }}
       .stButton > button:active {{ transform: translateY(1px) }}
       .stButton > button::before {{
         content:""; width:18px; height:18px; display:inline-block;
@@ -132,13 +147,13 @@ def render_gate():
         background-size: cover; background-repeat: no-repeat;
         margin-right: 6px;
       }}
-      header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
-      #MainMenu, footer {{ visibility:hidden; height:0 !important }}
+
+      .gate-terms {{ color:#94a3b8; font-size:12px; text-align:center; margin-top:14px }}
     </style>
     """, unsafe_allow_html=True)
 
     logo_tag = (
-        f'<img src="data:image/png;base64,{logo_b64}" style="width:48px;height:48px"/>'
+        f'<img src="data:image/png;base64,{logo_b64}" style="width:56px;height:56px"/>'
         if logo_b64 else "🔷"
     )
 
@@ -152,6 +167,7 @@ def render_gate():
             """,
             unsafe_allow_html=True,
         )
+
         email = st.text_input(
             "Email corporativo",
             placeholder=f"seu.email@{ALLOWED_DOMAIN}",
@@ -197,11 +213,7 @@ st.session_state.setdefault("pending_question", None)
 def formatar_markdown_basico(text: str) -> str:
     if not text:
         return ""
-    text = re.sub(
-        r'(https?://[^\s<>"\]]+)',
-        r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>',
-        text,
-    )
+    text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', text)
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
     text = text.replace("\n", "<br>")
@@ -221,7 +233,7 @@ def reenviar_pergunta(q: str):
     st.session_state.answering_started = False
     do_rerun()
 
-# ====== CSS (sidebar preta, chat cinza, input um tom mais claro + LINKS AZUIS) ======
+# ====== CSS (APP: sidebar preta, chat cinza, links azuis) ======
 st.markdown("""
 <style>
 /* ========= RESET / BASE ========= */
@@ -236,23 +248,23 @@ img.logo { height: 44px !important; width: auto !important }
   --header-height: 68px;
   --sidebar-w:270px;
 
-  --input-bottom: 60px;     /* posição do input e buffers */
-  --input-h: 72px;          /* atualizado via JS       */
+  --input-bottom: 60px;
+  --input-h: 72px;
   --extra-gap: 20px;
 
-  --panel-alt:#1C1F26;      /* cinza do card e do chat */
-  --bg: var(--panel-alt);   /* tela inteira            */
+  --panel-alt:#1C1F26;
+  --bg: var(--panel-alt);
   --panel: var(--panel-alt);
   --panel-header: var(--panel-alt);
 
-  --sidebar-bg: #000000;    /* Sidebar preta */
+  --sidebar-bg: #000000;
 
-  --input-bg-light:#262D38; /* Chat input um tom + claro */
+  --input-bg-light:#262D38;
 
   --border:#242833;
   --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
 
-  --link:#3B82F6;           /* links azuis */
+  --link:#3B82F6;
   --link-hover:#93C5FD;
 
   --bubble-user:#222833; --bubble-assistant:#232833;
@@ -269,10 +281,7 @@ div[data-testid="stToolbar"]{ display:none !important }
 #MainMenu, footer{ visibility:hidden; height:0 !important }
 
 html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{
-  height:100dvh !important;
-  max-height:100dvh !important;
-  overflow:hidden !important;
-  overscroll-behavior:none;
+  height:100dvh !important; max-height:100dvh !important; overflow:hidden !important; overscroll-behavior:none;
 }
 .block-container{ padding:0 !important; min-height:0 !important }
 .stApp{ background:var(--bg) !important; color:var(--text) !important }
@@ -287,10 +296,8 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .header-left{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }
 .header-left .title-sub{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }
 .header-right{ display:flex; align-items:center; gap:12px; color:var(--text) }
-/* botão estilo link no header */
 .header .btn{
-  appearance:none; -webkit-appearance:none; -moz-appearance:none;
-  background:transparent; color:var(--link) !important;
+  appearance:none; background:transparent; color:var(--link) !important;
   border:1px solid var(--border); padding:8px 12px; border-radius:10px;
   font:inherit; cursor:pointer; text-decoration:none; display:inline-block;
 }
@@ -298,38 +305,23 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .user-info{ text-align:right; font-size:0.9rem; color:var(--text) }
 .user-info .user-name{ font-weight:600 }
 .user-info .user-email{ font-weight:400; color:var(--muted); font-size:0.8rem; text-decoration:none }
-.user-circle{
-  width:28px; height:28px; border-radius:50%; background:#0ea5e9; color:#001018;
-  display:grid; place-items:center; font-weight:800;
-}
+.user-circle{ width:28px; height:28px; border-radius:50%; background:#0ea5e9; color:#001018;
+  display:grid; place-items:center; font-weight:800; }
 
 /* ========= SIDEBAR ========= */
 section[data-testid="stSidebar"]{
-  position:fixed !important;
-  top:var(--header-height) !important;
-  left:0 !important;
-  height:calc(100dvh - var(--header-height)) !important;
-  width:var(--sidebar-w) !important;
-  min-width:var(--sidebar-w) !important;
-  margin:0 !important; padding:0 !important;
-
-  background:var(--sidebar-bg) !important;
-  border-right:1px solid rgba(255,255,255,0.06);
-  z-index:900 !important;
-  transform:none !important;
-  visibility:visible !important;
-  overflow:hidden !important;
-  color:var(--text);
+  position:fixed !important; top:var(--header-height) !important; left:0 !important;
+  height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important;
+  min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important;
+  background:var(--sidebar-bg) !important; border-right:1px solid rgba(255,255,255,0.06);
+  z-index:900 !important; transform:none !important; visibility:visible !important;
+  overflow:hidden !important; color:var(--text);
 }
 section[data-testid="stSidebar"] > div,
 div[data-testid="stSidebarContent"],
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{
-  padding-top:0 !important; margin-top:0 !important;
-}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-section[data-testid="stSidebar"] .sidebar-header{
-  margin-top: var(--sidebar-items-top-gap) !important;
-}
+section[data-testid="stSidebar"] .sidebar-header{ margin-top: var(--sidebar-items-top-gap) !important; }
 .sidebar-bar p, .sidebar-header p{ margin:0 !important; line-height:1.15 !important; }
 .sidebar-bar{ margin-top: var(--sidebar-sub-top-gap) !important; }
 .hist-row:first-of-type{ margin-top: var(--sidebar-list-start-gap) !important; }
@@ -346,66 +338,43 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 /* ========= CONTEÚDO / CHAT ========= */
 .content{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }
 #chatCard, .chat-card{
-  position:relative;
-  z-index:50 !important;
-  background:var(--panel-alt) !important;
-  border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
-  padding:20px;
-
+  position:relative; z-index:50 !important; background:var(--panel-alt) !important;
+  border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important; padding:20px;
   height: calc(100dvh - var(--header-height) - var(--input-bottom) - var(--input-h) - var(--extra-gap));
   overflow-y:auto; scroll-behavior:smooth;
-
   padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
   scroll-padding-bottom: calc(var(--input-bottom) + var(--input-h) + var(--extra-gap));
-
   color:var(--text);
 }
 #chatCard *, .chat-card *{ position:relative; z-index:51 !important }
-
 .chat-card a{ color:var(--link) !important; text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) !important }
 
 .message-row{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--input-bottom) + var(--input-h) + var(--extra-gap) + 16px) }
 .message-row.user{ justify-content:flex-end }
 .message-row.assistant{ justify-content:flex-start }
-.bubble{
-  max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
-  color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important;
-}
+.bubble{ max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
+  color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important; }
 .bubble.user{ background:var(--bubble-user); border-bottom-right-radius:6px }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
 
 /* ========= CHAT INPUT ========= */
 [data-testid="stChatInput"]{
-  position:fixed !important;
-  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
-  transform:translateX(-50%) !important;
-  bottom:var(--input-bottom) !important;
-  width:min(900px, 96vw) !important;
-  z-index:5000 !important;
-  background:transparent !important;
+  position:fixed !important; left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
+  transform:translateX(-50%) !important; bottom:var(--input-bottom) !important;
+  width:min(900px, 96vw) !important; z-index:5000 !important; background:transparent !important;
   border:none !important; box-shadow:none !important; padding:0 !important;
 }
-[data-testid="stChatInput"] *{
-  background:transparent !important;
-  color:var(--text) !important;
-}
+[data-testid="stChatInput"] *{ background:transparent !important; color:var(--text) !important; }
 [data-testid="stChatInput"] > div{
-  background:var(--input-bg-light) !important;
-  border:1px solid var(--input-border) !important;
-  border-radius:999px !important;
-  box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
-  overflow:hidden;
-  transition:border-color .12s ease, box-shadow .12s ease;
+  background:var(--input-bg-light) !important; border:1px solid var(--input-border) !important;
+  border-radius:999px !important; box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
+  overflow:hidden; transition:border-color .12s ease, box-shadow .12s ease;
 }
 [data-testid="stChatInput"] textarea{
-  width:100% !important;
-  border:none !important; border-radius:999px !important;
-  padding:18px 20px !important; font-size:16px !important;
-  outline:none !important; height:auto !important;
-  min-height:44px !important; max-height:220px !important;
-  overflow-y:hidden !important;
-  caret-color:#ffffff !important;
+  width:100% !important; border:none !important; border-radius:999px !important;
+  padding:18px 20px !important; font-size:16px !important; outline:none !important; height:auto !important;
+  min-height:44px !important; max-height:220px !important; overflow-y:hidden !important; caret-color:#ffffff !important;
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
 [data-testid="stChatInput"] textarea:focus::placeholder{ color:transparent !important; opacity:0 !important }
@@ -413,12 +382,10 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
 /* ========= MATA A FAIXA BRANCA ========= */
-[data-testid="stBottomBlockContainer"],
-[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"], [data-testid="stBottomBlockContainer"] > div,
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
 [data-testid="stBottomBlockContainer"] [class*="block-container"],
-[data-testid="stBottomBlockContainer"]::before,
-[data-testid="stBottomBlockContainer"]::after{
+[data-testid="stBottomBlockContainer"]::before, [data-testid="stBottomBlockContainer"]::after{
   background:transparent !important; box-shadow:none !important; border:none !important;
 }
 [data-testid="stBottomBlockContainer"]{ padding:0 !important; margin:0 !important; height:0 !important; min-height:0 !important }
@@ -429,12 +396,13 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
 *::-webkit-scrollbar-track{ background:var(--panel-alt) }
 
-.spinner{ width:16px; height:16px; border:2px solid rgba(37,99,235,.25); border-top-color:#2563eb; border-radius:50%; display:inline-block; animation:spin .8s linear infinite }
+.spinner{ width:16px; height:16px; border:2px solid rgba(37,99,235,.25); border-top-color:#2563eb; border-radius:50%;
+  display:inline-block; animation:spin .8s linear infinite }
 @keyframes spin{ to{ transform:rotate(360deg) } }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML (Sair MESMA ABA) ======
+# ====== HEADER HTML (com SAIR na mesma aba) ======
 user = st.session_state.get("user", {})
 user_name = user.get("name", "Usuário")
 user_email = user.get("email", "usuario@exemplo.com")
