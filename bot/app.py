@@ -1,4 +1,4 @@
-# app.py — links azuis (alteração simples nas CSS vars) + GATE por e-mail
+# app.py — Gate por e-mail + header com botão SAIR + app intacto
 
 import streamlit as st
 import base64
@@ -32,20 +32,42 @@ def carregar_imagem_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+def get_query_params():
+    try:
+        return st.query_params.to_dict()
+    except Exception:
+        return st.experimental_get_query_params()
+
+def set_query_params(**kwargs):
+    try:
+        st.query_params.update(kwargs)
+    except Exception:
+        st.experimental_set_query_params(**kwargs)
+
+def clear_query_params():
+    set_query_params()  # limpa tudo
+
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
+
+# ====== LOGOUT via query param ======
+params = get_query_params()
+if "logout" in params:
+    for k in ["gate_ok", "user", "historico", "awaiting_answer",
+              "answering_started", "pending_index", "pending_question"]:
+        st.session_state.pop(k, None)
+    clear_query_params()
+    do_rerun()
 
 # ===================== GATE (ANTES DO APP) =====================
 ALLOWED_DOMAIN = "quadra.com.vc"
 
 def render_gate():
-    # CSS do overlay e do cartão (afeta apenas esta tela, pois damos st.stop())
+    # CSS do overlay e do cartão (somente nesta tela; damos st.stop())
     st.markdown(f"""
     <style>
-      /* full-viewport overlay */
       html, body, .stApp, [data-testid="stAppViewContainer"] {{
         height: 100dvh !important; max-height: 100dvh !important; overflow: hidden !important;
       }}
-      /* fundo degradê */
       [data-testid="stAppViewContainer"]::before {{
         content:""; position: fixed; inset: 0;
         background:
@@ -54,7 +76,6 @@ def render_gate():
           linear-gradient(135deg, #0f172a 0%, #0b1226 100%);
         z-index: 0;
       }}
-      /* centraliza o form como cartão */
       [data-testid="stForm"] {{
         position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
         width: min(520px, 94vw);
@@ -64,7 +85,6 @@ def render_gate():
         padding: 28px 28px 18px;
         z-index: 1;
       }}
-      /* tipografia do cartão */
       .gate-title {{ font-weight:800; font-size:24px; color:#0f172a; text-align:center; margin:6px 0 4px }}
       .gate-sub {{ color:#475569; text-align:center; margin-bottom:14px }}
       .gate-helper {{ color:#64748b; text-align:center; margin:6px 0 18px }}
@@ -73,10 +93,9 @@ def render_gate():
         background:#eef2ff; margin:6px auto 10px; overflow:hidden;
       }}
       .gate-terms {{ color:#94a3b8; font-size:12px; text-align:center; margin-top:12px }}
-      /* input e botão com visual do mock */
       [data-testid="stTextInput"] input {{
         width: 100%; padding: 14px 16px; font-size: 15px;
-        border: 1px solid #e2e8f0; border-radius: 12px; outline: none;
+        border: 1px solid #e2e8f0; border-radius: 12px; outline: none; background:#fff;
       }}
       [data-testid="stTextInput"] input:focus {{
         border-color:#3b82f6; box-shadow: 0 0 0 3px #93c5fd66;
@@ -96,13 +115,11 @@ def render_gate():
         background-size: cover; background-repeat: no-repeat;
         margin-right: 6px;
       }}
-      /* remove chrome do Streamlit */
       header[data-testid="stHeader"], div[data-testid="stToolbar"] {{ display:none !important }}
       #MainMenu, footer {{ visibility:hidden; height:0 !important }}
     </style>
     """, unsafe_allow_html=True)
 
-    # Cartão (conteúdo do form)
     logo_tag = (
         f'<img src="data:image/png;base64,{logo_b64}" style="width:48px;height:48px"/>'
         if logo_b64 else "🔷"
@@ -134,7 +151,6 @@ def render_gate():
                     "email": e,
                     "name": e.split("@")[0].replace(".", " ").replace("_", " ").title() or "Usuário Quadra",
                 }
-                st.success("Acesso autorizado. Entrando…")
                 do_rerun()
             else:
                 st.error(f"Use um email @{ALLOWED_DOMAIN}")
@@ -144,7 +160,7 @@ def render_gate():
             unsafe_allow_html=True,
         )
 
-    st.stop()  # bloqueia o resto do app até autenticar
+    st.stop()
 
 if not st.session_state.get("gate_ok", False):
     render_gate()
@@ -203,34 +219,28 @@ img.logo { height: 44px !important; width: auto !important }
   --header-height: 68px;
   --sidebar-w:270px;
 
-  /* posição do input e buffers */
-  --input-bottom: 60px;
-  --input-h: 72px;               /* atualizado via JS */
+  --input-bottom: 60px;     /* posição do input e buffers */
+  --input-h: 72px;          /* atualizado via JS       */
   --extra-gap: 20px;
 
-  /* PALETA PRINCIPAL */
-  --panel-alt:#1C1F26;           /* cinza do card e da tela do chat */
-  --bg: var(--panel-alt);        /* tela inteira no mesmo cinza do chat */
+  --panel-alt:#1C1F26;      /* cinza do card e do chat */
+  --bg: var(--panel-alt);   /* tela inteira            */
   --panel: var(--panel-alt);
   --panel-header: var(--panel-alt);
 
-  /* Sidebar PRETA */
-  --sidebar-bg: #000000;
+  --sidebar-bg: #000000;    /* Sidebar preta */
 
-  /* Chat input: um tom MAIS CLARO que a tela do chat */
-  --input-bg-light:#262D38;
+  --input-bg-light:#262D38; /* Chat input um tom + claro */
 
   --border:#242833;
   --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
 
-  /* >>> LINKS AZUIS (alteração simples) <<< */
-  --link:#3B82F6;        /* azul (blue-500) */
-  --link-hover:#93C5FD;  /* azul claro (blue-300) */
+  --link:#3B82F6;           /* links azuis */
+  --link-hover:#93C5FD;
 
   --bubble-user:#222833; --bubble-assistant:#232833;
   --input-border:#323949;
 
-  /* knobs da sidebar */
   --sidebar-items-top-gap: -45px;
   --sidebar-sub-top-gap: -30px;
   --sidebar-list-start-gap: 5px;
@@ -260,13 +270,20 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .header-left{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }
 .header-left .title-sub{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }
 .header-right{ display:flex; align-items:center; gap:12px; color:var(--text) }
-.header a{
+.header .btn{
   color:var(--link) !important; text-decoration:none;
   border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
 }
-.header a:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
+.header .btn:hover{ color:var(--link-hover) !important; border-color:#3B4250 }
+.user-info{ text-align:right; font-size:0.9rem; color:var(--text) }
+.user-info .user-name{ font-weight:600 }
+.user-info .user-email{ font-weight:400; color:var(--muted); font-size:0.8rem; text-decoration:none }
+.user-circle{
+  width:28px; height:28px; border-radius:50%; background:#0ea5e9; color:#001018;
+  display:grid; place-items:center; font-weight:800;
+}
 
-/* ========= SIDEBAR (histórico PRETO) ========= */
+/* ========= SIDEBAR ========= */
 section[data-testid="stSidebar"]{
   position:fixed !important;
   top:var(--header-height) !important;
@@ -276,8 +293,8 @@ section[data-testid="stSidebar"]{
   min-width:var(--sidebar-w) !important;
   margin:0 !important; padding:0 !important;
 
-  background:var(--sidebar-bg) !important;               /* PRETO */
-  border-right:1px solid rgba(255,255,255,0.06);         /* divisor sutil */
+  background:var(--sidebar-bg) !important;
+  border-right:1px solid rgba(255,255,255,0.06);
   z-index:900 !important;
   transform:none !important;
   visibility:visible !important;
@@ -311,7 +328,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 #chatCard, .chat-card{
   position:relative;
   z-index:50 !important;
-  background:var(--panel-alt) !important;  /* cinza do chat */
+  background:var(--panel-alt) !important;
   border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
   padding:20px;
 
@@ -325,7 +342,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 }
 #chatCard *, .chat-card *{ position:relative; z-index:51 !important }
 
-/* >>> LINKS AZUIS no chat (usa as vars acima) */
 .chat-card a{ color:var(--link) !important; text-decoration:underline }
 .chat-card a:hover{ color:var(--link-hover) !important }
 
@@ -339,7 +355,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 .bubble.user{ background:var(--bubble-user); border-bottom-right-radius:6px }
 .bubble.assistant{ background:var(--bubble-assistant); border-bottom-left-radius:6px }
 
-/* ========= CHAT INPUT (um tom mais claro que a tela) ========= */
+/* ========= CHAT INPUT ========= */
 [data-testid="stChatInput"]{
   position:fixed !important;
   left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
@@ -355,7 +371,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
   color:var(--text) !important;
 }
 [data-testid="stChatInput"] > div{
-  background:var(--input-bg-light) !important;      /* mais claro que o chat */
+  background:var(--input-bg-light) !important;
   border:1px solid var(--input-border) !important;
   border-radius:999px !important;
   box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
@@ -373,53 +389,40 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 }
 [data-testid="stChatInput"] textarea::placeholder{ color:var(--muted) !important }
 [data-testid="stChatInput"] textarea:focus::placeholder{ color:transparent !important; opacity:0 !important }
-[data-testid="stChatInput"] button{
-  margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
-}
+[data-testid="stChatInput"] button{ margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important; }
 [data-testid="stChatInput"] svg{ fill:currentColor !important }
 
-/* ========= MATA A FAIXA BRANCA DE BAIXO ========= */
+/* ========= MATA A FAIXA BRANCA ========= */
 [data-testid="stBottomBlockContainer"],
 [data-testid="stBottomBlockContainer"] > div,
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
 [data-testid="stBottomBlockContainer"] [class*="block-container"],
 [data-testid="stBottomBlockContainer"]::before,
 [data-testid="stBottomBlockContainer"]::after{
-  background:transparent !important;
-  box-shadow:none !important;
-  border:none !important;
+  background:transparent !important; box-shadow:none !important; border:none !important;
 }
-[data-testid="stBottomBlockContainer"]{
-  padding:0 !important;
-  margin:0 !important;
-  height:0 !important;
-  min-height:0 !important;
-}
+[data-testid="stBottomBlockContainer"]{ padding:0 !important; margin:0 !important; height:0 !important; min-height:0 !important }
 
 /* ========= EXTRAS ========= */
 [data-testid="stDecoration"], [data-testid="stStatusWidget"]{ display:none !important }
-
 *::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{ background:#2C3340; border-radius:8px }
-*::-webkit-scrollbar-track{ background:var(--panel-alt) } /* track no cinza do chat */
+*::-webkit-scrollbar-track{ background:var(--panel-alt) }
 
-.spinner{
-  width:16px; height:16px;
-  border:2px solid rgba(37,99,235,.25);
-  border-top-color:#2563eb;
-  border-radius:50%;
-  display:inline-block;
-  animation:spin .8s linear infinite;
-}
+.spinner{ width:16px; height:16px; border:2px solid rgba(37,99,235,.25); border-top-color:#2563eb; border-radius:50%; display:inline-block; animation:spin .8s linear infinite }
 @keyframes spin{ to{ transform:rotate(360deg) } }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== HEADER HTML ======
+# ====== HEADER HTML (com SAIR) ======
+user = st.session_state.get("user", {})
+user_name = user.get("name", "Usuário")
+user_email = user.get("email", "usuario@exemplo.com")
+user_initial = (user_name[:1] or "U").upper()
+
 logo_img_tag = (
     f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
-    if logo_b64
-    else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
+    if logo_b64 else '<div style="width:44px;height:44px;border-radius:8px;background:#eef2ff;display:inline-block;"></div>'
 )
 st.markdown(f"""
 <div class="header">
@@ -431,24 +434,19 @@ st.markdown(f"""
     </div>
   </div>
   <div class="header-right">
-    <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
-    <div style="text-align:right;font-size:0.9rem;color:var(--text);">
-      <span style="font-weight:600;">{st.session_state.get('user', {}).get('name', 'Usuário')}</span><br>
-      <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.get('user', {}).get('email', 'usuario@exemplo.com')}</span>
+    <a href="?logout=1" class="btn">⎋ Sair</a>
+    <div class="user-info">
+      <span class="user-name">{escape(user_name)}</span><br>
+      <span class="user-email">{escape(user_email)}</span>
     </div>
-    <div class="user-circle">U</div>
+    <div class="user-circle">{escape(user_initial)}</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ====== SIDEBAR ======
 with st.sidebar:
-    # Botão sair para voltar ao gate
-    if st.button("Sair"):
-        for k in ["gate_ok", "user"]:
-            st.session_state.pop(k, None)
-        do_rerun()
-
+    # (REMOVIDO) botão estranho de Sair
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
@@ -474,12 +472,11 @@ for pergunta, resposta in st.session_state.historico:
         r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
-# enquanto processa, mostra SÓ a bolinha azul
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
 if not msgs_html:
-    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">&nbsp;</div>')
 
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
