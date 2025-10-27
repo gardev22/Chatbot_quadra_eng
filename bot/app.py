@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Corrigido para exibir Login)
+# app.py - Frontend do Chatbot Quadra (Autenticação com Card Imagem 2)
 
 import streamlit as st
 import base64
@@ -6,20 +6,19 @@ import os
 import re
 import warnings
 from html import escape
-# Importa a função de resposta do backend
 from openai_backend import responder_pergunta 
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
 # ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png" 
-# Usamos o modo escuro padrão do Streamlit, e corrigimos as cores no CSS.
-# O fundo azul/escuro será forçado no CSS/markdown.
 st.set_page_config(
     page_title="Chatbot Quadra",
     page_icon=LOGO_PATH,
     layout="wide",
     initial_sidebar_state="expanded",
+    # O tema escuro padrão do Streamlit ajuda, mas o CSS abaixo vai sobrescrever o fundo
+    # theme="dark", # Se preferir que o Streamlit comece no modo escuro
 )
 
 def do_rerun():
@@ -41,7 +40,6 @@ def carregar_imagem_base64(path):
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 def extract_name_from_email(email):
-    """Extrai um nome (capitalizado) de um email."""
     if not email or "@" not in email:
         return "Usuário"
     local_part = email.split("@")[0]
@@ -61,28 +59,35 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (SIMPLIFICADA) ======
+# ====== AUTENTICAÇÃO (Recriando a Imagem 2) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada usando Streamlit nativo."""
+    """Renderiza a tela de login customizada como na Imagem 2."""
     
-    # 1. Aplicar o fundo azul/escuro e centralizar (CSS de Login)
-    st.markdown("""
+    # 1. CSS para o fundo e o card de login
+    st.markdown(f"""
     <style>
-    /* Força o fundo azul/escuro para a tela de login */
-    .stApp { 
+    /* Força o fundo azul/escuro para TODA a tela na fase de login */
+    .stApp {{
         background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
-    }
-    /* Estiliza o container de login */
-    div.stVerticalBlock > div.element-container:nth-child(1) {
+        /* Garante que nada mais apareça, esconde sidebar e header */
+        height: 100vh; width: 100vw; overflow: hidden;
+    }}
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer {{ 
+        display: none !important; visibility: hidden !important; height: 0 !important; 
+    }}
+
+    /* Estiliza o container principal do Streamlit para centralizar o card */
+    .main > div {{
         height: 100vh;
         display: flex;
         justify-content: center;
         align-items: center;
-        padding-top: 0 !important;
-    }
-    /* Estilo do card branco (simulado por um container) */
-    .login-card-container {
+        padding: 0 !important;
+    }}
+
+    /* Estilo do card branco de login */
+    .custom-login-card {{
         background: white; 
         border-radius: 12px; 
         padding: 40px; 
@@ -90,39 +95,56 @@ def render_login_screen():
         max-width: 400px; 
         text-align: center; 
         color: #333;
-        width: 100%;
-    }
-    .login-logo { width: 60px; height: 60px; margin-bottom: 20px; }
-    .login-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }
-    .login-subtitle { font-size: 0.9rem; margin-bottom: 30px; color: #666; }
-    .login-disclaimer { font-size: 0.75rem; margin-top: 25px; color: #999; }
-    .stButton>button { width: 100%; height: 48px; font-weight: 600; }
+        width: 100%; /* Ajusta para max-width */
+    }}
+    .custom-login-logo {{ width: 60px; height: 60px; margin-bottom: 20px; margin-top: 10px; }}
+    .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }}
+    .custom-login-subtitle {{ font-size: 0.9rem; margin-bottom: 30px; color: #666; }}
+    .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; }}
+    
+    /* Ajustes para o input do Streamlit dentro do card */
+    .custom-login-card [data-testid="stTextInput"] > div > div {{
+        border-radius: 8px; border: 1px solid #ddd;
+    }}
+    .custom-login-card [data-testid="stTextInput"] input {{
+        height: 48px; font-size: 1rem;
+    }}
+    .custom-login-card .stButton > button {{
+        width: 100%; height: 48px; font-weight: 600;
+        background-color: #1C3364; color: white; border: none;
+        border-radius: 8px; margin-top: 20px;
+    }}
+    .custom-login-card .stButton > button:hover {{
+        background-color: #2a4782; /* Um pouco mais claro no hover */
+    }}
     </style>
     """, unsafe_allow_html=True)
     
-    # 2. Centralizar e criar o card branco (Streamlit nativo)
-    col_center = st.columns([1, 4, 1])[1]
+    # 2. Renderizar o card no Streamlit
+    # Usamos colunas para ajudar a centralizar, embora o CSS já faça a maior parte
+    col_center = st.columns([1, 4, 1])[1] # Coluna central maior
     
     with col_center:
-        st.markdown('<div class="login-card-container">', unsafe_allow_html=True)
+        st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
         
-        # Conteúdo do Card
+        # Conteúdo do Card (elementos da imagem)
         logo_login_tag = (
-            f'<img class="login-logo" src="data:image/png;base64,{logo_b64}" />'
+            f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" />'
             if logo_b64
-            else '<div class="login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
+            else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
         )
         st.markdown(logo_login_tag, unsafe_allow_html=True)
         
-        st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
+        st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+        st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
         with st.form("login_form", clear_on_submit=False):
-            # Input de Email (Estilizado para o centro)
+            # NOVO: Texto "Entre com sua conta Google" removido, pois a autenticação é por domínio
+            # st.markdown('<div style="font-size: 0.9rem; margin-bottom: 15px; color: #666;">Entre com seu e-mail</div>', unsafe_allow_html=True)
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
             
-            submitted = st.form_submit_button("Entrar no Chatbot", type="primary")
-
+            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") # Mantém o botão com o estilo do card
+            
             if submitted:
                 email = email.strip().lower()
                 
@@ -136,12 +158,11 @@ def render_login_screen():
                     st.session_state.user_name = extract_name_from_email(email)
                     do_rerun()
         
-        st.markdown('<div class="login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
         
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do login-card-container
+        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-card
         
     st.stop() # Interrompe a execução do chat até o login
-    
 
 # =================================================================
 #                         FLUXO PRINCIPAL
@@ -152,7 +173,7 @@ if not st.session_state.authenticated:
     render_login_screen()
 
 # A partir daqui, o usuário está autenticado.
-# O restante do CSS/HTML é aplicado apenas após esta linha.
+# O restante do CSS/HTML é aplicado apenas após esta linha, redefinindo o fundo.
 
 # ====== MARCAÇÃO (Formatação de Texto) ======
 def formatar_markdown_basico(text: str) -> str:
@@ -167,7 +188,7 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat Customizado - Com correção de cores) ======
-# NOTA: Este bloco reverte o st.App para o tema escuro do chat
+# NOTA: Este bloco de CSS é aplicado APÓS o login, redefinindo o visual para o chat.
 st.markdown(f"""
 <style>
 /* ========= RESET / BASE ========= */
