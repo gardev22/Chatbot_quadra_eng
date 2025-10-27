@@ -156,7 +156,7 @@ def render_login_screen():
 
         with st.form("login_form", clear_on_submit=False):
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
-            submit = st.form_submit_button("Entrar no Chatbot", type="primary")
+            submit = st.form_submit_button("Entrar", type="primary")
             if submit:
                 email = (email or "").strip().lower()
                 if "@" not in email:
