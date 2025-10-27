@@ -68,7 +68,7 @@ def extract_name_from_email(email):
     name_parts = re.sub(r'[\._]', ' ', local_part).split()
     return " ".join(p.capitalize() for p in name_parts)
 
-# ====== ESTADO (Início da Sessão) ======
+# ====== ESTADO (Início da Sessão) - Mantenha este bloco no topo, antes das funções ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
@@ -81,12 +81,24 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (Método Streamlit Nativo + CSS para Centralização) ======
+
+# ====== AUTENTICAÇÃO (Método Streamlit Nativo + CSS para Centralização Exata) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com card branco centralizado e input de email."""
+    """Renderiza a tela de login customizada com input de email e botão azul, centralizado no fundo escuro."""
     
-    # 1. CSS para o fundo, centralização e o card de login
+    # Variável da logo para uso (Recuperada do escopo global/superior)
+    try:
+        global logo_b64
+        logo_login_tag_card = (
+            f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" alt="Logo Quadra" />'
+            if logo_b64
+            else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
+        )
+    except NameError:
+        logo_login_tag_card = '<img class="custom-login-logo" src="" alt="Logo Quadra" style="width:50px; height:50px; margin:0 auto 10px auto; border-radius:8px; background:#fff;">'
+    
+    # 1. CSS para o fundo, centralização e os elementos de login
     st.markdown(f"""
     <style>
     /* Força o fundo azul/escuro para TODA a tela na fase de login */
@@ -99,7 +111,7 @@ def render_login_screen():
         display: none !important; visibility: hidden !important; height: 0 !important; 
     }}
 
-    /* Centraliza o CONTEÚDO PRINCIPAL (o bloco Streamlit) na vertical e horizontal */
+    /* Centraliza o CONTEÚDO PRINCIPAL na vertical e horizontal */
     .stApp > div:first-child > div:nth-child(2) > div:first-child {{
         height: 100vh; 
         display: flex;
@@ -121,15 +133,11 @@ def render_login_screen():
         align-items: center;
     }}
     
-    /* Estilo do card branco de login */
-    .custom-login-card {{
-        background: white; 
-        border-radius: 12px; 
-        padding: 40px; 
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-        max-width: 400px; 
+    /* Container para o conteúdo do login (para limitar a largura e centralizar) */
+    .custom-login-container {{
+        max-width: 400px; /* Largura do conteúdo principal */
         text-align: center; 
-        color: #333;
+        color: #fff; /* Texto branco no fundo escuro */
         width: 100%; 
         box-sizing: border-box;
         margin: auto; 
@@ -137,19 +145,27 @@ def render_login_screen():
     
     /* Estilos dos elementos internos */
     .custom-login-logo {{ 
-        width: 80px; height: 80px; 
-        margin: 0px auto 25px auto; 
-        border-radius: 12px;
+        width: 50px; height: 50px; 
+        margin: 0px auto 10px auto; 
+        border-radius: 8px;
     }}
-    .custom-login-title {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; color: #1C3364; }}
-    .custom-login-subtitle {{ font-size: 1rem; margin-bottom: 25px; color: #666; line-height: 1.4; }}
-    /* Texto acima do input (ajustado) */
+    .custom-login-title {{ 
+        font-size: 1.5rem; font-weight: 700; margin-bottom: 5px; color: #fff; 
+    }}
+    .custom-login-subtitle {{ 
+        font-size: 0.95rem; margin-bottom: 30px; color: #a0a0a0; line-height: 1.4; 
+    }}
     .login-email-prompt {{ 
-        font-size: 0.95rem; 
-        margin-bottom: 20px; 
-        color: #555; 
+        font-size: 0.85rem; 
+        margin-bottom: 10px; 
+        color: #a0a0a0; 
+        text-align: left; /* Alinha o texto do prompt à esquerda */
+        width: 100%;
+        padding-left: 2px; /* Pequeno ajuste */
     }}
-    .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; line-height: 1.4; }}
+    .custom-login-disclaimer {{ 
+        font-size: 0.75rem; margin-top: 25px; color: #666; line-height: 1.4; 
+    }}
     
     /* Estiliza o st.form nativo para ser discreto */
     .stForm {{ 
@@ -158,78 +174,85 @@ def render_login_screen():
     }}
     
     /* Estiliza o st.text_input (E-mail) */
-    .custom-login-card [data-testid="stTextInput"] {{ 
-        margin: -10px 0 10px 0 !important; /* Ajusta a margem */
+    .custom-login-container [data-testid="stTextInput"] {{ 
+        margin: 0 0 10px 0 !important; 
     }}
-    .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
-    .custom-login-card [data-testid="stTextInput"] input {{ 
-        /* Estilização para parecer um campo moderno e centralizado */
-        text-align: center;
+    .custom-login-container [data-testid="stTextInput"] > label {{ display: none !important; }}
+    .custom-login-container [data-testid="stTextInput"] input {{ 
+        /* Para replicar o visual de campo de texto das imagens (fundo branco, largura total) */
+        text-align: left; /* Alinha o texto do input à esquerda */
         height: 48px;
         font-size: 1rem;
-        border-radius: 8px;
+        border-radius: 4px;
         border: 1px solid #ddd;
         padding: 0 10px;
-        color: #333;
+        color: #333; /* Texto escuro no input */
         background-color: white !important;
-    }}
-
-    /* Botão "Entrar no Chatbot" (Botão principal azul) */
-    .custom-login-card .stButton > button {{
-        width: 100%; 
-        height: 48px; 
-        font-weight: 600;
-        background-color: #1C3364; /* Azul Quadra */
-        color: white; 
-        border: none; 
-        border-radius: 8px; 
-        margin-top: 15px; 
-        font-size: 1rem;
-        transition: background-color 0.15s;
-    }}
-    .custom-login-card .stButton > button:hover {{ 
-        background-color: #2a4782; /* Azul um pouco mais claro no hover */
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
     }}
     
-    /* Centraliza o texto do botão */
-    .custom-login-card [data-testid="stButton"] > div {{
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
+    /* Botão "Entrar no Chatbot" (Botão principal azul) */
+    .custom-login-container .stButton > button {{
+        width: 100%; /* Largura total do container */
+        height: 40px; /* Altura um pouco menor */
+        font-weight: 600;
+        background-color: #007bff; /* Azul primário (ou mude para #1C3364 se preferir o azul escuro da Quadra) */
+        color: white; 
+        border: none; 
+        border-radius: 4px; 
+        margin-top: 5px; 
+        font-size: 0.95rem;
+        transition: background-color 0.15s;
     }}
+    .custom-login-container .stButton > button:hover {{ 
+        background-color: #0056b3; 
+    }}
+    
+    /* Garante que o input e o botão fiquem alinhados */
+    .stForm > div:last-child {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }}
+
     </style>
     """, unsafe_allow_html=True)
     
-    # 2. Renderizar o card no Streamlit com o formulário
+    # 2. Renderizar o conteúdo centralizado
     
-    col1, col2, col3 = st.columns([1, 4, 1])
+    # Usamos colunas para ajudar a centralizar, mas o CSS é o que faz o trabalho pesado
+    col1, col2, col3 = st.columns([1, 4, 1]) 
 
     with col2:
-        # Injeta o div do card
-        st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
+        # Injeta o div do container de login
+        st.markdown('<div class="custom-login-container">', unsafe_allow_html=True)
         
         # Conteúdo Estático do Card
-        st.markdown(logo_login_tag_card, unsafe_allow_html=True)
+        # Logo (no topo)
+        st.markdown(logo_login_tag_card, unsafe_allow_html=True) 
+        # Título
         st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+        # Subtítulo
         st.markdown('<div class="custom-login-subtitle">Faça login para acessar nosso assistente virtual</div>', unsafe_allow_html=True)
-        # O prompt acima do input
-        st.markdown('<div class="login-email-prompt">Entre com seu e-mail **@quadra.com.vc** para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
         # O formulário Streamlit com o input e o botão
         with st.form("login_form", clear_on_submit=False):
             
-            # Input de Email (Agora visível e estilizado)
+            # Texto do prompt do email (Alinhado à esquerda dentro do container)
+            st.markdown('<div class="login-email-prompt">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
+            
+            # Input de Email
             email = st.text_input(
                 "E-mail", 
-                placeholder="seu.email@quadra.com.vc", 
+                placeholder="seu.nome@quadra.com.vc", 
                 label_visibility="collapsed",
-                # Mantém o valor para não sumir o que o usuário digitou em caso de erro
                 value=st.session_state.get("last_email_input", "")
             )
             st.session_state["last_email_input"] = email # Salva o último input
 
-            # O botão de submissão do formulário (Sem ícone)
+            # O botão de submissão do formulário
             submitted = st.form_submit_button("Entrar no Chatbot") 
             
             if submitted:
@@ -243,15 +266,20 @@ def render_login_screen():
                     # Login bem-sucedido
                     st.session_state.authenticated = True
                     st.session_state.user_email = email_check
+                    
+                    # Certifique-se de que a função extract_name_from_email está definida
+                    # no seu código
                     st.session_state.user_name = extract_name_from_email(email_check)
-                    # Limpa o input salvo
-                    del st.session_state["last_email_input"]
+                    
+                    if "last_email_input" in st.session_state:
+                        del st.session_state["last_email_input"]
+                        
                     do_rerun()
         
         # Disclaimer
         st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
         
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-card
+        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-container
         
     st.stop() # Interrompe a execução do chat até o login
 
