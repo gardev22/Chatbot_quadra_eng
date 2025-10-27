@@ -221,9 +221,6 @@ def _build_signature_json_docx(files_json, files_docx):
 @st.cache_data(show_spinner=False)
 @st.cache_data(show_spinner=False)
 
-@st.cache_data(show_spinner=False)
-@st.cache_data(show_spinner=False)
-
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     sources = _list_sources_cached(folder_id)
@@ -233,8 +230,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     blocks = []
     
     # 1. PROCESSAR TODOS OS ARQUIVOS JSON/JSONL
-    # *** CORREÇÃO: Removido 'if USE_JSONL and files_json' para garantir leitura dos metadados. ***
-    if files_json:
+    if USE_JSONL and files_json:
         for f in files_json:
             try:
                 recs = _records_from_json_text(_download_text(drive, f["id"]))
@@ -252,7 +248,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
             continue
             
     # Retorna todos os blocos, JSON e DOCX combinados.
-    # *** CORREÇÃO: Removido o código de fallback redundante aqui. ***
     return blocks
 
     # Fallback DOCX
