@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL E CENTRALIZADA)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL: Card Centralizado com Input de E-mail)
 
 import streamlit as st
 import base64
@@ -54,7 +54,7 @@ else:
 
 # Logo para uso dentro do card de login
 logo_login_tag_card = (
-    f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" alt="Logo Quadra" />'
+    f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" alt="Logo Quadra Engenharia" />'
     if logo_b64
     else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
 )
@@ -84,9 +84,9 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Método Streamlit Nativo + CSS para Centralização) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com card branco centralizado, usando st.form."""
+    """Renderiza a tela de login customizada com card branco centralizado e input de email."""
     
-    # 1. CSS para o fundo, centralização e o card de login (REFORÇO MÁXIMO)
+    # 1. CSS para o fundo, centralização e o card de login
     st.markdown(f"""
     <style>
     /* Força o fundo azul/escuro para TODA a tela na fase de login */
@@ -121,7 +121,7 @@ def render_login_screen():
         align-items: center;
     }}
     
-    /* Estilo do card branco de login (REPLICANDO image_01261c.jpg) */
+    /* Estilo do card branco de login */
     .custom-login-card {{
         background: white; 
         border-radius: 12px; 
@@ -143,48 +143,55 @@ def render_login_screen():
     }}
     .custom-login-title {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; color: #1C3364; }}
     .custom-login-subtitle {{ font-size: 1rem; margin-bottom: 25px; color: #666; line-height: 1.4; }}
-    .login-email-prompt {{ font-size: 0.95rem; margin-bottom: 20px; color: #555; }}
+    /* Texto acima do input (ajustado) */
+    .login-email-prompt {{ 
+        font-size: 0.95rem; 
+        margin-bottom: 20px; 
+        color: #555; 
+    }}
     .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; line-height: 1.4; }}
     
-    /* Esconde o st.form nativo para usar nossa div custom-login-card */
+    /* Estiliza o st.form nativo para ser discreto */
     .stForm {{ 
         padding: 0 !important; 
         margin: 0 !important; 
     }}
     
-    /* Estiliza o st.text_input (E-mail de Teste) - Oculto */
+    /* Estiliza o st.text_input (E-mail) */
     .custom-login-card [data-testid="stTextInput"] {{ 
-        visibility: hidden; 
-        height: 0 !important; 
-        margin: -15px 0 -15px 0 !important; 
+        margin: -10px 0 10px 0 !important; /* Ajusta a margem */
     }}
     .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
     .custom-login-card [data-testid="stTextInput"] input {{ 
-        height: 0; 
-        padding: 0; 
-        margin: 0; 
-        border: none;
+        /* Estilização para parecer um campo moderno e centralizado */
+        text-align: center;
+        height: 48px;
+        font-size: 1rem;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        padding: 0 10px;
+        color: #333;
+        background-color: white !important;
     }}
-    
-    /* Botão "Entrar com Google" (Streamlit button forçado) */
+
+    /* Botão "Entrar no Chatbot" (Botão principal azul) */
     .custom-login-card .stButton > button {{
         width: 100%; 
         height: 48px; 
         font-weight: 600;
-        background-color: white; 
-        color: #4285F4; /* Google Blue */
-        border: 1px solid #ddd; 
+        background-color: #1C3364; /* Azul Quadra */
+        color: white; 
+        border: none; 
         border-radius: 8px; 
         margin-top: 15px; 
         font-size: 1rem;
         transition: background-color 0.15s;
     }}
     .custom-login-card .stButton > button:hover {{ 
-        background-color: #f7f7f7; 
-        color: #4285F4;
+        background-color: #2a4782; /* Azul um pouco mais claro no hover */
     }}
     
-    /* Centraliza o conteúdo do st.button (para o ícone + texto) */
+    /* Centraliza o texto do botão */
     .custom-login-card [data-testid="stButton"] > div {{
         display: flex;
         justify-content: center;
@@ -196,68 +203,49 @@ def render_login_screen():
     
     # 2. Renderizar o card no Streamlit com o formulário
     
-    # Cria a estrutura que será centralizada pelo CSS
-    col1, col2, col3 = st.columns([1, 4, 1]) # Opcional, mas ajuda a confinar
+    col1, col2, col3 = st.columns([1, 4, 1])
 
     with col2:
-        # Injeta o div do card que aplica a cor, sombra e arredondamento
+        # Injeta o div do card
         st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
         
         # Conteúdo Estático do Card
         st.markdown(logo_login_tag_card, unsafe_allow_html=True)
         st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
         st.markdown('<div class="custom-login-subtitle">Faça login para acessar nosso assistente virtual</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-email-prompt">Entre com sua conta Google para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
+        # O prompt acima do input
+        st.markdown('<div class="login-email-prompt">Entre com seu e-mail **@quadra.com.vc** para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
-        # O formulário Streamlit, que conterá o input (oculto) e o botão
+        # O formulário Streamlit com o input e o botão
         with st.form("login_form", clear_on_submit=False):
             
-            # Input de Email (Oculto, mas funcional. É aqui que o usuário digitará.)
-            # Ele estará visualmente oculto pelo CSS, mas funcional para testes.
-            email = st.text_input("E-mail de Teste", placeholder="seu.email@quadra.com.vc", label_visibility="collapsed")
-            
-            # Ícone Google SVG
-            google_svg = """
-            <svg class="google-icon-svg" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M43.611 20.082H42V20H24V28H36.43C35.19 31.135 33.15 33.56 30.64 35.088L30.56 35.148L37.16 40.09C39.06 37.288 40.57 33.82 41.34 30.144C42.11 26.468 42.11 22.84 41.34 19.164C40.57 15.488 39.06 12.02 37.16 9.212L36.91 8.82L30.31 13.762C27.8 15.29 25.76 17.715 24.52 20.85H24V20.082L24.37 20.082H43.611Z" fill="#EA4335"/>
-                <path d="M6.02344 24.0001C6.02344 21.6881 6.55144 19.5081 7.49944 17.5681L14.0994 12.6121C12.0434 16.5921 11.0234 20.2521 11.0234 24.0001C11.0234 27.7481 12.0434 31.4081 14.0994 35.3881L7.49944 40.3441C6.55144 38.4041 6.02344 36.2241 6.02344 33.9121V24.0001Z" fill="#FBBC04"/>
-                <path d="M24.0001 5.99992C27.0291 5.99992 29.8371 7.02092 32.1931 8.94192L37.1611 4.00092C34.0481 1.49392 30.0861 0.000915527 24.0001 0.000915527C14.7711 0.000915527 7.02313 5.43892 6.02313 17.5679L14.0991 12.6119C15.0231 9.17092 18.0061 5.99992 24.0001 5.99992Z" fill="#4285F4"/>
-                <path d="M24.0001 47.9999C29.6231 47.9999 34.6951 45.4989 38.1931 41.5649L30.6401 35.0879C27.7661 36.9089 24.0001 37.9999 24.0001 37.9999C18.4411 37.9999 14.4791 35.0359 12.6111 31.4079L6.02313 36.2239C7.02313 40.3439 14.7711 47.9999 24.0001 47.9999Z" fill="#34A853"/>
-            </svg>
-            """
-            
-            # O botão de submissão do formulário
-            submitted = st.form_submit_button(f"{google_svg} Entrar com Google", unsafe_allow_html=True) 
+            # Input de Email (Agora visível e estilizado)
+            email = st.text_input(
+                "E-mail", 
+                placeholder="seu.email@quadra.com.vc", 
+                label_visibility="collapsed",
+                # Mantém o valor para não sumir o que o usuário digitou em caso de erro
+                value=st.session_state.get("last_email_input", "")
+            )
+            st.session_state["last_email_input"] = email # Salva o último input
+
+            # O botão de submissão do formulário (Sem ícone)
+            submitted = st.form_submit_button("Entrar no Chatbot") 
             
             if submitted:
                 email_check = email.strip().lower()
                 
-                # Se o campo de email não for preenchido (ou seja, está vazio), ele não deve autenticar.
-                # Para fins de demonstração, o campo `st.text_input` PRECISA ser preenchido, mesmo estando oculto!
-                # Se estivéssemos usando um login OAuth de verdade, esta parte seria diferente.
                 if not email_check or "@" not in email_check:
-                    # NOTA: Como o input está invisível, o usuário não verá o erro.
-                    # Ele precisa digitar no campo, mesmo que invisível, ou usaremos um valor fixo.
-                    # Para simplificar, vou assumir um e-mail de teste para não travar o usuário.
-                    # Em um ambiente real, você usaria o OAuth.
-                    if email_check == "":
-                        st.error("Por favor, digite um email válido no campo de texto.")
-                        st.warning("⚠️ **AVISO:** O campo de email está oculto. Se você não conseguir logar, descomente o `st.text_input` acima para testar a funcionalidade.")
-                        
-                    # Simulação de login SUCESSO com email de teste para fins práticos (aqui o Streamlit trava a execução)
-                    # Use "teste@quadra.com.vc" no campo oculto se precisar.
-                    if email_check == "" and os.environ.get('ST_IS_DEMO_MODE') == 'true':
-                         email_check = "teste@quadra.com.vc"
-                    else:
-                         return # Não faz nada se não tiver email
-                         
-
-                if "@quadra.com.vc" not in email_check:
+                    st.error("Por favor, insira um e-mail válido.")
+                elif "@quadra.com.vc" not in email_check:
                     st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
                 else:
+                    # Login bem-sucedido
                     st.session_state.authenticated = True
                     st.session_state.user_email = email_check
                     st.session_state.user_name = extract_name_from_email(email_check)
+                    # Limpa o input salvo
+                    del st.session_state["last_email_input"]
                     do_rerun()
         
         # Disclaimer
@@ -267,6 +255,7 @@ def render_login_screen():
         
     st.stop() # Interrompe a execução do chat até o login
 
+
 # =================================================================
 #                         FLUXO PRINCIPAL
 # =================================================================
@@ -274,6 +263,8 @@ def render_login_screen():
 # 1. VERIFICAÇÃO DE AUTENTICAÇÃO
 if not st.session_state.authenticated:
     render_login_screen()
+
+# ... (MANTENHA O RESTANTE DO SEU CÓDIGO DO CHAT INALTERADO) ...
 
 # A partir daqui, o usuário está autenticado. O visual de chat será aplicado.
 
