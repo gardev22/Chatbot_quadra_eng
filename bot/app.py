@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida, Foco na Tela de Login)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida - Foco Total na Tela de Login)
 
 import streamlit as st
 import base64
@@ -70,12 +70,12 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (Correção da Centralização do Card) ======
+# ====== AUTENTICAÇÃO (Correção Final da Centralização do Card) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com card branco centralizado, como na Imagem 2."""
+    """Renderiza a tela de login customizada com card branco centralizado."""
     
-    # 1. CSS para o fundo e o card de login
+    # 1. CSS para o fundo e o card de login (REFORÇO)
     st.markdown(f"""
     <style>
     /* Força o fundo azul/escuro para TODA a tela na fase de login */
@@ -89,12 +89,17 @@ def render_login_screen():
     }}
 
     /* Centraliza o CONTEÚDO PRINCIPAL (o bloco Streamlit) na vertical e horizontal */
+    /* Remove a Sidebar que pode estar sendo injetada por padrão */
+    section[data-testid="stSidebar"] {{ display: none !important; }}
+    
     .stApp > div:first-child > div:nth-child(2) > div:first-child {{
-        height: 100vh; /* Ocupa a tela toda */
+        height: 100vh; 
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 0 !important; /* Remove qualquer padding que possa quebrar a centralização */
+        padding: 0 !important; 
+        width: 100%;
+        max-width: 100%;
     }}
     
     /* Estilo do card branco de login (REPLICANDO image_01261c.jpg) */
@@ -107,12 +112,11 @@ def render_login_screen():
         text-align: center; 
         color: #333;
         width: 100%; 
-        /* Corrigindo o Streamlit form layout (força a herança) */
-        min-height: 300px; /* Garante que o card tem altura mínima */
+        box-sizing: border-box;
     }}
     .custom-login-logo {{ 
         width: 60px; height: 60px; 
-        margin: 0px auto 25px auto; /* Centraliza a logo */
+        margin: 0px auto 25px auto; 
     }}
     .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 8px; color: #1C3364; }}
     .custom-login-subtitle {{ font-size: 0.95rem; margin-bottom: 30px; color: #666; line-height: 1.4; }}
@@ -124,7 +128,7 @@ def render_login_screen():
         height: 48px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd;
         color: #333; 
         background-color: white !important; 
-        width: 100% !important; /* Garante largura total */
+        width: 100% !important; 
         text-align: center; /* Centraliza placeholder */
     }}
     .custom-login-card .stButton > button {{
@@ -135,12 +139,10 @@ def render_login_screen():
     }}
     .custom-login-card .stButton > button:hover {{ background-color: #2a4782; }}
     
-    /* Remove margens extras internas do Streamlit */
-    .stForm {{ 
-        padding: 0 !important; margin: 0 !important; 
-    }}
-    .stForm > div:first-child > div:nth-child(1) {{ 
-        margin-bottom: 0px !important; /* Remove margem do elemento anterior ao input */
+    /* Zera margens extras dos blocos internos do Streamlit dentro do card */
+    [data-testid="stVerticalBlock"] > div:first-child {{
+        margin-bottom: 0px !important; 
+        padding-top: 0px !important;
     }}
     
     </style>
@@ -148,11 +150,12 @@ def render_login_screen():
     
     # 2. Renderizar o card no Streamlit
     
-    # Usamos colunas para ter um bloco Streamlit com largura controlada e centralizada
-    col_center = st.columns([1, 4, 1])[1]
+    # Usamos o st.empty para criar um placeholder principal
+    card_container = st.empty()
     
-    with col_center:
-        # Injete o CSS do card e o conteúdo estático dentro do bloco Streamlit
+    # Injetamos todo o conteúdo do card (incluindo o form Streamlit) no placeholder
+    with card_container.container():
+        # Usa um bloco HTML para aplicar o estilo de card no conteúdo Streamlit
         st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
         
         # Conteúdo do Card (elementos da imagem)
@@ -166,6 +169,7 @@ def render_login_screen():
         st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
         st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
+        # O formulário Streamlit deve estar dentro do bloco HTML do card
         with st.form("login_form", clear_on_submit=False):
             # Input de Email
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
@@ -214,9 +218,13 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat Customizado - Tema Escuro) ======
-# NOTA: Este bloco de CSS é aplicado APÓS o login, redefinindo o visual para o tema escuro do chat.
+# O CSS abaixo é para o CHAT e é mantido inalterado
 st.markdown(f"""
 <style>
+/* ... (CSS do Chat Tema Escuro, mantido inalterado) ... */
+/* Retirado para brevidade, mas deve ser mantido no arquivo final */
+/* O CSS do chat é o mesmo do código anterior, a única mudança foi na função render_login_screen */
+
 /* ========= RESET / BASE ========= */
 * {{ box-sizing: border-box }}
 html, body {{ margin: 0; padding: 0 }}
@@ -233,10 +241,10 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-bottom: 60px;
 
     /* PALETA UNIFICADA (CHAT THEME) */
-    --bg:#1C1F26;        /* Fundo Principal UNIFICADO */
-    --panel:#0B0D10;     /* Fundo da Sidebar (mais escuro) */
-    --panel-header:#14171C; /* Fundo do Header */
-    --panel-alt:#1C1F26; /* Fundo do Contêiner do Chat (MESMA COR DO BG) */
+    --bg:#1C1F26;        
+    --panel:#0B0D10;     
+    --panel-header:#14171C; 
+    --panel-alt:#1C1F26; 
     --border:#242833;
 
     --text:#E5E7EB;
@@ -271,7 +279,6 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     overscroll-behavior:none;
 }}
 .block-container{{ padding:0 !important; min-height:0 !important }}
-/* Garante que o fundo do app use a nova cor unificada (chat) */
 .stApp{{ background:var(--bg) !important; color:var(--text) !important }}
 
 /* ========= HEADER FIXO (Topo) ========= */
