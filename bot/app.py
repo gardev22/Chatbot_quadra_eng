@@ -246,14 +246,14 @@ def render_login_screen():
             # Input de Email
             email = st.text_input(
                 "E-mail", 
-                placeholder="seu.nome@quadra.com.vc", 
+                placeholder="seu.email@quadra.com.vc", 
                 label_visibility="collapsed",
                 value=st.session_state.get("last_email_input", "")
             )
             st.session_state["last_email_input"] = email # Salva o último input
 
             # O botão de submissão do formulário
-            submitted = st.form_submit_button("Entrar no Chatbot") 
+            submitted = st.form_submit_button("Entrar") 
             
             if submitted:
                 email_check = email.strip().lower()
