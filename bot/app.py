@@ -75,20 +75,19 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Tela de login dentro de um card branco centralizado, sem afetar o chat."""
+    """Tela de login apenas com o card branco (sem barra gigante)."""
     st.markdown("""
     <style>
-    /* Fundo da página na etapa de login */
+    /* Fundo */
     .stApp{
         background: radial-gradient(1200px 600px at 60% 30%, #1C3364 0%, #0B1020 50%, #000000 100%) !important;
-        min-height: 100vh !important;
-        overflow: hidden !important;
+        min-height: 100vh !important; overflow: hidden !important;
     }
     header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{
         display: none !important;
     }
 
-    /* Centralização vertical/horizontal do conteúdo principal */
+    /* Centralização do conteúdo (pode deixar central; se quiser no canto, troque justify-content para flex-start) */
     [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
     .block-container{
         height:100%;
@@ -96,8 +95,17 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
-    /* O container que CONTÉM o marcador #login_card_anchor vira um CARD */
+    /* 🔧 RESET: garante que nenhum wrapper vire “barra branca” */
     div[data-testid="stVerticalBlock"]:has(#login_card_anchor){
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        width: auto !important;
+        padding: 0 !important;
+    }
+
+    /* O CARD de fato */
+    .login-card{
         background:#ffffff;
         width: 420px; max-width: 92vw;
         border-radius: 14px;
@@ -107,41 +115,34 @@ def render_login_screen():
         color:#1f2937;
     }
 
-    /* Tipografia dentro do card */
+    /* Tipografia + logo */
     .login-title{ font-size: 1.45rem; font-weight: 700; color:#1C3364; margin: 6px 0 4px; }
     .login-sub{ font-size:.95rem; color:#6b7280; margin: 0 0 18px; }
     .login-disc{ font-size:.75rem; color:#9ca3af; margin-top: 18px; }
+    .login-card img{ width:64px; height:64px; object-fit:contain; margin: 4px auto 10px; display:block; }
 
-    /* Logo dentro do card */
-    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) img{
-        width:64px; height:64px; object-fit:contain; margin: 4px auto 10px; display:block;
-    }
-
-    /* Ajustes dos componentes Streamlit dentro do card */
-    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) [data-testid="stTextInput"] > label{
-        display:none !important;
-    }
-    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) [data-testid="stTextInput"] input{
+    /* Inputs e botão só dentro do card */
+    .login-card [data-testid="stTextInput"] > label{ display:none !important; }
+    .login-card [data-testid="stTextInput"] input{
         height:48px; font-size:1rem;
         border-radius:10px; border:1px solid #e5e7eb !important;
         background:#ffffff !important; color:#111827 !important;
     }
-    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) .stButton > button{
+    .login-card .stButton > button{
         width:100%; height:48px; border:none;
         border-radius:10px; font-weight:700;
         background:#1C3364 !important; color:#ffffff !important;
         margin-top: 12px;
     }
-    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) .stButton > button:hover{
-        filter: brightness(1.1);
-    }
+    .login-card .stButton > button:hover{ filter: brightness(1.1); }
     </style>
     """, unsafe_allow_html=True)
 
-    # ---- Card de Login (tudo dentro de UM container) ----
+    # ---- Apenas o CARD (sem pintar o container pai) ----
     with st.container():
-        # Marcador para aplicar o CSS do card ao container pai
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
         # Logo
         if logo_b64:
@@ -174,8 +175,8 @@ def render_login_screen():
                     do_rerun()
 
         st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)  # /login-card
 
-    # Impede render do chat até autenticar
     st.stop()
 
 
