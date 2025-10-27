@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida - Foco Total na Tela de Login)
+# app.py - Frontend do Chatbot Quadra (Última Correção: Tela de Login Exata como Imagem 2)
 
 import streamlit as st
 import base64
@@ -6,6 +6,8 @@ import os
 import re
 import warnings
 from html import escape
+import json # Para lidar com a comunicação via JSON entre JS e Streamlit
+
 # Importa a função de resposta do backend
 try:
     from openai_backend import responder_pergunta 
@@ -70,130 +72,157 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (Correção Final da Centralização do Card) ======
+# ====== AUTENTICAÇÃO (Renderização completa do Card com HTML/CSS/JS) ======
 
-def render_login_screen():
-    """Renderiza a tela de login customizada com card branco centralizado."""
+def render_login_screen_html_js():
+    """
+    Renderiza a tela de login completamente via HTML/CSS/JS para controle total do layout.
+    Usa JS para enviar os dados de login de volta ao Streamlit via query_params.
+    """
     
-    # 1. CSS para o fundo e o card de login (REFORÇO)
+    # URL da logo para usar diretamente no HTML
+    logo_url = f"data:image/png;base64,{logo_b64}" if logo_b64 else ""
+
+    # CSS para a tela de login
     st.markdown(f"""
     <style>
-    /* Força o fundo azul/escuro para TODA a tela na fase de login */
+    /* Reset Streamlit default layout */
     .stApp {{
         background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
-        height: 100vh; width: 100vw; overflow: hidden;
-    }}
-    /* Esconde elementos padrão */
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer {{ 
-        display: none !important; visibility: hidden !important; height: 0 !important; 
-    }}
-
-    /* Centraliza o CONTEÚDO PRINCIPAL (o bloco Streamlit) na vertical e horizontal */
-    /* Remove a Sidebar que pode estar sendo injetada por padrão */
-    section[data-testid="stSidebar"] {{ display: none !important; }}
-    
-    .stApp > div:first-child > div:nth-child(2) > div:first-child {{
-        height: 100vh; 
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 0 !important; 
-        width: 100%;
-        max-width: 100%;
+        padding: 0 !important;
     }}
-    
-    /* Estilo do card branco de login (REPLICANDO image_01261c.jpg) */
-    .custom-login-card {{
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer, section[data-testid="stSidebar"] {{ 
+        display: none !important; visibility: hidden !important; height: 0 !important; 
+    }}
+    .block-container {{
+        padding: 0 !important;
+        max-width: 100% !important;
+        min-height: 100% !important;
+        display: flex; /* Para centralizar o conteúdo do block-container */
+        justify-content: center;
+        align-items: center;
+    }}
+
+    /* Card de Login */
+    .login-card-container {{
         background: white; 
         border-radius: 12px; 
         padding: 40px; 
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
         max-width: 400px; 
+        width: 100%; 
         text-align: center; 
         color: #333;
-        width: 100%; 
-        box-sizing: border-box;
+        font-family: 'Source Sans Pro', sans-serif; /* Consistência com Streamlit */
     }}
-    .custom-login-logo {{ 
-        width: 60px; height: 60px; 
-        margin: 0px auto 25px auto; 
-    }}
-    .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 8px; color: #1C3364; }}
-    .custom-login-subtitle {{ font-size: 0.95rem; margin-bottom: 30px; color: #666; line-height: 1.4; }}
-    .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; }}
-    
-    /* Força inputs e botões para o layout desejado (Branco/Azul) */
-    .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
-    .custom-login-card [data-testid="stTextInput"] input {{
-        height: 48px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd;
+    .login-logo {{ width: 80px; height: 80px; margin: 0px auto 25px auto; border-radius: 12px; }}
+    .login-title {{ font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; color: #1C3364; }}
+    .login-subtitle {{ font-size: 1rem; margin-bottom: 25px; color: #666; line-height: 1.4; }}
+    .login-email-prompt {{ font-size: 0.95rem; margin-bottom: 20px; color: #555; }}
+    .login-input {{
+        width: calc(100% - 20px); /* Ajuste para padding */
+        height: 48px; 
+        font-size: 1rem; 
+        border-radius: 8px; 
+        border: 1px solid #ddd;
+        padding: 0 10px;
         color: #333; 
         background-color: white !important; 
-        width: 100% !important; 
-        text-align: center; /* Centraliza placeholder */
+        margin-bottom: 15px;
+        text-align: center;
     }}
-    .custom-login-card .stButton > button {{
-        width: 100%; height: 48px; font-weight: 600;
+    .login-button {{
+        width: 100%; 
+        height: 48px; 
+        font-weight: 600;
         background-color: #1C3364; 
-        color: white; border: none;
-        border-radius: 8px; margin-top: 20px;
+        color: white; 
+        border: none;
+        border-radius: 8px; 
+        cursor: pointer;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        transition: background-color 0.2s ease;
     }}
-    .custom-login-card .stButton > button:hover {{ background-color: #2a4782; }}
-    
-    /* Zera margens extras dos blocos internos do Streamlit dentro do card */
-    [data-testid="stVerticalBlock"] > div:first-child {{
-        margin-bottom: 0px !important; 
-        padding-top: 0px !important;
-    }}
-    
+    .login-button:hover {{ background-color: #2a4782; }}
+    .login-button-icon {{ width: 24px; height: 24px; }} /* Ícone do Google */
+
+    .login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; line-height: 1.4; }}
+    .error-message {{ color: red; font-size: 0.85rem; margin-top: 10px; }}
     </style>
     """, unsafe_allow_html=True)
+
+    # HTML puro para o card de login
+    login_html = f"""
+    <div class="login-card-container">
+        <img class="login-logo" src="{logo_url}" alt="Logo Quadra Engenharia">
+        <div class="login-title">Quadra Engenharia</div>
+        <div class="login-subtitle">Faça login para acessar nosso assistente virtual</div>
+        <div class="login-email-prompt">Entre com seu e-mail **@quadra.com.vc** para começar a conversar com nosso assistente</div>
+        
+        <input type="email" id="loginEmailInput" class="login-input" placeholder="seu.email@quadra.com.vc">
+        <div id="loginError" class="error-message"></div>
+        
+        <button id="loginButton" class="login-button">
+            <svg class="login-button-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M43.611 20.082H42V20H24V28H36.43C35.19 31.135 33.15 33.56 30.64 35.088L30.56 35.148L37.16 40.09C39.06 37.288 40.57 33.82 41.34 30.144C42.11 26.468 42.11 22.84 41.34 19.164C40.57 15.488 39.06 12.02 37.16 9.212L36.91 8.82L30.31 13.762C27.8 15.29 25.76 17.715 24.52 20.85H24V20.082L24.37 20.082H43.611Z" fill="#EA4335"/>
+                <path d="M6.02344 24.0001C6.02344 21.6881 6.55144 19.5081 7.49944 17.5681L14.0994 12.6121C12.0434 16.5921 11.0234 20.2521 11.0234 24.0001C11.0234 27.7481 12.0434 31.4081 14.0994 35.3881L7.49944 40.3441C6.55144 38.4041 6.02344 36.2241 6.02344 33.9121V24.0001Z" fill="#FBBC04"/>
+                <path d="M24.0001 5.99992C27.0291 5.99992 29.8371 7.02092 32.1931 8.94192L37.1611 4.00092C34.0481 1.49392 30.0861 0.000915527 24.0001 0.000915527C14.7711 0.000915527 7.02313 5.43892 6.02313 17.5679L14.0991 12.6119C15.0231 9.17092 18.0061 5.99992 24.0001 5.99992Z" fill="#4285F4"/>
+                <path d="M24.0001 47.9999C29.6231 47.9999 34.6951 45.4989 38.1931 41.5649L30.6401 35.0879C27.7661 36.9089 24.0001 37.9999 24.0001 37.9999C18.4411 37.9999 14.4791 35.0359 12.6111 31.4079L6.02313 36.2239C7.02313 40.3439 14.7711 47.9999 24.0001 47.9999Z" fill="#34A853"/>
+            </svg>
+            Entrar com Google
+        </button>
+
+        <div class="login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>
+    </div>
+    """
     
-    # 2. Renderizar o card no Streamlit
-    
-    # Usamos o st.empty para criar um placeholder principal
-    card_container = st.empty()
-    
-    # Injetamos todo o conteúdo do card (incluindo o form Streamlit) no placeholder
-    with card_container.container():
-        # Usa um bloco HTML para aplicar o estilo de card no conteúdo Streamlit
-        st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
+    # JavaScript para enviar o email de volta ao Streamlit
+    login_js = """
+    <script>
+    document.getElementById('loginButton').onclick = function() {
+        var emailInput = document.getElementById('loginEmailInput');
+        var email = emailInput.value.trim().toLowerCase();
+        var errorDiv = document.getElementById('loginError');
+
+        if (!email || !email.includes('@')) {
+            errorDiv.textContent = "Por favor, insira um e-mail válido.";
+            return;
+        }
+        if (!email.endsWith('@quadra.com.vc')) {
+            errorDiv.textContent = "Acesso restrito. Use seu e-mail @quadra.com.vc.";
+            return;
+        }
+
+        // Simula o login e envia o e-mail via query parameters para o Streamlit
+        window.parent.postMessage({
+            type: 'streamlit:setFrameHeight',
+            height: 1
+        }, '*'); // Truque para recarregar a página ou enviar um evento
         
-        # Conteúdo do Card (elementos da imagem)
-        logo_login_tag_card = (
-            f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" />'
-            if logo_b64
-            else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
-        )
-        st.markdown(logo_login_tag_card, unsafe_allow_html=True)
-        
-        st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
-        st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
-        
-        # O formulário Streamlit deve estar dentro do bloco HTML do card
-        with st.form("login_form", clear_on_submit=False):
-            # Input de Email
-            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
-            
-            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") 
-            
-            if submitted:
-                email = email.strip().lower()
-                
-                if not email or "@" not in email:
-                    st.error("Por favor, insira um e-mail válido.")
-                elif "@quadra.com.vc" not in email:
-                    st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
-                else:
-                    st.session_state.authenticated = True
-                    st.session_state.user_email = email
-                    st.session_state.user_name = extract_name_from_email(email)
-                    do_rerun()
-        
-        st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-card
-        
+        // st.experimental_set_query_params não funciona diretamente de JS no iframe do Streamlit
+        // A melhor abordagem é forçar um rerun e usar um truque de sessão ou cookie,
+        // mas para fins de demonstração e controle total do layout, esta é a próxima.
+        // O mais direto é manipular a URL ou usar postMessage para o backend se estivesse em um ambiente mais complexo.
+        // Para simular a navegação (que Streamlit irá re-executar):
+        window.location.href = window.location.origin + window.location.pathname + '?logged_email=' + encodeURIComponent(email);
+    };
+    </script>
+    """
+
+    st.markdown(login_html, unsafe_allow_html=True)
+    st.markdown(login_js, unsafe_allow_html=True)
     st.stop() # Interrompe a execução do chat até o login
+
 
 # =================================================================
 #                         FLUXO PRINCIPAL
@@ -201,7 +230,28 @@ def render_login_screen():
 
 # 1. VERIFICAÇÃO DE AUTENTICAÇÃO
 if not st.session_state.authenticated:
-    render_login_screen()
+    # Tenta obter o email dos query parameters (enviado pelo JS do login)
+    query_params = st.experimental_get_query_params()
+    logged_email = query_params.get("logged_email", [None])[0]
+
+    if logged_email:
+        # Processa o email vindo do JS
+        email = logged_email.strip().lower()
+        if "@quadra.com.vc" in email: # Já validado pelo JS, mas por segurança
+            st.session_state.authenticated = True
+            st.session_state.user_email = email
+            st.session_state.user_name = extract_name_from_email(email)
+            
+            # Limpa os query params para não ficar no histórico do navegador
+            st.experimental_set_query_params(logged_email=None)
+            do_rerun()
+        else:
+            # Caso raro de bypass JS, mas por segurança
+            st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
+            render_login_screen_html_js() # Mantém na tela de login
+    else:
+        render_login_screen_html_js() # Renderiza a tela de login inicial
+    st.stop() # Garante que nada mais é renderizado antes do login
 
 # A partir daqui, o usuário está autenticado. O visual de chat será aplicado.
 
@@ -221,10 +271,6 @@ def linkify(text: str) -> str:
 # O CSS abaixo é para o CHAT e é mantido inalterado
 st.markdown(f"""
 <style>
-/* ... (CSS do Chat Tema Escuro, mantido inalterado) ... */
-/* Retirado para brevidade, mas deve ser mantido no arquivo final */
-/* O CSS do chat é o mesmo do código anterior, a única mudança foi na função render_login_screen */
-
 /* ========= RESET / BASE ========= */
 * {{ box-sizing: border-box }}
 html, body {{ margin: 0; padding: 0 }}
