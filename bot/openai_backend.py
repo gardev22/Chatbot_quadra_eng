@@ -15,29 +15,30 @@ from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"  # Modelo otimizado e econômico mudei do gpt-4-mini para gpt-5-mini
+# MANTIDO o gpt-4o-mini por segurança, já que o gpt-5-mini deu erro na API.
+MODEL_ID = "gpt-4o-mini" 
 
 # ========= PERFORMANCE & QUALIDADE =========
-USE_JSONL = True                # prefere JSON/JSONL do Drive (rápido)
-USE_CE = False                  # CE desligado para máxima velocidade
-SKIP_CE_IF_ANN_BEST = 0.80      # Limiar alto para pular CE (se estivesse ativo)
-TOP_N_ANN = 24                  # Bom equilíbrio entre recall e velocidade
-TOP_K = 6                       # Contexto base enviado ao LLM
+USE_JSONL = True             # prefere JSON/JSONL do Drive (rápido)
+USE_CE = False               # CE desligado para máxima velocidade
+SKIP_CE_IF_ANN_BEST = 0.80   # Limiar alto para pular CE (se estivesse ativo)
+TOP_N_ANN = 24               # Bom equilíbrio entre recall e velocidade
+TOP_K = 6                    # Contexto base enviado ao LLM
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
 # Limiar quando CE é usado vs quando só ANN é usado
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
 # Anti-truncamento
-MAX_TOKENS = 700                # ↑ aumenta espaço pra resposta
-REQUEST_TIMEOUT = 40            # ↑ evita corte por timeout
+MAX_TOKENS = 700             # ↑ aumenta espaço pra resposta
+REQUEST_TIMEOUT = 40         # ↑ evita corte por timeout
 TEMPERATURE = 0.15
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
-USE_PRECOMPUTED = False
+USE_PRECOMPUTED = False      # CORREÇÃO: Desativado para forçar a leitura dos novos arquivos do Drive
 
 # ========= DRIVE / AUTH =========
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
@@ -50,7 +51,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-
+# CORREÇÃO: Novo valor para forçar a recarga de TODOS os caches
 CACHE_BUSTER = "2025-10-27-DOCX-NOVO-03"
 
 # ========= HTTP SESSION =========
@@ -218,9 +219,8 @@ def _build_signature_json_docx(files_json, files_docx):
     }
     return json.dumps(payload, ensure_ascii=False)
 
+# CORREÇÃO: Função unificada e corrigida para carregar JSON e DOCX
 @st.cache_data(show_spinner=False)
-@st.cache_data(show_spinner=False)
-
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     sources = _list_sources_cached(folder_id)
@@ -229,12 +229,11 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
 
     blocks = []
     
-    # 1. PROCESSAR TODOS OS ARQUIVOS JSON/JSONL
+    # 1. PROCESSAR TODOS OS ARQUIVOS JSON/JSONL (Se ativado)
     if USE_JSONL and files_json:
         for f in files_json:
             try:
                 recs = _records_from_json_text(_download_text(drive, f["id"]))
-                # Adiciona à lista
                 blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"])) 
             except Exception:
                 continue
@@ -242,20 +241,12 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     # 2. PROCESSAR TODOS OS ARQUIVOS DOCX
     for f in files_docx:
         try:
-            # Adiciona à lista
             blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"])) 
         except Exception:
+            # Em caso de falha na leitura do DOCX (formato estranho, corrompido), apenas ignora.
             continue
             
     # Retorna todos os blocos, JSON e DOCX combinados.
-    return blocks
-
-    # Fallback DOCX
-    for f in files_docx:
-        try:
-            blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"]))
-        except Exception:
-            continue
     return blocks
 
 def load_all_blocks_cached(folder_id: str):
@@ -400,7 +391,7 @@ def montar_prompt_rag(pergunta, blocos):
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
         "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada.\n"
         f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        # 🟢 REGRA 4 EXPLICITAMENTE CONTRA LISTAS:
+        # CORREÇÃO: REGRA 4 EXPLICITAMENTE CONTRA LISTAS E TÓPICOS
         "4. **A resposta deve ser APENAS em parágrafos coesos (em prosa), sem usar listas numeradas, listas com marcadores, travessões, ou qualquer símbolo de tópicos.** Sempre que fizer referência direta a um trecho do documento, coloque-o entre aspas.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
@@ -413,9 +404,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
             return "⚠️ Pergunta vazia."
-
-        # <--- MUDANÇA 1: Atalho `responder_etapa_seguinte` foi REMOVIDO para simplificar e acelerar.
-        # A busca vetorial já lida bem com esse tipo de pergunta.
 
         # Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
@@ -461,10 +449,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
-            "stream": True  # <--- MUDANÇA 2: HABILITANDO STREAMING
+            "stream": True  # HABILITANDO STREAMING
         }
 
-        # <--- MUDANÇA 3: LÓGICA DE STREAMING PARA PROCESSAR A RESPOSTA
+        # LÓGICA DE STREAMING PARA PROCESSAR A RESPOSTA
         resposta_final = ""
         try:
             resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT, stream=True)
@@ -485,7 +473,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                                 resposta_final += content
                         except (json.JSONDecodeError, IndexError):
                             continue # Ignora linhas que não são JSON válido ou têm estrutura inesperada
-        
+            
         except requests.exceptions.RequestException as e:
             return f"❌ Erro de conexão com a API: {e}"
 
@@ -519,13 +507,22 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 # ========================= CLI =========================
 if __name__ == "__main__":
     print("\nDigite sua pergunta (ou 'sair'):\n")
-    # Para testar o streaming no terminal, precisamos de uma abordagem diferente,
-    # pois a função `responder_pergunta` agora retorna a resposta completa.
-    # O benefício do streaming é melhor visualizado no frontend (Streamlit).
+    
+    # ⚠️ DEBUGGING TIPS: ⚠️
+    # Para forçar o debug da recarga, você pode descomentar o bloco abaixo.
+    # from time import sleep
+    # print("DEBUG: Forçando recarga de blocos para conferir o novo DOCX...")
+    # debug_blocks, _ = load_all_blocks_cached(FOLDER_ID)
+    # nomes_docs = set(b.get("pagina") for b in debug_blocks)
+    # print(f"DEBUG: Total de blocos lidos: {len(debug_blocks)}")
+    # print(f"DEBUG: Documentos lidos: {nomes_docs}")
+    # sleep(1) # Dá tempo para a leitura no terminal
+
     while True:
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
         print("\nResposta:\n" + "="*20)
-        print(responder_pergunta(q))
+        # O uso de print(responder_pergunta(q)) aqui retorna a string final e não o streaming
+        print(responder_pergunta(q)) 
         print("="*20 + "\n")
