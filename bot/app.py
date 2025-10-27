@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL: Card Centralizado e Chat Escuro)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida)
 
 import streamlit as st
 import base64
@@ -6,14 +6,14 @@ import os
 import re
 import warnings
 from html import escape
-
 # Importa a função de resposta do backend
+# NOTA: Certifique-se de que 'openai_backend.py' existe e tem a função 'responder_pergunta'
 try:
     from openai_backend import responder_pergunta 
 except ImportError:
-    # Fallback caso o arquivo openai_backend.py não exista
+    # Fallback para evitar erro se o backend não estiver presente, mas o app.py deve funcionar
     def responder_pergunta(pergunta):
-        return "Erro: O módulo 'openai_backend' ou a função 'responder_pergunta' não foi encontrado. Verifique se o arquivo existe e o nome da função está correto."
+        return "Erro: O módulo 'openai_backend' ou a função 'responder_pergunta' não foi encontrado."
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
@@ -27,7 +27,6 @@ st.set_page_config(
 )
 
 def do_rerun():
-    """Função para forçar um rerun (compatível com versões mais recentes e antigas)."""
     if hasattr(st, "rerun"):
         st.rerun()
     else:
@@ -35,7 +34,6 @@ def do_rerun():
 
 # ====== UTILITÁRIOS ======
 def carregar_imagem_base64(path):
-    """Carrega uma imagem e retorna sua representação em base64."""
     if not os.path.exists(path):
         return None
     try:
@@ -46,13 +44,11 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# Logo para o header do chat (após o login)
+# CORREÇÃO: Definição da logo_img_tag para uso no Header
 if logo_b64:
     logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
-    logo_login_tag_card = f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" alt="Logo Quadra Engenharia" />'
 else:
-    logo_img_tag = '<span style="font-size: 2rem; color: #007bff; font-weight: 900;">Q</span>'
-    logo_login_tag_card = '<div class="custom-login-logo" style="background:transparent; border-radius: 8px; margin: auto;"></div>'
+    logo_img_tag = '<span style="font-size: 2rem; color: #1C3364; font-weight: 900;">Q</span>'
 
 
 def extract_name_from_email(email):
@@ -64,187 +60,119 @@ def extract_name_from_email(email):
     return " ".join(p.capitalize() for p in name_parts)
 
 # ====== ESTADO (Início da Sessão) ======
-st.session_state.setdefault("historico", [])
+if "historico" not in st.session_state:
+    st.session_state.historico = []
+
 st.session_state.setdefault("authenticated", False) 
 st.session_state.setdefault("user_name", "Usuário")
 st.session_state.setdefault("user_email", "nao_autenticado@quadra.com.vc")
+
 st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-
-# ====== AUTENTICAÇÃO (CARD BRANCO CENTRALIZADO) ======
+# ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com card branco centralizado e input de e-mail/botão."""
+    """Renderiza a tela de login customizada com card branco."""
     
-    # 1. CSS para o fundo, centralização e o CARD BRANCO
+    # 1. CSS para o fundo e o card de login (corrigido)
     st.markdown(f"""
     <style>
-    /* VARIÁVEIS DE TEMA (Para o layout de login, usa-se a cor escura de fundo) */
-    :root {{
-        --quadra-blue-dark: #1C3364;
-        --quadra-blue-light: #007bff;
-    }}
     /* Força o fundo azul/escuro para TODA a tela na fase de login */
     .stApp {{
-        background: radial-gradient(circle at center, var(--quadra-blue-dark) 0%, #000000 100%) !important;
+        background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
         height: 100vh; width: 100vw; overflow: hidden;
     }}
-    /* Esconde elementos padrão */
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer, section[data-testid="stSidebar"] {{ 
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer {{ 
         display: none !important; visibility: hidden !important; height: 0 !important; 
     }}
 
-    /* Centraliza o CONTEÚDO PRINCIPAL (o card) */
+    /* Estiliza o container principal do Streamlit para CENTRALIZAR o card (Crucial) */
+    .stApp > header, .stApp > div:first-child > div:nth-child(2) {{ /* main e main content */
+        height: 100vh !important;
+    }}
     .stApp > div:first-child > div:nth-child(2) > div:first-child {{
-        height: 100vh; 
+        height: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 0 !important; 
-        width: 100%;
-        max-width: 100%;
-        margin: 0 !important;
+        padding-top: 0 !important;
     }}
-    .block-container {{
-        padding: 0 !important;
-        max-width: 100% !important;
-        min-height: 0 !important;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }}
-    
-    /* Container do CARD BRANCO */
-    .login-card-wrapper {{
-        background: #ffffff; 
+
+    /* Estilo do card branco de login (FIXADO) */
+    .custom-login-card {{
+        background: white; 
         border-radius: 12px; 
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); 
         padding: 40px; 
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         max-width: 400px; 
-        width: 100%;
-        text-align: center;
-        color: #333; 
-        box-sizing: border-box;
-    }}
-    
-    /* Estilos dos elementos internos no card */
-    .custom-login-logo {{ 
-        width: 50px; height: 50px; 
-        margin: 0px auto 15px auto; 
-        border-radius: 8px;
-    }}
-    .custom-login-title {{ 
-        font-size: 1.5rem; font-weight: 700; margin-bottom: 5px; color: #1f2937; 
-    }}
-    .custom-login-subtitle {{ 
-        font-size: 0.95rem; margin-bottom: 25px; color: #6b7280; line-height: 1.4; 
-    }}
-    .login-email-prompt {{ 
-        font-size: 0.85rem; 
-        margin-bottom: 8px; 
-        color: #4b5563; 
-        text-align: left; 
-        width: 100%;
-        padding-left: 2px;
-    }}
-    
-    /* Estiliza o st.text_input (E-mail) */
-    .login-card-wrapper [data-testid="stTextInput"] {{ 
-        margin: 0 0 15px 0 !important; 
-    }}
-    .login-card-wrapper [data-testid="stTextInput"] > label {{ display: none !important; }}
-    .login-card-wrapper [data-testid="stTextInput"] input {{ 
-        text-align: left; 
-        height: 48px;
-        font-size: 1rem;
-        border-radius: 6px; 
-        border: 1px solid #d1d5db; 
-        padding: 0 12px;
-        color: #1f2937; 
-        background-color: #f9fafb !important; 
-        width: 100%;
-        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-    }}
-    /* Remove o texto de submissão (Ex: "Press enter...") */
-    .login-card-wrapper [data-testid="stFormSubmitButton"] + div {{
-        display: none !important;
-    }}
-    
-    /* Botão "Entrar" (Botão principal azul) */
-    .login-card-wrapper .stButton > button {{
+        text-align: center; 
+        color: #333;
         width: 100%; 
-        height: 45px; 
-        font-weight: 600;
-        background-color: var(--quadra-blue-light);
-        color: white; 
-        border: none; 
-        border-radius: 6px; 
-        font-size: 1rem;
-        transition: background-color 0.15s;
     }}
-    .login-card-wrapper .stButton > button:hover {{ 
-        background-color: #0056b3; 
+    .custom-login-logo {{ width: 60px; height: 60px; margin-bottom: 20px; margin-top: 10px; }}
+    .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }}
+    .custom-login-subtitle {{ font-size: 0.9rem; margin-bottom: 30px; color: #666; }}
+    .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; }}
+    
+    /* Ajustes para os inputs e botões do Streamlit dentro do card */
+    .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
+    .custom-login-card [data-testid="stTextInput"] input {{
+        height: 48px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd;
     }}
+    .custom-login-card .stButton > button {{
+        width: 100%; height: 48px; font-weight: 600;
+        background-color: #1C3364; color: white; border: none;
+        border-radius: 8px; margin-top: 20px;
+    }}
+    .custom-login-card .stButton > button:hover {{ background-color: #2a4782; }}
     </style>
     """, unsafe_allow_html=True)
     
-    # 2. Renderizar o conteúdo centralizado
+    # 2. Renderizar o card no Streamlit
+    col_center = st.columns([1, 4, 1])[1]
     
-    col1, col2, col3 = st.columns([1, 4, 1]) 
-
-    with col2:
-        # Abre o div do CARD BRANCO
-        st.markdown('<div class="login-card-wrapper">', unsafe_allow_html=True)
+    with col_center:
+        st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
         
-        # Conteúdo Estático do Card
-        st.markdown(logo_login_tag_card, unsafe_allow_html=True) 
+        # Conteúdo do Card (elementos da imagem)
+        logo_login_tag_card = (
+            f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" />'
+            if logo_b64
+            else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
+        )
+        st.markdown(logo_login_tag_card, unsafe_allow_html=True)
+        
         st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
-        st.markdown('<div class="custom-login-subtitle">Faça login para acessar nosso assistente virtual</div>', unsafe_allow_html=True)
+        st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
-        # O formulário Streamlit com o input e o botão
         with st.form("login_form", clear_on_submit=False):
+            # NOVO: Input de Email
+            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
             
-            # Texto do prompt do email
-            st.markdown('<div class="login-email-prompt">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
-            
-            # Input de Email
-            email = st.text_input(
-                "E-mail", 
-                placeholder="seu.email@quadra.com.vc", 
-                label_visibility="collapsed",
-                value=st.session_state.get("last_email_input", "")
-            )
-            st.session_state["last_email_input"] = email 
-
-            # O botão de submissão do formulário
-            submitted = st.form_submit_button("Entrar") 
+            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") 
             
             if submitted:
-                email_check = email.strip().lower()
+                email = email.strip().lower()
                 
-                if not email_check or "@" not in email_check:
+                if not email or "@" not in email:
                     st.error("Por favor, insira um e-mail válido.")
-                elif "@quadra.com.vc" not in email_check:
+                elif "@quadra.com.vc" not in email:
                     st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
                 else:
                     st.session_state.authenticated = True
-                    st.session_state.user_email = email_check
-                    st.session_state.user_name = extract_name_from_email(email_check)
-                    
-                    if "last_email_input" in st.session_state:
-                        del st.session_state["last_email_input"]
-                        
+                    st.session_state.user_email = email
+                    st.session_state.user_name = extract_name_from_email(email)
+                    # Força o rerun para sair do st.stop() e entrar no chat
                     do_rerun()
         
-        # O DISCALIMER FOI REMOVIDO DA RENDERIZAÇÃO AQUI.
+        st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
         
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do login-card-wrapper
+        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-card
         
     st.stop() # Interrompe a execução do chat até o login
-
 
 # =================================================================
 #                         FLUXO PRINCIPAL
@@ -254,11 +182,10 @@ def render_login_screen():
 if not st.session_state.authenticated:
     render_login_screen()
 
-# A partir daqui, o usuário está autenticado. O visual de chat será aplicado.
+# A partir daqui, o usuário está autenticado e o visual de chat será aplicado.
 
 # ====== MARCAÇÃO (Formatação de Texto) ======
-def linkify(text: str) -> str:
-    """Formata links, negrito e itálico, substituindo \n por <br>."""
+def formatar_markdown_basico(text: str) -> str:
     if not text: return ""
     text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', text)
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
@@ -266,401 +193,392 @@ def linkify(text: str) -> str:
     text = text.replace("\n", "<br>")
     return text
 
-# ====== CSS (Chat Customizado - Tema Escuro) ======
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
 
-st.markdown("""
+# ====== CSS (Chat Customizado - Com correção de cores) ======
+# NOTA: Este bloco de CSS reverte o fundo para o tema escuro/cinza do chat
+st.markdown(f"""
 <style>
-/* VARIÁVEIS DE TEMA GERAL */
-:root {
-    --bg-color: #1a1a1a;
-    --card-bg-color: #242424;
-    --text-color: #f0f0f0;
-    --muted-color: #9ca3af;
-    --primary-color: #007bff;
-    --secondary-color: #333333;
-    --assistant-bubble-bg: #2d2d2d;
-    --user-bubble-bg: #1C3364;
-    --user-bubble-text: #ffffff;
-    --chat-safe-gap: 24px;
-}
-/* FORÇA O BACKGROUND ESCURO DO CHAT */
-.stApp {
-    background: var(--bg-color) !important;
-}
-/* RESET DA CENTRALIZAÇÃO APÓS LOGIN */
-.stApp > div:first-child > div:nth-child(2) > div:first-child {
-    height: 100% !important; 
-    display: block !important; 
-    justify-content: initial !important;
-    align-items: initial !important;
-    padding: 0 !important; 
-    max-width: 100% !important;
+/* ========= RESET / BASE ========= */
+* {{ box-sizing: border-box }}
+html, body {{ margin: 0; padding: 0 }}
+img {{ max-width: 100%; height: auto; display: inline-block }}
+img.logo {{ height: 44px !important; width: auto !important }}
+
+/* ========= VARS (Customização) ========= */
+:root{{
+    --content-max-width: min(96vw, 1400px);
+    --header-height: 68px;
+    --chat-safe-gap: 300px;
+    --card-height: calc(100dvh - var(--header-height) - 24px);
+    --input-max: 900px;
+    --input-bottom: 60px;
+
+    /* PALETA UNIFICADA (CORREÇÃO para eliminar a borda preta) */
+    --bg:#1C1F26;        /* Fundo Principal UNIFICADO */
+    --panel:#0B0D10;     /* Fundo da Sidebar (mais escuro) */
+    --panel-header:#14171C; /* Fundo do Header */
+    --panel-alt:#1C1F26; /* Fundo do Contêiner do Chat (MESMA COR DO BG) */
+    --border:#242833;
+
+    --text:#E5E7EB;
+    --text-dim:#C9D1D9;
+    --muted:#9AA4B2;
+
+    --link:#B9C0CA;
+    --link-hover:#FFFFFF;
+
+    --bubble-user:#222833;
+    --bubble-assistant:#232833;
+
+    --input-bg:#1E222B;
+    --input-border:#323949;
+
+    --sidebar-w:270px;
+
+    --sidebar-items-top-gap: -45px;
+    --sidebar-sub-top-gap: -30px; 
+    --sidebar-list-start-gap: 3px; 
+}}
+
+/* ========= STREAMLIT CHROME (Remoção de elementos padrão) ========= */
+header[data-testid="stHeader"]{{ display:none !important }}
+div[data-testid="stToolbar"]{{ display:none !important }}
+#MainMenu, footer{{ visibility:hidden; height:0 !important }}
+
+html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{{
+    height:100dvh !important;
+    max-height:100dvh !important;
+    overflow:hidden !important;
+    overscroll-behavior:none;
+}}
+.block-container{{ padding:0 !important; min-height:0 !important }}
+/* Garante que o fundo do app use a nova cor unificada (chat) */
+.stApp{{ background:var(--bg) !important; color:var(--text) !important }}
+
+/* ========= HEADER FIXO (Topo) ========= */
+.header{{
+    position:fixed; inset:0 0 auto 0; height:var(--header-height);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; background:var(--panel-header); z-index:1000;
+    border-bottom:1px solid var(--border);
+}}
+.header-left{{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }}
+.header-left .title-sub{{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }}
+.header-right{{ display:flex; align-items:center; gap:12px; color:var(--text) }}
+.header a{{
+    color:var(--link) !important; text-decoration:none;
+    border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
+}}
+.header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
+.user-circle {{
+    width: 32px; height: 32px; border-radius: 50%; 
+    background: #007bff; color: white; 
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 1rem;
+}}
+
+/* ========= SIDEBAR ========= */
+section[data-testid="stSidebar"]{{
+    position:fixed !important;
+    top:var(--header-height) !important;
+    left:0 !important;
+    height:calc(100dvh - var(--header-height)) !important;
+    width:var(--sidebar-w) !important;
+    min-width:var(--sidebar-w) !important;
+    margin:0 !important; padding:0 !important;
+    background:var(--panel) !important;
+    border-right:1px solid var(--border);
+    z-index:900 !important;
+    transform:none !important;
+    visibility:visible !important;
+    overflow:hidden !important;
+    color:var(--text);
+}}
+section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
+div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
+
+section[data-testid="stSidebar"] .sidebar-header{{
+    margin-top: var(--sidebar-items-top-gap) !important;
+}}
+.sidebar-bar p,
+.sidebar-header p{{
     margin: 0 !important;
-}
+    line-height: 1.15 !important;
+}}
+.sidebar-bar{{
+    margin-top: var(--sidebar-sub-top-gap) !important;
+}}
+.hist-row:first-of-type{{
+    margin-top: var(--sidebar-list-start-gap) !important;
+}}
 
-/* HEADER (TOPO) */
-.header {
-    background-color: var(--card-bg-color);
-    padding: 10px 20px;
-    border-bottom: 1px solid #333333;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    color: var(--text-color);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-}
-.header-left {
-    display: flex;
-    align-items: center;
-    font-size: 1.1rem;
-    font-weight: 600;
-}
-.header-left .logo {
-    width: 32px;
-    height: 32px;
-    margin-right: 10px;
-    border-radius: 4px;
-}
-.title-sub {
-    font-size: 0.8rem;
-    font-weight: 400;
-    color: var(--muted-color);
-    margin-top: -3px;
-}
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-.user-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: var(--primary-color);
-    color: white;
-    font-size: 1.2rem;
-    font-weight: 700;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-left: 10px;
-}
+div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
-/* SIDEBAR (Histórico) */
-section[data-testid="stSidebar"] {
-    background-color: var(--card-bg-color);
-    border-right: 1px solid #333333;
-    padding-top: 70px; /* Espaço para o header fixo */
-}
-.sidebar-header {
-    font-size: 1.1rem;
-    font-weight: 600;
-    padding: 10px 20px 0;
-    color: var(--text-color);
-}
-.sidebar-sub {
-    font-size: 0.9rem;
-    font-weight: 400;
-    color: var(--muted-color);
-    padding: 10px 20px;
-}
-.hist-empty {
-    font-size: 0.9rem;
-    color: var(--muted-color);
-    padding: 10px 20px;
-}
-.hist-row {
-    padding: 8px 20px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    color: var(--text-color);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.hist-row:hover {
-    background-color: var(--secondary-color);
-}
+.sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
+.sidebar-sub{{ font-size:.88rem; color:var(--muted) }}
+.hist-empty{{ color:var(--muted); font-size:.9rem; padding:8px 10px }}
+.hist-row{{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
+.hist-row + .hist-row{{ margin-top:6px }}
+.hist-row:hover{{ background:#161a20 }}
 
-/* CHAT AREA E CONTAINER PRINCIPAL */
-div[data-testid="stVerticalBlock"] > div:first-child {
-    padding-top: 70px !important; /* Espaço para o header fixo */
-    padding-bottom: 0 !important;
-}
-.content {
-    min-height: calc(100vh - 70px); /* Altura da tela menos o header */
-    width: 100%;
-    margin: auto;
-    padding-left: 20px;
-    padding-right: 20px;
-    box-sizing: border-box;
-}
-.chat-card {
-    max-width: 900px; /* Largura máxima da área de conversação */
-    margin: 0 auto;
-    padding-top: 20px;
-    box-sizing: border-box;
-}
-/* Estilo das mensagens */
-.message-row {
-    display: flex;
-    width: 100%;
-    margin-bottom: 20px;
-}
-.message-row.user {
-    justify-content: flex-end;
-}
-.message-row.assistant {
-    justify-content: flex-start;
-}
-.bubble {
-    padding: 15px 20px;
-    border-radius: 12px;
-    max-width: 80%;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    word-wrap: break-word;
-    white-space: normal;
-}
-.bubble.user {
-    background-color: var(--user-bubble-bg);
-    color: var(--user-bubble-text);
-    border-bottom-right-radius: 4px;
-}
-.bubble.assistant {
-    background-color: var(--assistant-bubble-bg);
-    color: var(--text-color);
-    border-bottom-left-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
+/* ========= CONTEÚDO / CHAT (Mensagens) ========= */
+.content{{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }}
+#chatCard, .chat-card{{
+    position:relative;
+    z-index:50 !important;
+    background:var(--bg) !important; 
+    border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
+    padding:20px;
+    height:var(--card-height);
+    overflow-y:auto; scroll-behavior:smooth;
+    padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap);
+    color:var(--text);
+}}
+#chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
 
-/* FORMATOS INTERNOS DO BUBBLE */
-.bubble a {
-    color: var(--primary-color);
-    text-decoration: underline;
-}
-.bubble b {
-    font-weight: 700;
-}
-.bubble i {
-    font-style: italic;
-}
+.message-row{{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px) }}
+.message-row.user{{ justify-content:flex-end }}
+.message-row.assistant{{ justify-content:flex-start }}
+.bubble{{
+    max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45;
+    color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important;
+}}
+.bubble.user{{ background:var(--bubble-user); border-bottom-right-radius:6px }}
+.bubble.assistant{{ background:var(--bubble-assistant); border-bottom-left-radius:6px }}
+.chat-card a{{ color:var(--link); text-decoration:underline }} .chat-card a:hover{{ color:var(--link-hover) }}
 
-/* SPINNER DE RESPOSTA */
-.spinner {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: #fff;
-    animation: spin 1s ease-in-out infinite;
-    -webkit-animation: spin 1s ease-in-out infinite;
-    margin: 0 5px;
-}
-@keyframes spin {
-    to { -webkit-transform: rotate(360deg); }
-}
-@-webkit-keyframes spin {
-    to { -webkit-transform: rotate(360deg); }
-}
+/* ========= CHAT INPUT (Fixação e Estilização) ========= */
+[data-testid="stChatInput"]{{
+    position:fixed !important;
+    left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important; 
+    transform:translateX(-50%) !important;
+    bottom:var(--input-bottom) !important;
+    width:min(var(--input-max), 96vw) !important;
+    z-index:5000 !important;
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    padding:0 !important;
+}}
+[data-testid="stChatInput"] *{{
+    background:transparent !important;
+    color:var(--text) !important;
+}}
+[data-testid="stChatInput"] > div{{
+    background:var(--input-bg) !important;
+    border:1px solid var(--input-border) !important;
+    border-radius:999px !important;
+    box-shadow:0 10px 24px rgba(0,0,0,.35) !important;
+    overflow:hidden;
+    transition:border-color .12s ease, box-shadow .12s ease;
+}}
+[data-testid="stChatInput"] textarea{{
+    width:100% !important;
+    border:none !important; border-radius:999px !important;
+    padding:18px 20px !important; font-size:16px !important;
+    outline:none !important; height:auto !important;
+    min-height:44px !important; max-height:220px !important;
+    overflow-y:hidden !important;
+    caret-color:#ffffff !important;
+}}
+[data-testid="stChatInput"] textarea::placeholder{{ color:var(--muted) !important }}
+[data-testid="stChatInput"] textarea:focus::placeholder{{ color:transparent !important; opacity:0 !important }}
+[data-testid="stChatInput"] button{{
+    margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important;
+}}
+[data-testid="stChatInput"] svg{{ fill:currentColor !important }}
 
-/* INPUT DE CHAT (Para o st.chat_input) */
-div[data-testid="stChatInput"] {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    background: var(--bg-color);
-    border-top: 1px solid #333333;
-    padding: 10px 0;
-    z-index: 90;
-    margin-top: 0;
-    box-sizing: border-box;
-}
-div[data-testid="stChatInput"] > div > div {
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-div[data-testid="stChatInput"] textarea {
-    background-color: var(--card-bg-color);
-    color: var(--text-color);
-    border: 1px solid #444;
-    border-radius: 8px;
-    padding: 12px 15px;
-}
+/* MATA DEFINITIVAMENTE A FAIXA BRANCA (bottom block) */
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
+[data-testid="stBottomBlockContainer"] [class*="block-container"],
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+}}
+[data-testid="stBottomBlockContainer"]{{
+    padding:0 !important;
+    margin:0 !important;
+    height:0 !important;
+    min-height:0 !important;
+}}
+
+/* EXTRAS */
+[data-testid="stDecoration"], [data-testid="stStatusWidget"]{{ display:none !important }}
+*::-webkit-scrollbar{{ width:10px; height:10px }}
+*::-webkit-scrollbar-thumb{{ background:#2C3340; border-radius:8px }}
+*::-webkit-scrollbar-track{{ background:#0F1115 }}
+
+.spinner{{
+    width:16px; height:16px;
+    border:2px solid rgba(37,99,235,.25);
+    border-top-color:#2563eb;
+    border-radius:50%;
+    display:inline-block;
+    animation:spin .8s linear infinite;
+}}
+@keyframes spin{{ to{{ transform:rotate(360deg) }} }}
 </style>
 """, unsafe_allow_html=True)
 
-
 # ====== HEADER HTML (Cabeçalho superior) ======
+# Usa os dados do usuário autenticado
 primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
-if st.session_state.authenticated:
-    st.markdown(f"""
-    <div class="header">
-        <div class="header-left">
-            {logo_img_tag}
-            <div>
-                Chatbot Quadra
-                <div class="title-sub">Assistente Inteligente</div>
-            </div>
+st.markdown(f"""
+<div class="header">
+    <div class="header-left">
+        {logo_img_tag}
+        <div>
+            Chatbot Quadra
+            <div class="title-sub">Assistente Inteligente</div>
         </div>
-        <div class="header-right">
-            <a href="#" style="text-decoration:none;color:#9ca3af;font-weight:600;border:1px solid rgba(156,163,175,0.2);padding:8px 12px;border-radius:10px;display:inline-block;font-size:0.85rem;">⚙ Configurações</a>
-            <div style="text-align:right;font-size:0.9rem;color:var(--text-color);">
-                <span style="font-weight:600;">{st.session_state.user_name}</span><br>
-                <span style="font-weight:400;color:var(--muted-color);font-size:0.8rem;">{st.session_state.user_email}</span>
-            </div>
-            <div class="user-circle">{primeira_letra}</div>
+    </div>
+    <div class="header-right">
+        <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
+        <div style="text-align:right;font-size:0.9rem;color:var(--text);">
+            <span style="font-weight:600;">{st.session_state.user_name}</span><br>
+            <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.user_email}</span>
         </div>
+        <div class="user-circle">{primeira_letra}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ====== SIDEBAR (Histórico) ======
+with st.sidebar:
+    st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Perguntas desta sessão</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ====== SIDEBAR (Histórico) ======
-    with st.sidebar:
-        st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-        st.markdown("""
-        <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
-            <div class="sidebar-sub">Perguntas desta sessão</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if not st.session_state.historico:
+        st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
+    else:
+        for pergunta_hist, _resp in st.session_state.historico:
+            titulo = pergunta_hist.strip().replace("\n", " ")
+            if len(titulo) > 80:
+                titulo = titulo[:80] + "…"
+            st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
-        if not st.session_state.historico:
-            st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
-        else:
-            # Lista o histórico do chat
-            for pergunta_hist, _resp in st.session_state.historico:
-                titulo = pergunta_hist.strip().replace("\n", " ")
-                if len(titulo) > 80:
-                    titulo = titulo[:80] + "…"
-                st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
+# ====== RENDER MENSAGENS (Chat Principal) ======
+msgs_html = []
+for pergunta, resposta in st.session_state.historico:
+    p_html = linkify(pergunta)
+    msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
+    if resposta:
+        r_html = linkify(resposta)
+        msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
-    # ====== RENDER MENSAGENS (Chat Principal) ======
-    msgs_html = []
-    for pergunta, resposta in st.session_state.historico:
-        p_html = linkify(pergunta)
-        # Mensagem do Usuário
-        msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
-        
-        # Mensagem do Assistente
-        if resposta:
-            r_html = linkify(resposta)
-            msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
+if st.session_state.awaiting_answer and st.session_state.answering_started:
+    msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
-    # Spinner de loading
-    if st.session_state.awaiting_answer and st.session_state.answering_started:
-        msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
+if not msgs_html:
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-    if not msgs_html:
-        msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">Comece perguntando algo, o assistente está pronto.</div>')
+msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
-    # Marcador para o scroll
-    msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
+st.markdown(
+    f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
+    unsafe_allow_html=True
+)
 
-    st.markdown(
-        f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
-        unsafe_allow_html=True
-    )
-
-    # ====== JS (Ajustes de Layout e Auto-scroll) ======
-    st.markdown("""
-    <script>
-    (function(){
-        function ajustaEspaco(){
-            const input = document.querySelector('[data-testid="stChatInput"]');
-            const card = document.getElementById('chatCard');
-            if(!input||!card) return;
-            const rect = input.getBoundingClientRect();
-            const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
-            const gap = parseInt(gapVar || '24', 10);
-            /* Calcula o espaço que o input ocupa na tela, mais uma margem de segurança */
-            const alturaEfetiva = (window.innerHeight - rect.top) + gap; 
-            card.style.paddingBottom = alturaEfetiva + 'px';
-            card.style.scrollPaddingBottom = alturaEfetiva + 'px';
-        }
-        function autoGrow(){
-            const ta = document.querySelector('[data-testid="stChatInput"] textarea');
-            if(!ta) return;
-            const MAX = 220;
-            ta.style.height='auto';
-            const desired = Math.min(ta.scrollHeight, MAX);
-            ta.style.height = desired+'px';
-            ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
-        }
-        function scrollToEnd(smooth=true){
-            const end = document.getElementById('chatEnd');
-            if(!end) return;
-            end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
-        }
-
-        const ro = new ResizeObserver(()=>{ajustaEspaco();});
-        ro.observe(document.body);
-        
-        window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
-        window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
-        
-        document.addEventListener('input',(e)=>{
-            if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
-                autoGrow();ajustaEspaco();
-            }
-        });
-        
-        // Timeout para garantir que o layout se ajuste após o render
-        setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
-        setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
-        
-        // Observa mutações para rolar a cada nova mensagem
+# ====== JS (Ajustes de Layout e Auto-scroll) ======
+st.markdown("""
+<script>
+(function(){
+    function ajustaEspaco(){
+        const input = document.querySelector('[data-testid="stChatInput"]');
         const card = document.getElementById('chatCard');
-        if(card){
-            const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
-            mo.observe(card, {childList:true, subtree:false});
+        if(!input||!card) return;
+        const rect = input.getBoundingClientRect();
+        const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
+        const gap = parseInt(gapVar || '24', 10);
+        const alturaEfetiva = (window.innerHeight - rect.top) + gap; 
+        card.style.paddingBottom = alturaEfetiva + 'px';
+        card.style.scrollPaddingBottom = alturaEfetiva + 'px';
+    }
+    function autoGrow(){
+        const ta = document.querySelector('[data-testid="stChatInput"] textarea');
+        if(!ta) return;
+        const MAX = 220;
+        ta.style.height='auto';
+        const desired = Math.min(ta.scrollHeight, MAX);
+        ta.style.height = desired+'px';
+        ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
+    }
+    function scrollToEnd(smooth=true){
+        const end = document.getElementById('chatEnd');
+        if(!end) return;
+        end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
+    }
+
+    const ro = new ResizeObserver(()=>{ajustaEspaco();});
+    ro.observe(document.body);
+    
+    window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
+    window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
+    
+    document.addEventListener('input',(e)=>{
+        if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
+            autoGrow();ajustaEspaco();
         }
-    })();
-    </script>
-    """, unsafe_allow_html=True)
+    });
+    
+    setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
+    setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
+    
+    const card = document.getElementById('chatCard');
+    if(card){
+        const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
+        mo.observe(card, {childList:true, subtree:false});
+    }
+})();
+</script>
+""", unsafe_allow_html=True)
 
-    # ====== INPUT (Componente nativo do Streamlit) ======
-    pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
+# ====== INPUT (Componente nativo do Streamlit) ======
+pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
-    # ====== FLUXO PRINCIPAL DO CHAT ======
+# ====== FLUXO PRINCIPAL DO CHAT ======
 
-    # 1. Nova pergunta enviada
-    if pergunta and pergunta.strip():
-        q = pergunta.strip()
-        st.session_state.historico.append((q, ""))
-        st.session_state.pending_index = len(st.session_state.historico)-1
-        st.session_state.pending_question = q
-        st.session_state.awaiting_answer=True
-        st.session_state.answering_started=False
-        do_rerun()
+# 1. Nova pergunta enviada
+if pergunta and pergunta.strip():
+    q = pergunta.strip()
+    st.session_state.historico.append((q, ""))
+    st.session_state.pending_index = len(st.session_state.historico)-1
+    st.session_state.pending_question = q
+    st.session_state.awaiting_answer=True
+    st.session_state.answering_started=False
+    do_rerun()
 
-    # 2. Inicia o processo de resposta no próximo rerun (para mostrar o spinner)
-    if st.session_state.awaiting_answer and not st.session_state.answering_started:
-        st.session_state.answering_started=True
-        do_rerun()
+# 2. Inicia o processo de resposta no próximo rerun (para mostrar o spinner)
+if st.session_state.awaiting_answer and not st.session_state.answering_started:
+    st.session_state.answering_started=True
+    do_rerun()
 
-    # 3. Processa a resposta do backend
-    if st.session_state.awaiting_answer and st.session_state.answering_started:
-        
-        # Chama a função do backend
-        resposta = responder_pergunta(st.session_state.pending_question)
+# 3. Processa a resposta do backend
+if st.session_state.awaiting_answer and st.session_state.answering_started:
+    
+    # Chama a função do backend
+    resposta = responder_pergunta(st.session_state.pending_question)
 
-        idx = st.session_state.pending_index
-        if idx is not None and 0 <= idx < len(st.session_state.historico):
-            pergunta_fix = st.session_state.historico[idx][0]
-            st.session_state.historico[idx] = (pergunta_fix, resposta)
+    idx = st.session_state.pending_index
+    if idx is not None and 0 <= idx < len(st.session_state.historico):
+        pergunta_fix = st.session_state.historico[idx][0]
+        st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-        # Reseta o estado
-        st.session_state.awaiting_answer = False
-        st.session_state.answering_started = False
-        st.session_state.pending_index = None
-        st.session_state.pending_question = None
-        
-        do_rerun()
+    # Reseta o estado
+    st.session_state.awaiting_answer = False
+    st.session_state.answering_started = False
+    st.session_state.pending_index = None
+    st.session_state.pending_question = None
+    
+    do_rerun()
