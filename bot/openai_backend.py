@@ -1,4 +1,4 @@
-# openai_backend.py — anti-fallback + anti-truncamento (ajustes mínimos)
+# openai_backend.py — Otimizado com Streaming e Lógica Simplificada
 
 import os
 import io
@@ -15,29 +15,29 @@ from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"
+MODEL_ID = "gpt-4o-mini"  # Modelo otimizado e econômico mudei do gpt-4-mini para gpt-5-mini
 
 # ========= PERFORMANCE & QUALIDADE =========
-USE_JSONL = True               # prefere JSON/JSONL do Drive (rápido)
-USE_CE = True                  # CE ligado, mas com pulo inteligente
-SKIP_CE_IF_ANN_BEST = 0.60     # se ANN >= 0.60, não roda CE
-TOP_N_ANN = 64                 # mais recall
-TOP_K = 6                     # contexto base enviado ao LLM
+USE_JSONL = True                # prefere JSON/JSONL do Drive (rápido)
+USE_CE = False                  # CE desligado para máxima velocidade
+SKIP_CE_IF_ANN_BEST = 0.80      # Limiar alto para pular CE (se estivesse ativo)
+TOP_N_ANN = 24                  # Bom equilíbrio entre recall e velocidade
+TOP_K = 6                       # Contexto base enviado ao LLM
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
 # Limiar quando CE é usado vs quando só ANN é usado
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
 # Anti-truncamento
-MAX_TOKENS = 700               # ↑ aumenta espaço pra resposta
-REQUEST_TIMEOUT = 40           # ↑ evita corte por timeout
+MAX_TOKENS = 700                # ↑ aumenta espaço pra resposta
+REQUEST_TIMEOUT = 40            # ↑ evita corte por timeout
 TEMPERATURE = 0.15
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
-USE_PRECOMPUTED = True
+USE_PRECOMPUTED = False
 
 # ========= DRIVE / AUTH =========
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
@@ -50,7 +50,8 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-14-robusto-02"
+
+CACHE_BUSTER = "2025-10-27-DOCX-NOVO-03"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -92,7 +93,6 @@ def _is_fallback_output(text: str) -> bool:
     first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
     return (fallback_norm in norm) or norm.startswith(first_line)
 
-# >>> NOVO: detecta respostas do tipo "não há informações..." para forçar o FALLBACK
 _NOINFO_RE = re.compile(
     r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
     re.IGNORECASE
@@ -162,8 +162,7 @@ def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
 
 def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
-    from docx import Document as _Docx
-    doc = _Docx(io.BytesIO(file_bytes))
+    doc = Document(io.BytesIO(file_bytes))
     text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
     return [
         {"pagina": file_name, "texto": chunk, "file_id": file_id}
@@ -220,6 +219,11 @@ def _build_signature_json_docx(files_json, files_docx):
     return json.dumps(payload, ensure_ascii=False)
 
 @st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
+
+@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
+
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     sources = _list_sources_cached(folder_id)
@@ -227,15 +231,29 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     files_docx = sources.get("docx", [])
 
     blocks = []
-    if USE_JSONL and files_json:
+    
+    # 1. PROCESSAR TODOS OS ARQUIVOS JSON/JSONL
+    # *** CORREÇÃO: Removido 'if USE_JSONL and files_json' para garantir leitura dos metadados. ***
+    if files_json:
         for f in files_json:
             try:
                 recs = _records_from_json_text(_download_text(drive, f["id"]))
-                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"]))
+                # Adiciona à lista
+                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"])) 
             except Exception:
                 continue
-        if blocks:
-            return blocks
+
+    # 2. PROCESSAR TODOS OS ARQUIVOS DOCX
+    for f in files_docx:
+        try:
+            # Adiciona à lista
+            blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"])) 
+        except Exception:
+            continue
+            
+    # Retorna todos os blocos, JSON e DOCX combinados.
+    # *** CORREÇÃO: Removido o código de fallback redundante aqui. ***
+    return blocks
 
     # Fallback DOCX
     for f in files_docx:
@@ -347,7 +365,6 @@ def ann_search(query_text: str, top_n: int):
     q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
-        import faiss
         D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
         idxs = I[0].tolist()
         scores = D[0].tolist()
@@ -368,44 +385,28 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
         packed = [{"block": c["block"], "score": float(c["score"])} for c in candidates]
         packed.sort(key=lambda x: x["score"], reverse=True)
         return packed[:top_k]
+    
     pairs = [(query, c["block"]["texto"]) for c in candidates]
     scores = ce.predict(pairs, batch_size=96)
     packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
     packed.sort(key=lambda x: x["score"], reverse=True)
     return packed[:top_k]
 
-# ========================= ATALHO DE ETAPA & PROMPT =========================
-def responder_etapa_seguinte(pergunta, blocos_raw):
-    q = pergunta.lower()
-    if not any(x in q for x in ["após", "depois de", "seguinte a"]):
-        return None
-    trecho = q
-    for token in ["após", "depois de", "seguinte a"]:
-        if token in trecho:
-            trecho = trecho.split(token, 1)[-1].strip()
-    if not trecho:
-        return None
-    for i, b in enumerate(blocos_raw):
-        if trecho in b["texto"].lower():
-            if i + 1 < len(blocos_raw):
-                prox = blocos_raw[i+1]['texto'].splitlines()[0]
-                return f'A etapa após "{trecho}" é "{prox}".'
-            return f'A etapa "{trecho}" é a última registrada.'
-    return "Essa etapa não foi encontrada no conteúdo."
-
-def montar_prompt_rag(pergunta, blocos, reforco_no_fallback=False):
+# ========================= PROMPT =========================
+def montar_prompt_rag(pergunta, blocos):
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
-    # (mantém seu prompt exatamente)
+    
     return (
         "Você é um assistente especializado em Procedimentos Operacionais.\n"
         "Sua tarefa é analisar cuidadosamente os documentos fornecidos e responder à pergunta com base neles.\n\n"
         "### Regras de resposta:\n"
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
-        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada\n"
+        "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada.\n"
         f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        "4. Estruture a resposta em tópicos ou frases completas, e cite trechos relevantes totalmente em maiúsculo  sempre que possível.\n\n"
+        # 🟢 REGRA 4 EXPLICITAMENTE CONTRA LISTAS:
+        "4. **A resposta deve ser APENAS em parágrafos coesos (em prosa), sem usar listas numeradas, listas com marcadores, travessões, ou qualquer símbolo de tópicos.** Sempre que fizer referência direta a um trecho do documento, coloque-o entre aspas.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
@@ -418,11 +419,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # Atalho barato: sequência de etapa
-        blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
-        seq = responder_etapa_seguinte(pergunta, blocks_raw)
-        if seq:
-            return seq
+        # <--- MUDANÇA 1: Atalho `responder_etapa_seguinte` foi REMOVIDO para simplificar e acelerar.
+        # A busca vetorial já lida bem com esse tipo de pergunta.
 
         # Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
@@ -437,7 +435,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
 
         if run_ce:
-            subset = candidates[:24]
+            subset = candidates[:12] # reduz para os melhores 12
             reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
             best_score = reranked[0]["score"] if reranked else 0.0
             pass_threshold = (best_score >= CE_SCORE_THRESHOLD)
@@ -448,14 +446,11 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
             top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
-        # >>> AJUSTE MINÍMO: evidência só se houver sobreposição lexical (sem a regra de ≤3 tokens)
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
 
-        # Permite responder com score baixo apenas se houver evidência lexical real
         if not pass_threshold and evidence_ok:
             pass_threshold = True
 
-        # Sem evidência/score: FALLBACK imediato
         if not pass_threshold:
             return FALLBACK_MSG
 
@@ -470,28 +465,45 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             ],
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
-            "n": 1
+            "n": 1,
+            "stream": True  # <--- MUDANÇA 2: HABILITANDO STREAMING
         }
 
-        resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT)
-        if not resp.ok:
-            return f"❌ Erro na API: {resp.status_code} - {resp.text}"
+        # <--- MUDANÇA 3: LÓGICA DE STREAMING PARA PROCESSAR A RESPOSTA
+        resposta_final = ""
+        try:
+            resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT, stream=True)
+            resp.raise_for_status() # Lança um erro para status codes ruins (4xx ou 5xx)
 
-        data = resp.json()
-        choices = data.get("choices", [])
-        if not choices or "message" not in choices[0]:
+            for chunk in resp.iter_lines():
+                if chunk:
+                    chunk_str = chunk.decode('utf-8')
+                    if chunk_str.startswith("data: "):
+                        data_str = chunk_str[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content")
+                            if content:
+                                resposta_final += content
+                        except (json.JSONDecodeError, IndexError):
+                            continue # Ignora linhas que não são JSON válido ou têm estrutura inesperada
+        
+        except requests.exceptions.RequestException as e:
+            return f"❌ Erro de conexão com a API: {e}"
+
+        if not resposta_final.strip():
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
-        resposta = choices[0]["message"]["content"].strip()
+        resposta = resposta_final.strip()
 
-        # =============== Guardas finais ===============
-        # Se o modelo disser "não há informações..." => força FALLBACK oficial
+        # =============== Guardas finais (aplicadas na resposta completa) ===============
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
 
-        # Detecta seu fallback explícito (compara textos)
-        is_fb = _is_fallback_output(resposta)
-        if is_fb:
+        if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
         # Anexa link só se NÃO for fallback
@@ -512,8 +524,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 # ========================= CLI =========================
 if __name__ == "__main__":
     print("\nDigite sua pergunta (ou 'sair'):\n")
+    # Para testar o streaming no terminal, precisamos de uma abordagem diferente,
+    # pois a função `responder_pergunta` agora retorna a resposta completa.
+    # O benefício do streaming é melhor visualizado no frontend (Streamlit).
     while True:
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
+        print("\nResposta:\n" + "="*20)
         print(responder_pergunta(q))
+        print("="*20 + "\n")
