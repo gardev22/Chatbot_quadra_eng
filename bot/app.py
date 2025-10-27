@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Com Login Customizado e Visual Unificado)
+# app.py - Frontend do Chatbot Quadra (Corrigido para exibir Login)
 
 import streamlit as st
 import base64
@@ -13,6 +13,8 @@ warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
 # ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png" 
+# Usamos o modo escuro padrão do Streamlit, e corrigimos as cores no CSS.
+# O fundo azul/escuro será forçado no CSS/markdown.
 st.set_page_config(
     page_title="Chatbot Quadra",
     page_icon=LOGO_PATH,
@@ -21,7 +23,6 @@ st.set_page_config(
 )
 
 def do_rerun():
-    # Garante o rerun no Streamlit
     if hasattr(st, "rerun"):
         st.rerun()
     else:
@@ -44,16 +45,14 @@ def extract_name_from_email(email):
     if not email or "@" not in email:
         return "Usuário"
     local_part = email.split("@")[0]
-    # Remove pontos e sublinhados, e substitui por espaço
     name_parts = re.sub(r'[\._]', ' ', local_part).split()
-    # Capitaliza a primeira letra de cada parte
     return " ".join(p.capitalize() for p in name_parts)
 
 # ====== ESTADO (Início da Sessão) ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-st.session_state.setdefault("authenticated", False) # NOVO: Estado de autenticação
+st.session_state.setdefault("authenticated", False) 
 st.session_state.setdefault("user_name", "Usuário")
 st.session_state.setdefault("user_email", "nao_autenticado@quadra.com.vc")
 
@@ -62,59 +61,56 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (HTML/CSS Customizado) ======
+# ====== AUTENTICAÇÃO (SIMPLIFICADA) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com validação de domínio."""
+    """Renderiza a tela de login customizada usando Streamlit nativo."""
     
+    # 1. Aplicar o fundo azul/escuro e centralizar (CSS de Login)
     st.markdown("""
     <style>
-    /* Estilos globais para a tela de login */
-    body { background: #1C3364 !important; }
-    .stApp { background: #1C3364 !important; }
-    
-    .login-container {
-        display: flex; justify-content: center; align-items: center; 
-        height: 100dvh; width: 100vw;
-        background: radial-gradient(circle at center, #1C3364 0%, #000000 100%);
-        position: fixed; inset: 0; z-index: 9999;
+    /* Força o fundo azul/escuro para a tela de login */
+    .stApp { 
+        background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
     }
-    .login-card {
-        background: white; border-radius: 12px; padding: 40px; 
+    /* Estiliza o container de login */
+    div.stVerticalBlock > div.element-container:nth-child(1) {
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding-top: 0 !important;
+    }
+    /* Estilo do card branco (simulado por um container) */
+    .login-card-container {
+        background: white; 
+        border-radius: 12px; 
+        padding: 40px; 
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        max-width: 400px; text-align: center; color: #333;
+        max-width: 400px; 
+        text-align: center; 
+        color: #333;
+        width: 100%;
     }
     .login-logo { width: 60px; height: 60px; margin-bottom: 20px; }
     .login-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }
     .login-subtitle { font-size: 0.9rem; margin-bottom: 30px; color: #666; }
     .login-disclaimer { font-size: 0.75rem; margin-top: 25px; color: #999; }
-    /* Estilo do botão e input simulados */
     .stButton>button { width: 100%; height: 48px; font-weight: 600; }
-    
-    .login-email-input [data-testid="stTextInput"] > div > div {
-        border-radius: 8px; border: 1px solid #ddd;
-    }
-    .login-email-input [data-testid="stTextInput"] input {
-        height: 48px; font-size: 1rem;
-    }
-    
     </style>
     """, unsafe_allow_html=True)
     
-    # Renderiza o container
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    
-    # Centraliza o conteúdo no Streamlit
-    col_center = st.columns([1, 2, 1])[1]
+    # 2. Centralizar e criar o card branco (Streamlit nativo)
+    col_center = st.columns([1, 4, 1])[1]
     
     with col_center:
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.markdown('<div class="login-card-container">', unsafe_allow_html=True)
         
-        # Logo
+        # Conteúdo do Card
         logo_login_tag = (
             f'<img class="login-logo" src="data:image/png;base64,{logo_b64}" />'
             if logo_b64
-            else '<div class="login-logo" style="background:#eef2ff;"></div>'
+            else '<div class="login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
         )
         st.markdown(logo_login_tag, unsafe_allow_html=True)
         
@@ -122,14 +118,17 @@ def render_login_screen():
         st.markdown('<div class="login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
         with st.form("login_form", clear_on_submit=False):
-            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed", key="login_email_input")
-            st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True) # Espaçamento
+            # Input de Email (Estilizado para o centro)
+            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+            
             submitted = st.form_submit_button("Entrar no Chatbot", type="primary")
 
             if submitted:
                 email = email.strip().lower()
                 
-                if "@quadra.com.vc" not in email:
+                if not email or "@" not in email:
+                    st.error("Por favor, insira um e-mail válido.")
+                elif "@quadra.com.vc" not in email:
                     st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
                 else:
                     st.session_state.authenticated = True
@@ -139,10 +138,8 @@ def render_login_screen():
         
         st.markdown('<div class="login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
         
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do login-card
+        st.markdown('</div>', unsafe_allow_html=True) # Fim do login-card-container
         
-    st.markdown('</div>', unsafe_allow_html=True) # Fim do login-container
-    
     st.stop() # Interrompe a execução do chat até o login
     
 
@@ -155,16 +152,14 @@ if not st.session_state.authenticated:
     render_login_screen()
 
 # A partir daqui, o usuário está autenticado.
+# O restante do CSS/HTML é aplicado apenas após esta linha.
 
 # ====== MARCAÇÃO (Formatação de Texto) ======
 def formatar_markdown_basico(text: str) -> str:
     if not text: return ""
-    # Links
     text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', text)
-    # Negrito e Itálico
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    # Quebras de Linha
     text = text.replace("\n", "<br>")
     return text
 
@@ -172,7 +167,7 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat Customizado - Com correção de cores) ======
-
+# NOTA: Este bloco reverte o st.App para o tema escuro do chat
 st.markdown(f"""
 <style>
 /* ========= RESET / BASE ========= */
@@ -229,8 +224,10 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     overscroll-behavior:none;
 }}
 .block-container{{ padding:0 !important; min-height:0 !important }}
-/* Garante que o fundo do app use a nova cor unificada */
+/* Garante que o fundo do app use a nova cor unificada (chat) */
 .stApp{{ background:var(--bg) !important; color:var(--text) !important }}
+
+/* Continua com o restante do CSS... (Omitido para brevidade, mas deve ser copiado na íntegra do arquivo anterior) */
 
 /* ========= HEADER FIXO (Topo) ========= */
 .header{{
@@ -247,7 +244,6 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block;
 }}
 .header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
-/* Estilo para a bolinha do usuário */
 .user-circle {{
     width: 32px; height: 32px; border-radius: 50%; 
     background: #007bff; color: white; 
@@ -305,7 +301,6 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 #chatCard, .chat-card{{
     position:relative;
     z-index:50 !important;
-    /* Usa o BG unificado para evitar bordas */
     background:var(--bg) !important; 
     border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
     padding:20px;
@@ -405,7 +400,6 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML (Cabeçalho superior) ======
-# Usa os dados do usuário autenticado
 primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
 st.markdown(f"""
 <div class="header">
@@ -443,7 +437,6 @@ with st.sidebar:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
-            # Uso de HTML simples para histórico
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS (Chat Principal) ======
