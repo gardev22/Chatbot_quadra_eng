@@ -75,104 +75,109 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada com card branco."""
-    
-    # 1. CSS para o fundo e o card de login (corrigido)
-    st.markdown(f"""
+    """Tela de login dentro de um card branco centralizado, sem afetar o chat."""
+    st.markdown("""
     <style>
-    /* Força o fundo azul/escuro para TODA a tela na fase de login */
-    .stApp {{
-        background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
-        height: 100vh; width: 100vw; overflow: hidden;
-    }}
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer {{ 
-        display: none !important; visibility: hidden !important; height: 0 !important; 
-    }}
+    /* Fundo da página na etapa de login */
+    .stApp{
+        background: radial-gradient(1200px 600px at 60% 30%, #1C3364 0%, #0B1020 50%, #000000 100%) !important;
+        min-height: 100vh !important;
+        overflow: hidden !important;
+    }
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{
+        display: none !important;
+    }
 
-    /* Estiliza o container principal do Streamlit para CENTRALIZAR o card (Crucial) */
-    .stApp > header, .stApp > div:first-child > div:nth-child(2) {{ /* main e main content */
-        height: 100vh !important;
-    }}
-    .stApp > div:first-child > div:nth-child(2) > div:first-child {{
-        height: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding-top: 0 !important;
-    }}
+    /* Centralização vertical/horizontal do conteúdo principal */
+    [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
+    .block-container{
+        height:100%;
+        display:flex; align-items:center; justify-content:center;
+        padding:0 !important; margin:0 !important;
+    }
 
-    /* Estilo do card branco de login (FIXADO) */
-    .custom-login-card {{
-        background: white; 
-        border-radius: 12px; 
-        padding: 40px; 
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        max-width: 400px; 
-        text-align: center; 
-        color: #333;
-        width: 100%; 
-    }}
-    .custom-login-logo {{ width: 60px; height: 60px; margin-bottom: 20px; margin-top: 10px; }}
-    .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }}
-    .custom-login-subtitle {{ font-size: 0.9rem; margin-bottom: 30px; color: #666; }}
-    .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; }}
-    
-    /* Ajustes para os inputs e botões do Streamlit dentro do card */
-    .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
-    .custom-login-card [data-testid="stTextInput"] input {{
-        height: 48px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd;
-    }}
-    .custom-login-card .stButton > button {{
-        width: 100%; height: 48px; font-weight: 600;
-        background-color: #1C3364; color: white; border: none;
-        border-radius: 8px; margin-top: 20px;
-    }}
-    .custom-login-card .stButton > button:hover {{ background-color: #2a4782; }}
+    /* O container que CONTÉM o marcador #login_card_anchor vira um CARD */
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor){
+        background:#ffffff;
+        width: 420px; max-width: 92vw;
+        border-radius: 14px;
+        box-shadow: 0 14px 40px rgba(0,0,0,.25);
+        padding: 32px 26px 26px;
+        text-align: center;
+        color:#1f2937;
+    }
+
+    /* Tipografia dentro do card */
+    .login-title{ font-size: 1.45rem; font-weight: 700; color:#1C3364; margin: 6px 0 4px; }
+    .login-sub{ font-size:.95rem; color:#6b7280; margin: 0 0 18px; }
+    .login-disc{ font-size:.75rem; color:#9ca3af; margin-top: 18px; }
+
+    /* Logo dentro do card */
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) img{
+        width:64px; height:64px; object-fit:contain; margin: 4px auto 10px; display:block;
+    }
+
+    /* Ajustes dos componentes Streamlit dentro do card */
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) [data-testid="stTextInput"] > label{
+        display:none !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) [data-testid="stTextInput"] input{
+        height:48px; font-size:1rem;
+        border-radius:10px; border:1px solid #e5e7eb !important;
+        background:#ffffff !important; color:#111827 !important;
+    }
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) .stButton > button{
+        width:100%; height:48px; border:none;
+        border-radius:10px; font-weight:700;
+        background:#1C3364 !important; color:#ffffff !important;
+        margin-top: 12px;
+    }
+    div[data-testid="stVerticalBlock"]:has(#login_card_anchor) .stButton > button:hover{
+        filter: brightness(1.1);
+    }
     </style>
     """, unsafe_allow_html=True)
-    
-    # 2. Renderizar o card no Streamlit
-    col_center = st.columns([1, 4, 1])[1]
-    
-    with col_center:
-        st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
-        
-        # Conteúdo do Card (elementos da imagem)
-        logo_login_tag_card = (
-            f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" />'
-            if logo_b64
-            else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
-        )
-        st.markdown(logo_login_tag_card, unsafe_allow_html=True)
-        
-        st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
-        st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
-        
+
+    # ---- Card de Login (tudo dentro de UM container) ----
+    with st.container():
+        # Marcador para aplicar o CSS do card ao container pai
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
+
+        # Logo
+        if logo_b64:
+            st.markdown(
+                f'<img alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown('<div style="width:64px;height:64px;border-radius:12px;background:#EAF0FF;margin:0 auto 10px;"></div>', unsafe_allow_html=True)
+
+        # Título e subtítulo
+        st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
+
+        # Formulário
         with st.form("login_form", clear_on_submit=False):
-            # NOVO: Input de Email
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
-            
-            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") 
-            
-            if submitted:
-                email = email.strip().lower()
-                
-                if not email or "@" not in email:
+            submit = st.form_submit_button("Entrar no Chatbot", type="primary")
+
+            if submit:
+                email = (email or "").strip().lower()
+                if ("@" not in email):
                     st.error("Por favor, insira um e-mail válido.")
-                elif "@quadra.com.vc" not in email:
+                elif not email.endswith("@quadra.com.vc"):
                     st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
                 else:
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
                     st.session_state.user_name = extract_name_from_email(email)
-                    # Força o rerun para sair do st.stop() e entrar no chat
                     do_rerun()
-        
-        st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True) # Fim do custom-login-card
-        
-    st.stop() # Interrompe a execução do chat até o login
+
+        st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
+
+    # Impede render do chat até autenticar
+    st.stop()
+
 
 # =================================================================
 #                         FLUXO PRINCIPAL
