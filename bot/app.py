@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Autenticação com Card Imagem 2)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida)
 
 import streamlit as st
 import base64
@@ -6,7 +6,14 @@ import os
 import re
 import warnings
 from html import escape
-from openai_backend import responder_pergunta 
+# Importa a função de resposta do backend
+# NOTA: Certifique-se de que 'openai_backend.py' existe e tem a função 'responder_pergunta'
+try:
+    from openai_backend import responder_pergunta 
+except ImportError:
+    # Fallback para evitar erro se o backend não estiver presente, mas o app.py deve funcionar
+    def responder_pergunta(pergunta):
+        return "Erro: O módulo 'openai_backend' ou a função 'responder_pergunta' não foi encontrado."
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
@@ -17,8 +24,6 @@ st.set_page_config(
     page_icon=LOGO_PATH,
     layout="wide",
     initial_sidebar_state="expanded",
-    # O tema escuro padrão do Streamlit ajuda, mas o CSS abaixo vai sobrescrever o fundo
-    # theme="dark", # Se preferir que o Streamlit comece no modo escuro
 )
 
 def do_rerun():
@@ -39,7 +44,15 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
+# CORREÇÃO: Definição da logo_img_tag para uso no Header
+if logo_b64:
+    logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
+else:
+    logo_img_tag = '<span style="font-size: 2rem; color: #1C3364; font-weight: 900;">Q</span>'
+
+
 def extract_name_from_email(email):
+    """Extrai um nome (capitalizado) de um email."""
     if not email or "@" not in email:
         return "Usuário"
     local_part = email.split("@")[0]
@@ -59,34 +72,36 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (Recriando a Imagem 2) ======
+# ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Renderiza a tela de login customizada como na Imagem 2."""
+    """Renderiza a tela de login customizada com card branco."""
     
-    # 1. CSS para o fundo e o card de login
+    # 1. CSS para o fundo e o card de login (corrigido)
     st.markdown(f"""
     <style>
     /* Força o fundo azul/escuro para TODA a tela na fase de login */
     .stApp {{
         background: radial-gradient(circle at center, #1C3364 0%, #000000 100%) !important;
-        /* Garante que nada mais apareça, esconde sidebar e header */
         height: 100vh; width: 100vw; overflow: hidden;
     }}
     header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer {{ 
         display: none !important; visibility: hidden !important; height: 0 !important; 
     }}
 
-    /* Estiliza o container principal do Streamlit para centralizar o card */
-    .main > div {{
-        height: 100vh;
+    /* Estiliza o container principal do Streamlit para CENTRALIZAR o card (Crucial) */
+    .stApp > header, .stApp > div:first-child > div:nth-child(2) {{ /* main e main content */
+        height: 100vh !important;
+    }}
+    .stApp > div:first-child > div:nth-child(2) > div:first-child {{
+        height: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
-        padding: 0 !important;
+        padding-top: 0 !important;
     }}
 
-    /* Estilo do card branco de login */
+    /* Estilo do card branco de login (FIXADO) */
     .custom-login-card {{
         background: white; 
         border-radius: 12px; 
@@ -95,55 +110,49 @@ def render_login_screen():
         max-width: 400px; 
         text-align: center; 
         color: #333;
-        width: 100%; /* Ajusta para max-width */
+        width: 100%; 
     }}
     .custom-login-logo {{ width: 60px; height: 60px; margin-bottom: 20px; margin-top: 10px; }}
     .custom-login-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 10px; color: #1C3364; }}
     .custom-login-subtitle {{ font-size: 0.9rem; margin-bottom: 30px; color: #666; }}
     .custom-login-disclaimer {{ font-size: 0.75rem; margin-top: 25px; color: #999; }}
     
-    /* Ajustes para o input do Streamlit dentro do card */
-    .custom-login-card [data-testid="stTextInput"] > div > div {{
-        border-radius: 8px; border: 1px solid #ddd;
-    }}
+    /* Ajustes para os inputs e botões do Streamlit dentro do card */
+    .custom-login-card [data-testid="stTextInput"] > label {{ display: none !important; }}
     .custom-login-card [data-testid="stTextInput"] input {{
-        height: 48px; font-size: 1rem;
+        height: 48px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd;
     }}
     .custom-login-card .stButton > button {{
         width: 100%; height: 48px; font-weight: 600;
         background-color: #1C3364; color: white; border: none;
         border-radius: 8px; margin-top: 20px;
     }}
-    .custom-login-card .stButton > button:hover {{
-        background-color: #2a4782; /* Um pouco mais claro no hover */
-    }}
+    .custom-login-card .stButton > button:hover {{ background-color: #2a4782; }}
     </style>
     """, unsafe_allow_html=True)
     
     # 2. Renderizar o card no Streamlit
-    # Usamos colunas para ajudar a centralizar, embora o CSS já faça a maior parte
-    col_center = st.columns([1, 4, 1])[1] # Coluna central maior
+    col_center = st.columns([1, 4, 1])[1]
     
     with col_center:
         st.markdown('<div class="custom-login-card">', unsafe_allow_html=True)
         
         # Conteúdo do Card (elementos da imagem)
-        logo_login_tag = (
+        logo_login_tag_card = (
             f'<img class="custom-login-logo" src="data:image/png;base64,{logo_b64}" />'
             if logo_b64
             else '<div class="custom-login-logo" style="background:#eef2ff; border-radius: 8px; margin: auto;"></div>'
         )
-        st.markdown(logo_login_tag, unsafe_allow_html=True)
+        st.markdown(logo_login_tag_card, unsafe_allow_html=True)
         
         st.markdown('<div class="custom-login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
         st.markdown('<div class="custom-login-subtitle">Entre com seu e-mail para começar a conversar com nosso assistente</div>', unsafe_allow_html=True)
         
         with st.form("login_form", clear_on_submit=False):
-            # NOVO: Texto "Entre com sua conta Google" removido, pois a autenticação é por domínio
-            # st.markdown('<div style="font-size: 0.9rem; margin-bottom: 15px; color: #666;">Entre com seu e-mail</div>', unsafe_allow_html=True)
+            # NOVO: Input de Email
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
             
-            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") # Mantém o botão com o estilo do card
+            submitted = st.form_submit_button("Entrar no Chatbot", type="primary") 
             
             if submitted:
                 email = email.strip().lower()
@@ -156,6 +165,7 @@ def render_login_screen():
                     st.session_state.authenticated = True
                     st.session_state.user_email = email
                     st.session_state.user_name = extract_name_from_email(email)
+                    # Força o rerun para sair do st.stop() e entrar no chat
                     do_rerun()
         
         st.markdown('<div class="custom-login-disclaimer">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>', unsafe_allow_html=True)
@@ -172,8 +182,7 @@ def render_login_screen():
 if not st.session_state.authenticated:
     render_login_screen()
 
-# A partir daqui, o usuário está autenticado.
-# O restante do CSS/HTML é aplicado apenas após esta linha, redefinindo o fundo.
+# A partir daqui, o usuário está autenticado e o visual de chat será aplicado.
 
 # ====== MARCAÇÃO (Formatação de Texto) ======
 def formatar_markdown_basico(text: str) -> str:
@@ -188,7 +197,7 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat Customizado - Com correção de cores) ======
-# NOTA: Este bloco de CSS é aplicado APÓS o login, redefinindo o visual para o chat.
+# NOTA: Este bloco de CSS reverte o fundo para o tema escuro/cinza do chat
 st.markdown(f"""
 <style>
 /* ========= RESET / BASE ========= */
@@ -247,8 +256,6 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .block-container{{ padding:0 !important; min-height:0 !important }}
 /* Garante que o fundo do app use a nova cor unificada (chat) */
 .stApp{{ background:var(--bg) !important; color:var(--text) !important }}
-
-/* Continua com o restante do CSS... (Omitido para brevidade, mas deve ser copiado na íntegra do arquivo anterior) */
 
 /* ========= HEADER FIXO (Topo) ========= */
 .header{{
@@ -421,6 +428,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML (Cabeçalho superior) ======
+# Usa os dados do usuário autenticado
 primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
 st.markdown(f"""
 <div class="header">
