@@ -75,10 +75,10 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Card de login pequeno, centralizado, sem barra branca e sem usar :has()."""
+    """Login em card branco pequeno, centralizado, sem barra branca."""
     st.markdown("""
     <style>
-    /* Fundo da tela de login */
+    /* Fundo da etapa de login */
     .stApp{
         background: radial-gradient(1200px 600px at 60% 30%, #1C3364 0%, #0B1020 50%, #000000 100%) !important;
         min-height: 100vh !important; overflow: hidden !important;
@@ -87,7 +87,7 @@ def render_login_screen():
         display: none !important;
     }
 
-    /* Centraliza vertical/horizontal */
+    /* Centralização absoluta do conteúdo */
     [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
     .block-container{
         height:100%;
@@ -95,43 +95,54 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
-    /* O CARD propriamente dito (apenas ele é branco) */
-    .login-card{
-        background:#ffffff;
-        width:420px; max-width:92vw;
+    /* Zera qualquer fundo padrão */
+    .block-container > div, .block-container [data-testid="stVerticalBlock"]{
+        background: transparent !important; box-shadow:none !important;
+    }
+
+    /* ===== CARD NO COLUNA DO MEIO ===== */
+    /* Seleciona a coluna que possui o marcador #login_card_anchor */
+    div[data-testid="column"]:has(#login_card_anchor) > div{
+        background:#ffffff !important;
+        color:#1f2937 !important;
         border-radius:14px;
         box-shadow:0 14px 40px rgba(0,0,0,.25);
         padding:32px 26px 26px;
-        text-align:center; color:#1f2937;
+        max-width:420px; width:100%;
+        margin:0 auto;                 /* centraliza dentro da coluna */
+        text-align:center;
     }
+
+    /* Tipografia e logo dentro do card */
     .login-logo{ width:64px; height:64px; object-fit:contain; margin:4px auto 10px; display:block; }
     .login-title{ font-size:1.45rem; font-weight:700; color:#1C3364; margin:6px 0 4px; }
     .login-sub{ font-size:.95rem; color:#6b7280; margin:0 0 18px; }
     .login-disc{ font-size:.75rem; color:#9ca3af; margin-top:18px; }
 
-    /* Estilo dos componentes *dentro* do card */
-    .login-card [data-testid="stTextInput"] > label{ display:none !important; }
-    .login-card [data-testid="stTextInput"] input{
+    /* Widgets apenas dentro do card */
+    div[data-testid="column"]:has(#login_card_anchor) [data-testid="stTextInput"] > label{ display:none !important; }
+    div[data-testid="column"]:has(#login_card_anchor) [data-testid="stTextInput"] input{
         height:48px; font-size:1rem;
         border-radius:10px; border:1px solid #e5e7eb !important;
         background:#ffffff !important; color:#111827 !important;
     }
-    .login-card .stButton > button{
+    div[data-testid="column"]:has(#login_card_anchor) .stButton > button{
         width:100%; height:48px; border:none;
         border-radius:10px; font-weight:700;
         background:#1C3364 !important; color:#ffffff !important;
         margin-top:12px;
     }
-    .login-card .stButton > button:hover{ filter:brightness(1.08); }
+    div[data-testid="column"]:has(#login_card_anchor) .stButton > button:hover{ filter:brightness(1.08); }
     </style>
     """, unsafe_allow_html=True)
 
-    # ---- CONTEÚDO DO CARD ----
-    with st.container():
-        # abre o card (wrapper real, sem :has)
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    # ===== Layout: 3 colunas e usamos só a do meio =====
+    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
+    with col_mid:
+        # Marcador para o CSS identificar esta coluna
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
 
-        # logo
+        # Conteúdo do card
         if logo_b64:
             st.markdown(f'<img class="login-logo" alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
                         unsafe_allow_html=True)
@@ -139,12 +150,10 @@ def render_login_screen():
             st.markdown('<div class="login-logo" style="background:#EAF0FF;border-radius:12px;"></div>',
                         unsafe_allow_html=True)
 
-        # título e subtítulo
         st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
                     unsafe_allow_html=True)
 
-        # formulário
         with st.form("login_form", clear_on_submit=False):
             email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
             submit = st.form_submit_button("Entrar no Chatbot", type="primary")
@@ -163,10 +172,8 @@ def render_login_screen():
         st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
                     unsafe_allow_html=True)
 
-        # fecha o card
-        st.markdown('</div>', unsafe_allow_html=True)
-
     st.stop()
+
 
 
 
