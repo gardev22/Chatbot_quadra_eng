@@ -154,15 +154,28 @@ def render_login_screen():
 
     .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
-    /* Failsafe: oculta dicas automáticas do Streamlit */
-    [data-testid="stFormSubmitter"] *,
-    [data-testid="stTextInput"] div[aria-live="polite"]{ display:none !important; }
+    /* Failsafe: remove QUALQUER dica tipo “Press enter to apply/submit” */
+    .login-stack [data-testid="stTextInput"] div[aria-live],
+    .login-stack [data-testid="stTextInput"] [role="status"],
+    .login-stack [data-testid="stTextInput"] [data-testid="stTextInputHelp"],
+    .login-stack [data-testid="stTextInput"] .st-keypress-hint,
+    .login-stack [data-testid="stTextInput"] .st-emotion-cache[aria-live],
+    .login-stack [data-testid="stTextInput"] + div[aria-live],
+    .login-stack [data-testid="stTextInput"] *[aria-live],
+    .login-stack [data-testid="stFormSubmitter"],
+    .login-stack [data-testid="stFormSubmitter"] *{
+        display:none !important;
+        height:0 !important;
+        overflow:hidden !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+    }
 
     /* Em telas muito pequenas, reduz o lift pra não cortar nada */
     @media (max-width: 480px){
         :root{ --lift: 28px; }
         .login-logo{ width:76px; height:76px; }
-        .login-title{ font-size:1.55rem; }
+        .login-title{ font-size:1.4rem; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -208,6 +221,7 @@ def render_login_screen():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
+
 
 
 
