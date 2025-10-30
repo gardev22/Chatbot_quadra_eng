@@ -123,7 +123,7 @@ def render_login_screen():
     .login-title{
         display:block;
         text-align:center;
-        font-size:1.4rem; font-weight:800; letter-spacing:.2px;
+        font-size:1.5rem; font-weight:800; letter-spacing:.2px;
         color:#F5F7FF; margin:6px 0 6px;
         text-shadow: 0 1px 2px rgba(0,0,0,.35);
     }
