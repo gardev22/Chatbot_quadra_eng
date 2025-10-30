@@ -33,9 +33,23 @@ def do_rerun():
     else:
         st.experimental_rerun()
 
-# ====== LOGOUT VIA QUERY PARAM ======
-# Quando clicar em "Sair" no topo, vamos para ?logout=1, limpamos o estado e rerun.
-if "logout" in st.query_params:
+# ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
+def _clear_query_params():
+    """Remove os query params da URL (Streamlit novo e antigo)."""
+    try:
+        st.query_params.clear()           # >= 1.33
+    except Exception:
+        st.experimental_set_query_params()  # legado
+
+def _get_query_params():
+    """Lê os query params da URL (Streamlit novo e antigo)."""
+    try:
+        return dict(st.query_params)      # >= 1.33
+    except Exception:
+        return dict(st.experimental_get_query_params())  # legado
+
+qp = _get_query_params()
+if "logout" in qp:
     st.session_state.update({
         "authenticated": False,
         "user_name": "Usuário",
@@ -46,8 +60,7 @@ if "logout" in st.query_params:
         "pending_question": None,
         "historico": []
     })
-    # Remove o parâmetro da URL para evitar loop
-    st.query_params.clear()
+    _clear_query_params()
     do_rerun()
 
 # ====== UTILITÁRIOS ======
@@ -432,7 +445,8 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     width:100% !important;
     border:none !important; border-radius:999px !important;
     padding:18px 20px !important; font-size:16px !important;
-    outline:none !important; height:auto !important;
+    outline:none !important;
+    height:auto !important;
     min-height:44px !important; max-height:220px !important;
     overflow-y:hidden !important;
     caret-color:#ffffff !important;
@@ -481,9 +495,6 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 """, unsafe_allow_html=True)
 
 # ====== HEADER HTML (Cabeçalho superior) ======
-# Usa os dados do usuário autenticado
-# ====== HEADER HTML (Cabeçalho superior) ======
-
 primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
 st.markdown(f"""
 <div class="header">
@@ -495,8 +506,14 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <!-- Botão Sair: MESMA ABA -->
-        <a href="#" onclick="window.location.search='?logout=1'; return false;"
+        <!-- Botão Sair: MESMA ABA (ajuste robusto de URL) -->
+        <a href="#"
+           onclick="
+             const u = new URL(window.location.href);
+             u.searchParams.set('logout','1');
+             window.location.href = u.toString();
+             return false;
+           "
            style="text-decoration:none;color:#e5e7eb;font-weight:600;border:1px solid rgba(255,255,255,0.14);
                   padding:8px 12px;border-radius:10px;display:inline-block;">
            Sair
@@ -509,7 +526,6 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
-
 
 # ====== SIDEBAR (Histórico) ======
 with st.sidebar:
