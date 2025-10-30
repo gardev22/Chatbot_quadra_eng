@@ -505,12 +505,12 @@ st.markdown(f"""
     </div>
     <div class="header-right">
         <!-- Botão Sair: MESMA ABA, sem ícone, sem <form>/JS -->
-        <a href="?logout=1"
-           style="text-decoration:none;background:transparent;
-                  border:1px solid rgba(255,255,255,0.14);
-                  color:#e5e7eb;font-weight:600;padding:8px 12px;border-radius:10px;
-                  display:inline-block;cursor:pointer;">
-           Sair
+        <a href="?logout=1" target="_self"
+          style="text-decoration:none;background:transparent;
+          border:1px solid rgba(255,255,255,0.14);
+          color:#e5e7eb;font-weight:600;padding:8px 12px;border-radius:10px;
+          display:inline-block;cursor:pointer;">
+   Sair
         </a>
         <div style="text-align:right;font-size:0.9rem;color:var(--text);">
             <span style="font-weight:600;">{st.session_state.user_name}</span><br>
