@@ -80,7 +80,7 @@ def render_login_screen():
     <style>
     :root{
         --login-max: 520px;   /* largura do bloco central */
-        --lift: 52px;         /* quanto sobe o bloco (ajuste fino) */
+        --lift: 70px;         /* quanto sobe o bloco (ajuste fino) */
     }
 
     /* Degradê ligeiramente mais escuro */
@@ -123,7 +123,7 @@ def render_login_screen():
     .login-title{
         display:block;
         text-align:center;
-        font-size:1.8rem; font-weight:800; letter-spacing:.2px;
+        font-size:1.6rem; font-weight:800; letter-spacing:.2px;
         color:#F5F7FF; margin:6px 0 6px;
         text-shadow: 0 1px 2px rgba(0,0,0,.35);
     }
