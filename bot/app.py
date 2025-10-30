@@ -6,10 +6,11 @@ import os
 import re
 import warnings
 from html import escape
+
 # Importa a função de resposta do backend
 # NOTA: Certifique-se de que 'openai_backend.py' existe e tem a função 'responder_pergunta'
 try:
-    from openai_backend import responder_pergunta 
+    from openai_backend import responder_pergunta
 except ImportError:
     # Fallback para evitar erro se o backend não estiver presente, mas o app.py deve funcionar
     def responder_pergunta(pergunta):
@@ -18,7 +19,7 @@ except ImportError:
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
 # ====== CONFIG DA PÁGINA ======
-LOGO_PATH = "data/logo_quadra.png" 
+LOGO_PATH = "data/logo_quadra.png"
 st.set_page_config(
     page_title="Chatbot Quadra",
     page_icon=LOGO_PATH,
@@ -31,6 +32,23 @@ def do_rerun():
         st.rerun()
     else:
         st.experimental_rerun()
+
+# ====== LOGOUT VIA QUERY PARAM ======
+# Quando clicar em "Sair" no topo, vamos para ?logout=1, limpamos o estado e rerun.
+if "logout" in st.query_params:
+    st.session_state.update({
+        "authenticated": False,
+        "user_name": "Usuário",
+        "user_email": "nao_autenticado@quadra.com.vc",
+        "awaiting_answer": False,
+        "answering_started": False,
+        "pending_index": None,
+        "pending_question": None,
+        "historico": []
+    })
+    # Remove o parâmetro da URL para evitar loop
+    st.query_params.clear()
+    do_rerun()
 
 # ====== UTILITÁRIOS ======
 def carregar_imagem_base64(path):
@@ -50,7 +68,6 @@ if logo_b64:
 else:
     logo_img_tag = '<span style="font-size: 2rem; color: #1C3364; font-weight: 900;">Q</span>'
 
-
 def extract_name_from_email(email):
     """Extrai um nome (capitalizado) de um email."""
     if not email or "@" not in email:
@@ -63,7 +80,7 @@ def extract_name_from_email(email):
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-st.session_state.setdefault("authenticated", False) 
+st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
 st.session_state.setdefault("user_email", "nao_autenticado@quadra.com.vc")
 
@@ -72,8 +89,7 @@ st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
 
-# ====== AUTENTICAÇÃO (Melhorada para o Card) ======
-
+# ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
     """Login central (layout antigo) com logo maior, título central, degradê levemente mais escuro e bloco mais acima."""
     st.markdown("""
@@ -222,13 +238,6 @@ def render_login_screen():
 
     st.stop()
 
-
-
-
-
-
-
-
 # =================================================================
 #                         FLUXO PRINCIPAL
 # =================================================================
@@ -252,7 +261,6 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat Customizado - Com correção de cores) ======
-# NOTA: Este bloco de CSS reverte o fundo para o tema escuro/cinza do chat
 st.markdown(f"""
 <style>
 /* ========= RESET / BASE ========= */
@@ -270,11 +278,11 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-max: 900px;
     --input-bottom: 60px;
 
-    /* PALETA UNIFICADA (CORREÇÃO para eliminar a borda preta) */
-    --bg:#1C1F26;        /* Fundo Principal UNIFICADO */
-    --panel:#0B0D10;     /* Fundo da Sidebar (mais escuro) */
-    --panel-header:#14171C; /* Fundo do Header */
-    --panel-alt:#1C1F26; /* Fundo do Contêiner do Chat (MESMA COR DO BG) */
+    /* PALETA UNIFICADA */
+    --bg:#1C1F26;
+    --panel:#0B0D10;
+    --panel-header:#14171C;
+    --panel-alt:#1C1F26;
     --border:#242833;
 
     --text:#E5E7EB;
@@ -293,11 +301,11 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --sidebar-w:270px;
 
     --sidebar-items-top-gap: -45px;
-    --sidebar-sub-top-gap: -30px; 
-    --sidebar-list-start-gap: 3px; 
+    --sidebar-sub-top-gap: -30px;
+    --sidebar-list-start-gap: 3px;
 }}
 
-/* ========= STREAMLIT CHROME (Remoção de elementos padrão) ========= */
+/* ========= STREAMLIT CHROME ========= */
 header[data-testid="stHeader"]{{ display:none !important }}
 div[data-testid="stToolbar"]{{ display:none !important }}
 #MainMenu, footer{{ visibility:hidden; height:0 !important }}
@@ -309,10 +317,9 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     overscroll-behavior:none;
 }}
 .block-container{{ padding:0 !important; min-height:0 !important }}
-/* Garante que o fundo do app use a nova cor unificada (chat) */
 .stApp{{ background:var(--bg) !important; color:var(--text) !important }}
 
-/* ========= HEADER FIXO (Topo) ========= */
+/* ========= HEADER FIXO ========= */
 .header{{
     position:fixed; inset:0 0 auto 0; height:var(--header-height);
     display:flex; align-items:center; justify-content:space-between;
@@ -328,8 +335,8 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 }}
 .header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
 .user-circle {{
-    width: 32px; height: 32px; border-radius: 50%; 
-    background: #007bff; color: white; 
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #007bff; color: white;
     display: flex; align-items: center; justify-content: center;
     font-weight: 600; font-size: 1rem;
 }}
@@ -355,20 +362,11 @@ section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
 
-section[data-testid="stSidebar"] .sidebar-header{{
-    margin-top: var(--sidebar-items-top-gap) !important;
-}}
+section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-items-top-gap) !important; }}
 .sidebar-bar p,
-.sidebar-header p{{
-    margin: 0 !important;
-    line-height: 1.15 !important;
-}}
-.sidebar-bar{{
-    margin-top: var(--sidebar-sub-top-gap) !important;
-}}
-.hist-row:first-of-type{{
-    margin-top: var(--sidebar-list-start-gap) !important;
-}}
+.sidebar-header p{{ margin: 0 !important; line-height: 1.15 !important; }}
+.sidebar-bar{{ margin-top: var(--sidebar-sub-top-gap) !important; }}
+.hist-row:first-of-type{{ margin-top: var(--sidebar-list-start-gap) !important; }}
 
 div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
@@ -379,12 +377,12 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 .hist-row + .hist-row{{ margin-top:6px }}
 .hist-row:hover{{ background:#161a20 }}
 
-/* ========= CONTEÚDO / CHAT (Mensagens) ========= */
+/* ========= CONTEÚDO / CHAT ========= */
 .content{{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }}
 #chatCard, .chat-card{{
     position:relative;
     z-index:50 !important;
-    background:var(--bg) !important; 
+    background:var(--bg) !important;
     border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important;
     padding:20px;
     height:var(--card-height);
@@ -405,10 +403,10 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 .bubble.assistant{{ background:var(--bubble-assistant); border-bottom-left-radius:6px }}
 .chat-card a{{ color:var(--link); text-decoration:underline }} .chat-card a:hover{{ color:var(--link-hover) }}
 
-/* ========= CHAT INPUT (Fixação e Estilização) ========= */
+/* ========= CHAT INPUT ========= */
 [data-testid="stChatInput"]{{
     position:fixed !important;
-    left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important; 
+    left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
     transform:translateX(-50%) !important;
     bottom:var(--input-bottom) !important;
     width:min(var(--input-max), 96vw) !important;
@@ -495,7 +493,8 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <a href="#" style="text-decoration:none;color:#2563eb;font-weight:600;border:1px solid rgba(37,99,235,0.12);padding:8px 12px;border-radius:10px;display:inline-block;">⚙ Configurações</a>
+        <!-- Botão de sair: volta com ?logout=1 -->
+        <a href="?logout=1" style="text-decoration:none;color:#e5e7eb;font-weight:600;border:1px solid rgba(255,255,255,0.14);padding:8px 12px;border-radius:10px;display:inline-block;">🔒 Sair</a>
         <div style="text-align:right;font-size:0.9rem;color:var(--text);">
             <span style="font-weight:600;">{st.session_state.user_name}</span><br>
             <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.user_email}</span>
@@ -556,7 +555,7 @@ st.markdown("""
         const rect = input.getBoundingClientRect();
         const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
         const gap = parseInt(gapVar || '24', 10);
-        const alturaEfetiva = (window.innerHeight - rect.top) + gap; 
+        const alturaEfetiva = (window.innerHeight - rect.top) + gap;
         card.style.paddingBottom = alturaEfetiva + 'px';
         card.style.scrollPaddingBottom = alturaEfetiva + 'px';
     }
@@ -577,19 +576,19 @@ st.markdown("""
 
     const ro = new ResizeObserver(()=>{ajustaEspaco();});
     ro.observe(document.body);
-    
+
     window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
     window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
-    
+
     document.addEventListener('input',(e)=>{
         if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
             autoGrow();ajustaEspaco();
         }
     });
-    
+
     setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
     setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
-    
+
     const card = document.getElementById('chatCard');
     if(card){
         const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
@@ -621,7 +620,7 @@ if st.session_state.awaiting_answer and not st.session_state.answering_started:
 
 # 3. Processa a resposta do backend
 if st.session_state.awaiting_answer and st.session_state.answering_started:
-    
+
     # Chama a função do backend
     resposta = responder_pergunta(st.session_state.pending_question)
 
@@ -635,5 +634,5 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     st.session_state.answering_started = False
     st.session_state.pending_index = None
     st.session_state.pending_question = None
-    
+
     do_rerun()
