@@ -75,22 +75,22 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Login central (layout antigo), sem card, com cores novas e sem 'Press enter...'."""
+    """Login central (layout antigo) com logo maior, título central, degradê levemente mais escuro e bloco mais acima."""
     st.markdown("""
     <style>
     :root{
-        --login-max: 520px;           /* limite de largura do bloco */
-    }
-    /* Fundo mais claro */
-    .stApp{
-        background: radial-gradient(1100px 620px at 50% 35%, #2E5CB5 0%, #1B3E79 50%, #0E1C36 100%) !important;
-        min-height:100vh !important; overflow:hidden !important;
-    }
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{
-        display:none !important;
+        --login-max: 520px;   /* largura do bloco central */
+        --lift: 52px;         /* quanto sobe o bloco (ajuste fino) */
     }
 
-    /* Centralização absoluta */
+    /* Degradê ligeiramente mais escuro */
+    .stApp{
+        background: radial-gradient(1100px 620px at 50% 35%, #264E9A 0%, #16356B 50%, #0B1730 100%) !important;
+        min-height:100vh !important; overflow:hidden !important;
+    }
+    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important; }
+
+    /* Centralização vertical/horizontal */
     [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
     .block-container{
         height:100%;
@@ -98,26 +98,41 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
-    /* Zera estilos de card do código antigo */
+    /* Mesma coluna do layout antigo, mas sem card */
     div[data-testid="column"]:has(#login_card_anchor) > div{
-        background:transparent !important; color:inherit !important;
-        border-radius:0; box-shadow:none; padding:0; max-width:none; width:100%;
+        background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
         text-align:center;
     }
 
-    /* Stack central limitado (evita input gigante) */
+    /* Stack central limitado + ligeiro lift para cima */
     .login-stack{
         width:min(92vw, var(--login-max));
         margin:0 auto;
         text-align:center;
+        transform: translateY(calc(var(--lift) * -1));
     }
 
-    /* Tipografia com contraste */
-    .login-logo{ width:64px; height:64px; object-fit:contain; margin:0 auto 14px; display:block; }
-    .login-title{ font-size:1.6rem; font-weight:800; color:#F3F6FF; margin:6px 0 8px; letter-spacing:.2px; }
-    .login-sub{ font-size:1rem; color:#C9D7FF; margin:0 0 16px; }
+    /* Logo maior + destaque */
+    .login-logo{
+        width:88px; height:88px; object-fit:contain; display:block;
+        margin:0 auto 14px;
+        filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
+    }
 
-    /* Campo de e-mail e botão dentro do stack central */
+    /* Título bem central, com leve sombra para contraste */
+    .login-title{
+        display:block;
+        text-align:center;
+        font-size:1.8rem; font-weight:800; letter-spacing:.2px;
+        color:#F5F7FF; margin:6px 0 6px;
+        text-shadow: 0 1px 2px rgba(0,0,0,.35);
+    }
+
+    .login-sub{
+        font-size:1rem; color:#C9D7FF; margin:0 0 16px;
+    }
+
+    /* Campo e botão (inalterados, mas garantimos centralização) */
     .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
     .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
     .login-stack [data-testid="stTextInput"] input{
@@ -139,37 +154,43 @@ def render_login_screen():
 
     .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
-    /* Failsafe: esconde qualquer dica automática de submit */
+    /* Failsafe: oculta dicas automáticas do Streamlit */
     [data-testid="stFormSubmitter"] *,
     [data-testid="stTextInput"] div[aria-live="polite"]{ display:none !important; }
+
+    /* Em telas muito pequenas, reduz o lift pra não cortar nada */
+    @media (max-width: 480px){
+        :root{ --lift: 28px; }
+        .login-logo{ width:76px; height:76px; }
+        .login-title{ font-size:1.55rem; }
+    }
     </style>
     """, unsafe_allow_html=True)
 
-    # ===== layout em 3 colunas (mesma disposição de antes) =====
+    # ===== layout em 3 colunas (igual ao seu antigo) =====
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
-        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)  # âncora para CSS
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
         st.markdown('<div class="login-stack">', unsafe_allow_html=True)
 
-        # logo + textos
         if logo_b64:
             st.markdown(
                 f'<img class="login-logo" alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
                 unsafe_allow_html=True
             )
-        st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
-                    unsafe_allow_html=True)
 
-        # input (sem st.form → não aparece "Press enter…")
+        st.markdown('<span class="login-title">Quadra Engenharia</span>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+            unsafe_allow_html=True
+        )
+
         email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
 
-        # botão
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         clicou = st.button("Entrar", type="primary")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # validação
         if clicou:
             email = (email or "").strip().lower()
             if "@" not in email:
@@ -184,9 +205,10 @@ def render_login_screen():
 
         st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
                     unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)  # /login-stack
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
+
 
 
 
