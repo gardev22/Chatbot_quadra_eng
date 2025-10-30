@@ -462,7 +462,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pass_threshold and evidence_ok:
             pass_threshold = True
         if not pass_threshold:
-            return FALLBACK_MSG
+           blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
 
         blocos_relevantes = [r["block"] for r in reranked]
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
