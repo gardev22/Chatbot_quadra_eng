@@ -39,7 +39,7 @@ def _clear_query_params():
     try:
         st.query_params.clear()           # >= 1.33
     except Exception:
-        st.experimental_set_query_params()  # legado
+        st.experimental_set_query_params()  # legado (limpa params)
 
 def _get_query_params():
     """Lê os query params da URL (Streamlit novo e antigo)."""
@@ -506,18 +506,17 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <!-- Botão Sair: MESMA ABA (ajuste robusto de URL) -->
-        <a href="#"
-           onclick="
-             const u = new URL(window.location.href);
-             u.searchParams.set('logout','1');
-             window.location.href = u.toString();
-             return false;
-           "
-           style="text-decoration:none;color:#e5e7eb;font-weight:600;border:1px solid rgba(255,255,255,0.14);
-                  padding:8px 12px;border-radius:10px;display:inline-block;">
-           Sair
-        </a>
+
+        <!-- Botão Sair via GET (mesma aba, sem JS; aciona ?logout=1) -->
+        <form method="get" style="margin:0;">
+            <input type="hidden" name="logout" value="1">
+            <button type="submit"
+                style="cursor:pointer;background:transparent;border:1px solid rgba(255,255,255,0.14);
+                       color:#e5e7eb;font-weight:600;padding:8px 12px;border-radius:10px;">
+                Sair
+            </button>
+        </form>
+
         <div style="text-align:right;font-size:0.9rem;color:var(--text);">
             <span style="font-weight:600;">{st.session_state.user_name}</span><br>
             <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.user_email}</span>
