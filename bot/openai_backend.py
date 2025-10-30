@@ -1,4 +1,4 @@
-# openai_backend.py — Otimizado com Streaming e Lógica Simplificada
+# openai_backend.py — Drive refresh + índice sincronizado + caching por arquivo
 
 import os
 import io
@@ -15,30 +15,27 @@ from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-# MANTIDO o gpt-4o-mini por segurança, já que o gpt-5-mini deu erro na API.
-MODEL_ID = "gpt-4o-mini" 
+MODEL_ID = "gpt-4o-mini"
 
 # ========= PERFORMANCE & QUALIDADE =========
-USE_JSONL = True             # prefere JSON/JSONL do Drive (rápido)
-USE_CE = False               # CE desligado para máxima velocidade
-SKIP_CE_IF_ANN_BEST = 0.80   # Limiar alto para pular CE (se estivesse ativo)
-TOP_N_ANN = 24               # Bom equilíbrio entre recall e velocidade
-TOP_K = 6                    # Contexto base enviado ao LLM
+USE_JSONL = True
+USE_CE = False
+SKIP_CE_IF_ANN_BEST = 0.80
+TOP_N_ANN = 24
+TOP_K = 6
 MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
-# Limiar quando CE é usado vs quando só ANN é usado
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
-# Anti-truncamento
-MAX_TOKENS = 700             # ↑ aumenta espaço pra resposta
-REQUEST_TIMEOUT = 40         # ↑ evita corte por timeout
+MAX_TOKENS = 700
+REQUEST_TIMEOUT = 40
 TEMPERATURE = 0.15
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
 PRECOMP_VECTORS_NAME = "vectors.npy"
 PRECOMP_BLOCKS_NAME = "blocks.json"
-USE_PRECOMPUTED = False      # CORREÇÃO: Desativado para forçar a leitura dos novos arquivos do Drive
+USE_PRECOMPUTED = False
 
 # ========= DRIVE / AUTH =========
 FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
@@ -51,7 +48,7 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-# CORREÇÃO: Novo valor para forçar a recarga de TODOS os caches
+# Mantemos um valor estável; a invalidação agora é guiada por 'signature' dos arquivos.
 CACHE_BUSTER = "2025-10-27-DOCX-NOVO-03"
 
 # ========= HTTP SESSION =========
@@ -85,7 +82,6 @@ def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
     return False
 
 def _is_fallback_output(text: str) -> bool:
-    """Detecta fallback mesmo com espaços/variações mínimas."""
     if not text:
         return False
     norm = "\n".join([line.strip() for line in text.strip().splitlines() if line.strip()])
@@ -98,7 +94,6 @@ _NOINFO_RE = re.compile(
     r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
     re.IGNORECASE
 )
-
 def _looks_like_noinfo(text: str) -> bool:
     return bool(text and _NOINFO_RE.search(text))
 
@@ -125,11 +120,31 @@ def get_cross_encoder(_v=CACHE_BUSTER):
     return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
+def _drive_list_all(drive_service, query: str, fields: str):
+    """Lista paginada (até 1000 por página) para não perder arquivos grandes."""
+    all_files = []
+    page_token = None
+    while True:
+        resp = drive_service.files().list(
+            q=query,
+            fields=f"nextPageToken,{fields}",
+            pageSize=1000,
+            pageToken=page_token,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+            corpora="allDrives"
+        ).execute()
+        items = resp.get("files", []) or []
+        all_files.extend(items)
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return all_files
+
 def _list_by_mime_query(drive_service, folder_id, mime_query):
-    query = f"'{folder_id}' in parents and ({mime_query})"
+    query = f"'{folder_id}' in parents and ({mime_query}) and trashed = false"
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
-    results = drive_service.files().list(q=query, fields=fields).execute()
-    return results.get("files", []) or []
+    return _drive_list_all(drive_service, query, fields)
 
 def _list_docx_metadata(drive_service, folder_id):
     return _list_by_mime_query(
@@ -146,12 +161,12 @@ def _list_json_metadata(drive_service, folder_id):
 
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
-    results = drive_service.files().list(q=f"'{folder_id}' in parents", fields=fields).execute()
-    files = results.get("files", []) or []
+    query = f"'{folder_id}' in parents and trashed = false"
+    files = _drive_list_all(drive_service, query, fields)
     return {f["name"]: f for f in files if f.get("name") in wanted_names}
 
 def _download_bytes(drive_service, file_id):
-    request = drive_service.files().get_media(fileId=file_id)
+    request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
     return request.execute()
 
 def _download_text(drive_service, file_id) -> str:
@@ -202,7 +217,8 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     return out
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
-@st.cache_data(show_spinner=False)
+# Agora esta listagem tem TTL curto para detectar novos arquivos automaticamente.
+@st.cache_data(show_spinner=False, ttl=60)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
@@ -219,34 +235,41 @@ def _build_signature_json_docx(files_json, files_docx):
     }
     return json.dumps(payload, ensure_ascii=False)
 
-# CORREÇÃO: Função unificada e corrigida para carregar JSON e DOCX
+# Cache por arquivo (id + md5) — se o arquivo mudar, md5 muda e invalida só ele.
+@st.cache_data(show_spinner=False)
+def _parse_docx_cached(file_id: str, md5: str, name: str):
+    drive = get_drive_client()
+    return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
+
+@st.cache_data(show_spinner=False)
+def _parse_json_cached(file_id: str, md5: str, name: str):
+    drive = get_drive_client()
+    recs = _records_from_json_text(_download_text(drive, file_id))
+    return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
+
+# Função unificada para montar todos os blocos, direcionando para os caches por arquivo.
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
-    drive = get_drive_client()
     sources = _list_sources_cached(folder_id)
-    files_json = sources.get("json", [])
-    files_docx = sources.get("docx", [])
+    files_json = sources.get("json", []) if USE_JSONL else []
+    files_docx = sources.get("docx", []) or []
 
     blocks = []
-    
-    # 1. PROCESSAR TODOS OS ARQUIVOS JSON/JSONL (Se ativado)
-    if USE_JSONL and files_json:
-        for f in files_json:
-            try:
-                recs = _records_from_json_text(_download_text(drive, f["id"]))
-                blocks.extend(_json_records_to_blocks(recs, fallback_name=f["name"], file_id=f["id"])) 
-            except Exception:
-                continue
 
-    # 2. PROCESSAR TODOS OS ARQUIVOS DOCX
+    for f in files_json:
+        try:
+            md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
+            blocks.extend(_parse_json_cached(f["id"], md5, f["name"]))
+        except Exception:
+            continue
+
     for f in files_docx:
         try:
-            blocks.extend(_docx_to_blocks(_download_bytes(drive, f["id"]), f["name"], f["id"])) 
+            md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
+            blocks.extend(_parse_docx_cached(f["id"], md5, f["name"]))
         except Exception:
-            # Em caso de falha na leitura do DOCX (formato estranho, corrompido), apenas ignora.
             continue
-            
-    # Retorna todos os blocos, JSON e DOCX combinados.
+
     return blocks
 
 def load_all_blocks_cached(folder_id: str):
@@ -288,10 +311,7 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
         vectors = np.load(io.BytesIO(_download_bytes(drive, ids_map[PRECOMP_VECTORS_NAME]["id"])))
         blocks_json = json.loads(_download_text(drive, ids_map[PRECOMP_BLOCKS_NAME]["id"]))
         blocks = _json_records_to_blocks(blocks_json, fallback_name="precomp", file_id="precomp")
-        try:
-            import faiss
-        except Exception:
-            return None
+        import faiss
         faiss_index_bytes = _download_bytes(drive, ids_map[PRECOMP_FAISS_NAME]["id"])
         tmp_path = "/tmp/faiss.index"
         with open(tmp_path, "wb") as f:
@@ -309,13 +329,14 @@ def try_import_faiss():
     except Exception:
         return None
 
+# A PARTIR DAQUI: o índice é cacheado POR ASSINATURA (estado real da pasta).
 @st.cache_resource(show_spinner=False)
-def build_vector_index(_v=CACHE_BUSTER):
+def build_vector_index(signature: str, _v=CACHE_BUSTER):
     pre = _load_precomputed_index()
     if pre is not None:
         return pre
 
-    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
+    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)  # _sig == signature
     grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
     if not grouped:
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
@@ -324,10 +345,11 @@ def build_vector_index(_v=CACHE_BUSTER):
     texts = [b["texto"] for b in grouped]
 
     @st.cache_data(show_spinner=False)
-    def _embed_texts_cached(texts_, _v2=CACHE_BUSTER):
+    def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
+        # chaveamos pelo conteúdo e pela assinatura
         return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
 
-    emb = _embed_texts_cached(texts)
+    emb = _embed_texts_cached(texts, signature)
 
     faiss = try_import_faiss()
     use_faiss = False
@@ -340,9 +362,14 @@ def build_vector_index(_v=CACHE_BUSTER):
 
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
+def get_vector_index():
+    # Obtém a assinatura atual e devolve o índice cacheado para essa assinatura.
+    _blocks, signature = load_all_blocks_cached(FOLDER_ID)
+    return build_vector_index(signature)
+
 # ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
-    vecdb = build_vector_index()
+    vecdb = get_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
         return []
@@ -391,7 +418,6 @@ def montar_prompt_rag(pergunta, blocos):
         "1. Use SOMENTE as informações dos documentos. Não invente nada.\n"
         "2. Se a resposta não estiver escrita de forma explícita, mas puder ser deduzida a partir dos documentos, apresente a dedução de forma clara. Se atente a sinônimos para não dizer que não há resposta de forma equivocada.\n"
         f"3. Se realmente não houver nenhuma evidência, diga exatamente:\n{FALLBACK_MSG}\n"
-        # CORREÇÃO: REGRA 4 EXPLICITAMENTE CONTRA LISTAS E TÓPICOS
         "4. **A resposta deve ser APENAS em parágrafos coesos (em prosa), sem usar listas numeradas, listas com marcadores, travessões, ou qualquer símbolo de tópicos.** Sempre que fizer referência direta a um trecho do documento, coloque-o entre aspas.\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
@@ -410,15 +436,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not candidates:
             return FALLBACK_MSG
 
-        # Ordena pelo score ANN
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
 
-        # Decide CE com pulo inteligente
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
 
         if run_ce:
-            subset = candidates[:12] # reduz para os melhores 12
+            subset = candidates[:12]
             reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
             best_score = reranked[0]["score"] if reranked else 0.0
             pass_threshold = (best_score >= CE_SCORE_THRESHOLD)
@@ -430,10 +454,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
-
         if not pass_threshold and evidence_ok:
             pass_threshold = True
-
         if not pass_threshold:
             return FALLBACK_MSG
 
@@ -449,15 +471,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
-            "stream": True  # HABILITANDO STREAMING
+            "stream": True
         }
 
-        # LÓGICA DE STREAMING PARA PROCESSAR A RESPOSTA
         resposta_final = ""
         try:
             resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT, stream=True)
-            resp.raise_for_status() # Lança um erro para status codes ruins (4xx ou 5xx)
-
+            resp.raise_for_status()
             for chunk in resp.iter_lines():
                 if chunk:
                     chunk_str = chunk.decode('utf-8')
@@ -472,8 +492,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                             if content:
                                 resposta_final += content
                         except (json.JSONDecodeError, IndexError):
-                            continue # Ignora linhas que não são JSON válido ou têm estrutura inesperada
-            
+                            continue
         except requests.exceptions.RequestException as e:
             return f"❌ Erro de conexão com a API: {e}"
 
@@ -482,14 +501,11 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = resposta_final.strip()
 
-        # =============== Guardas finais (aplicadas na resposta completa) ===============
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
-
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        # Anexa link só se NÃO for fallback
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -507,22 +523,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 # ========================= CLI =========================
 if __name__ == "__main__":
     print("\nDigite sua pergunta (ou 'sair'):\n")
-    
-    # ⚠️ DEBUGGING TIPS: ⚠️
-    # Para forçar o debug da recarga, você pode descomentar o bloco abaixo.
-    # from time import sleep
-    # print("DEBUG: Forçando recarga de blocos para conferir o novo DOCX...")
-    # debug_blocks, _ = load_all_blocks_cached(FOLDER_ID)
-    # nomes_docs = set(b.get("pagina") for b in debug_blocks)
-    # print(f"DEBUG: Total de blocos lidos: {len(debug_blocks)}")
-    # print(f"DEBUG: Documentos lidos: {nomes_docs}")
-    # sleep(1) # Dá tempo para a leitura no terminal
-
     while True:
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
         print("\nResposta:\n" + "="*20)
-        # O uso de print(responder_pergunta(q)) aqui retorna a string final e não o streaming
-        print(responder_pergunta(q)) 
+        print(responder_pergunta(q))
         print("="*20 + "\n")
