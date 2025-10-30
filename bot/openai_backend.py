@@ -218,7 +218,7 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
 # Agora esta listagem tem TTL curto para detectar novos arquivos automaticamente.
-@st.cache_data(show_spinner=False, ttl=60)
+@st.cache_data(show_spinner=False, ttl=15)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
