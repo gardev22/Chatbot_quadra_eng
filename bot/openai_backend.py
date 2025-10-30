@@ -407,23 +407,36 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
 
 # ========================= PROMPT =========================
 def montar_prompt_rag(pergunta, blocos):
+    # 1) Caso sem blocos ou com contexto fraco: tente orientar só se for claramente um procedimento interno;
+    # caso contrário, devolva o FALLBACK_MSG.
+    if not blocos:
+        return (
+            "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
+            "Analise a pergunta e siga as regras:\n"
+            "• Se a pergunta estiver claramente relacionada a procedimentos internos corporativos (ex.: RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico), forneça uma orientação geral e prudente baseada em boas práticas organizacionais.\n"
+            "• Se a pergunta NÃO estiver relacionada a procedimentos internos ou não permitir orientação segura, responda exatamente o texto abaixo, sem acrescentar nada:\n"
+            f"{FALLBACK_MSG}\n\n"
+            "Saída obrigatória: A resposta deve ser APENAS em parágrafos coesos (em prosa), sem listas, marcadores ou travessões. "
+            "Não invente fatos específicos da Quadra. Seja prático e realista, explicando em prosa quem faz, onde faz (sistema/e-mail/formulário), quando/prazos e como proceder de forma geral. "
+            "Se, ainda assim, não houver base minimamente segura para orientar, retorne exatamente o texto de fallback acima.\n\n"
+            f"Pergunta: {pergunta}\n\n"
+            "➡️ Resposta:"
+        )
+
+    # 2) Caso com blocos: responda estritamente com base nos documentos.
     contexto = ""
     for b in blocos:
         contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
-    
+
     return (
         "Você é um assistente da Quadra especializado em Procedimentos Operacionais (POPs).\n"
-        "Sua missão é responder de forma clara e prática às perguntas com base nos documentos abaixo.\n\n"
-        "### Instruções internas (não descreva isso na resposta):\n"
-        "- Sempre tente compreender a intenção real da pergunta, mesmo que o usuário use linguagem informal, sinônimos, erros de digitação ou falta de acentos.\n"
-        "- Use as informações e indícios dos documentos para construir uma resposta coerente. Se o documento não disser explicitamente, mas permitir deduzir, explique a dedução em prosa.\n"
-        "- Prefira respostas úteis e completas em vez de dizer que não há informação, sempre que o contexto permitir uma interpretação segura.\n"
-        "- Apenas se realmente **não houver nada** relacionado ao assunto, retorne o texto de fallback.\n\n"
-        "### Formato da resposta:\n"
-        "A resposta deve ser APENAS em parágrafos coesos (em prosa), sem listas numeradas, sem marcadores, travessões ou símbolos de tópicos. "
+        "Responda exclusivamente com base nos documentos abaixo. Interprete a intenção mesmo com sinônimos, abreviações ou sem acentos. "
+        "Se não estiver escrito exatamente, mas puder ser deduzido com segurança, explique a dedução em prosa. "
+        "Se não houver evidência suficiente relacionada ao tema, retorne exatamente o texto de fallback ao final desta instrução.\n\n"
+        "Saída obrigatória: A resposta deve ser APENAS em parágrafos coesos (em prosa), sem listas numeradas, marcadores ou travessões. "
         "Sempre que fizer referência direta a um trecho do documento, coloque-o entre aspas. "
-        "Explique de forma natural quem faz, o que deve ser feito, onde (sistema/e-mail/formulário), quando, como e quem aprova, se essas informações existirem.\n\n"
-        f"Se, após analisar e deduzir, ainda não houver nenhuma informação relevante, responda exatamente:\n{FALLBACK_MSG}\n\n"
+        "Explique, quando aplicável, quem é responsável, o que fazer, onde (sistema/e-mail/formulário), quando/prazos, como executar e quem aprova/valida.\n\n"
+        f"Se, após analisar, ainda não houver evidência suficiente, responda exatamente:\n{FALLBACK_MSG}\n\n"
         f"{contexto}\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
