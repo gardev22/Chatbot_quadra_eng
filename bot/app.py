@@ -482,6 +482,8 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 
 # ====== HEADER HTML (Cabeçalho superior) ======
 # Usa os dados do usuário autenticado
+# ====== HEADER HTML (Cabeçalho superior) ======
+
 primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
 st.markdown(f"""
 <div class="header">
@@ -493,8 +495,12 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <!-- Botão de sair: volta com ?logout=1 -->
-        <a href="?logout=1" style="text-decoration:none;color:#e5e7eb;font-weight:600;border:1px solid rgba(255,255,255,0.14);padding:8px 12px;border-radius:10px;display:inline-block;">🔒 Sair</a>
+        <!-- Botão Sair: MESMA ABA -->
+        <a href="#" onclick="window.location.search='?logout=1'; return false;"
+           style="text-decoration:none;color:#e5e7eb;font-weight:600;border:1px solid rgba(255,255,255,0.14);
+                  padding:8px 12px;border-radius:10px;display:inline-block;">
+           Sair
+        </a>
         <div style="text-align:right;font-size:0.9rem;color:var(--text);">
             <span style="font-weight:600;">{st.session_state.user_name}</span><br>
             <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.user_email}</span>
@@ -503,6 +509,7 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
 
 # ====== SIDEBAR (Histórico) ======
 with st.sidebar:
