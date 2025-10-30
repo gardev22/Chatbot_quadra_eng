@@ -75,10 +75,14 @@ st.session_state.setdefault("pending_question", None)
 # ====== AUTENTICAÇÃO (Melhorada para o Card) ======
 
 def render_login_screen():
-    """Tela de bloqueio: fundo mais claro, textos legíveis e sem 'Press enter...'."""
+    """Tela de bloqueio centralizada, input menor e sem 'Press enter...'."""
     st.markdown("""
     <style>
-    /* Fundo mais claro (azul) e sem ruído visual */
+    :root{
+        --login-max: 520px;   /* largura máxima do grupo (ajuste aqui se quiser maior/menor) */
+    }
+
+    /* Fundo azul mais claro */
     .stApp{
         background: radial-gradient(1100px 620px at 50% 35%, #2E5CB5 0%, #1B3E79 50%, #0E1C36 100%) !important;
         min-height: 100vh !important; overflow: hidden !important;
@@ -87,7 +91,7 @@ def render_login_screen():
         display: none !important;
     }
 
-    /* Centralização absoluta do conteúdo */
+    /* Centralização perfeita na tela */
     [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
     .block-container{
         height:100%;
@@ -95,91 +99,93 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
-    /* Sem card branco: só os elementos centralizados */
+    /* Wrapper central com largura limitada (evita input gigante) */
     .login-wrap{
-        max-width: 640px; width: 92vw; text-align:center;
-        padding: 8px 16px;
+        width: min(92vw, var(--login-max));
+        text-align: center;
+        padding: 8px 12px;
     }
 
-    /* Tipografia com mais contraste */
-    .login-logo{ width:64px; height:64px; object-fit:contain; margin:4px auto 16px; display:block; }
-    .login-title{ font-size:1.6rem; font-weight:800; color:#F3F6FF; margin:6px 0 6px; letter-spacing:.2px; }
+    /* Logo + textos com bom contraste */
+    .login-logo{ width:64px; height:64px; object-fit:contain; margin:0 auto 14px; display:block; }
+    .login-title{ font-size:1.6rem; font-weight:800; color:#F3F6FF; margin:6px 0 8px; letter-spacing:.2px; }
     .login-sub{ font-size:1rem; color:#C9D7FF; margin:0 0 16px; }
 
-    /* Campo de e-mail e botão */
+    /* Campo e botão — largura = do wrapper (máx. 520px) */
+    .login-input{ width:100%; margin:0 auto; }
+    .login-input [data-testid="stTextInput"]{ width:100%; }
     .login-input [data-testid="stTextInput"] > label{ display:none !important; }
     .login-input [data-testid="stTextInput"] input{
+        width:100%;
         height:48px; font-size:1rem;
         border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
         background:#ffffff !important; color:#111827 !important;
-        box-shadow: 0 6px 24px rgba(6, 16, 35, .35);
+        box-shadow: 0 6px 20px rgba(6,16,35,.30);
     }
-    .login-input [data-testid="stTextInput"] input::placeholder{
-        color:#6B7280 !important;
-    }
-    .login-input .stButton > button{
-        width:auto; padding:0 18px; height:48px; border:none;
+    .login-input [data-testid="stTextInput"] input::placeholder{ color:#6B7280 !important; }
+
+    .login-actions{ width:100%; display:flex; justify-content:center; }
+    .login-actions .stButton > button{
+        padding:0 18px; height:48px; border:none;
         border-radius:10px; font-weight:700; font-size:1rem;
         background:#2E5CB5 !important; color:#ffffff !important;
         margin-top:12px;
-        box-shadow: 0 8px 22px rgba(11, 45, 110, .45);
+        box-shadow: 0 8px 22px rgba(11,45,110,.45);
     }
-    .login-input .stButton > button:hover{ filter:brightness(1.06); }
+    .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
-    /* Rodapé de consentimento com boa leitura */
     .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
-    /* (failsafe) esconda quaisquer dicas de 'Press enter...' se o Streamlit inserir */
-    [data-testid="stFormSubmitter"] *, 
+    /* Failsafe: esconde qualquer dica automática de submit do Streamlit */
+    [data-testid="stFormSubmitter"] *,
     [data-testid="stTextInput"] div[aria-live="polite"]{
         display:none !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    col = st.container()
-    with col:
-        st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+    # Conteúdo central
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
 
-        # Logo
-        if logo_b64:
-            st.markdown(
-                f'<img class="login-logo" alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
-                unsafe_allow_html=True
-            )
-
-        # Título e subtítulo (mais claros)
-        st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+    if logo_b64:
         st.markdown(
-            '<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+            f'<img class="login-logo" alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
             unsafe_allow_html=True
         )
 
-        # Input + Botão (sem st.form → sem mensagem “Press enter…”)
-        st.markdown('<div class="login-input">', unsafe_allow_html=True)
-        email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
-        clicou = st.button("Entrar", type="primary")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-title">Quadra Engenharia</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+        unsafe_allow_html=True
+    )
 
-        if clicou:
-            email = (email or "").strip().lower()
-            if "@" not in email:
-                st.error("Por favor, insira um e-mail válido.")
-            elif not email.endswith("@quadra.com.vc"):
-                st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
-            else:
-                st.session_state.authenticated = True
-                st.session_state.user_email = email
-                st.session_state.user_name = extract_name_from_email(email)
-                do_rerun()
+    # Input + botão (sem st.form → sem “Press enter…”)
+    st.markdown('<div class="login-input">', unsafe_allow_html=True)
+    email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown(
-            '<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
-            unsafe_allow_html=True
-        )
+    st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+    clicou = st.button("Entrar", type="primary")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    if clicou:
+        email = (email or "").strip().lower()
+        if "@" not in email:
+            st.error("Por favor, insira um e-mail válido.")
+        elif not email.endswith("@quadra.com.vc"):
+            st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
+        else:
+            st.session_state.authenticated = True
+            st.session_state.user_email = email
+            st.session_state.user_name = extract_name_from_email(email)
+            do_rerun()
 
+    st.markdown(
+        '<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 
