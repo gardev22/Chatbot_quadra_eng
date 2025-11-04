@@ -98,7 +98,6 @@ def extract_name_from_email(email):
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
-
 st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
 st.session_state.setdefault("user_email", "nao_autenticado@quadra.com.vc")
@@ -106,85 +105,99 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
+# Modo de autenticação: 'login' ou 'register'
+st.session_state.setdefault("auth_mode", "login")
+st.session_state.setdefault("just_registered", False)
 
-# ====== AUTENTICAÇÃO (Tela de Login) ======
+# ====== TELAS DE AUTENTICAÇÃO ======
+
+BASE_LOGIN_CSS = """
+<style>
+:root{ --login-max: 520px; --lift: 90px; }
+.stApp{
+    background: radial-gradient(1100px 620px at 50% 35%, #264E9A 0%, #16356B 50%, #0B1730 100%) !important;
+    min-height:100vh !important; overflow:hidden !important;
+}
+header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important; }
+
+[data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
+.block-container{
+    height:100%;
+    display:flex; align-items:center; justify-content:center;
+    padding:0 !important; margin:0 !important;
+}
+
+div[data-testid="column"]:has(#login_card_anchor) > div{
+    background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
+    text-align:center;
+}
+
+.login-stack{
+    width:min(92vw, var(--login-max));
+    margin:0 auto;
+    text-align:center;
+    transform: translateY(calc(var(--lift) * -1));
+}
+
+.login-title{
+    display:block;
+    text-align:center;
+    font-size:1.5rem; font-weight:800; letter-spacing:.2px;
+    color:#F5F7FF; margin:6px 0 6px;
+    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+
+.login-sub{
+    display:block; width:100%; text-align:center; font-size:1rem; color:#C9D7FF; margin:0 0 16px;
+}
+
+.login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
+.login-stack [data-testid="stTextInput"] > label{ display:none !important; }
+.login-stack [data-testid="stTextInput"] input{
+    width:100%; height:48px; font-size:1rem;
+    border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
+    background:#ffffff !important; color:#111827 !important;
+    box-shadow:0 6px 20px rgba(6,16,35,.30);
+}
+.login-stack [data-testid="stPassword"] input{
+    width:100%; height:48px; font-size:1rem;
+    border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
+    background:#ffffff !important; color:#111827 !important;
+    box-shadow:0 6px 20px rgba(6,16,35,.30);
+}
+
+.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+.login-actions .stButton > button{
+    padding:0 18px; height:48px; border:none;
+    border-radius:10px; font-weight:700; font-size:1rem;
+    background:#2E5CB5 !important; color:#ffffff !important;
+    margin-top:12px; box-shadow:0 8px 22px rgba(11,45,110,.45);
+}
+.login-actions .stButton > button:hover{ filter:brightness(1.06); }
+
+.link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
+.link-like .stButton>button{
+    background:transparent !important; border:none !important;
+    color: rgba(255,255,255,.82) !important; font-weight:600; font-size:.96rem;
+    text-decoration:underline; box-shadow:none !important; padding:0 !important; height:auto !important;
+}
+.link-like .stButton>button:hover{ color:#FFFFFF !important; }
+
+.login-stack > div{
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    outline: none !important; padding: 0 !important;
+}
+
+@media (max-width: 480px){
+    :root{ --lift: 28px; }
+    .login-title{ font-size:1.4rem; }
+}
+</style>
+"""
+
 def render_login_screen():
-    """Login central com botão ENTRAR centralizado, Enter funcionando e SEM contorno/aviso."""
-    st.markdown("""
-    <style>
-    :root{ --login-max: 520px; --lift: 90px; }
-
-    .stApp{
-        background: radial-gradient(1100px 620px at 50% 35%, #264E9A 0%, #16356B 50%, #0B1730 100%) !important;
-        min-height:100vh !important; overflow:hidden !important;
-    }
-    header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important; }
-
-    [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
-    .block-container{
-        height:100%;
-        display:flex; align-items:center; justify-content:center;
-        padding:0 !important; margin:0 !important;
-    }
-
-    div[data-testid="column"]:has(#login_card_anchor) > div{
-        background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
-        text-align:center;
-    }
-
-    .login-stack{
-        width:min(92vw, var(--login-max));
-        margin:0 auto;
-        text-align:center;
-        transform: translateY(calc(var(--lift) * -1));
-    }
-
-    .login-title{
-        display:block;
-        text-align:center;
-        font-size:1.5rem; font-weight:800; letter-spacing:.2px;
-        color:#F5F7FF; margin:6px 0 6px;
-        text-shadow: 0 1px 2px rgba(0,0,0,.35);
-    }
-
-    .login-sub{
-        display:block; width:100%; text-align:center; font-size:1rem; color:#C9D7FF; margin:0 0 16px;
-    }
-
-    .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
-    .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
-    .login-stack [data-testid="stTextInput"] input{
-        width:100%; height:48px; font-size:1rem;
-        border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
-        background:#ffffff !important; color:#111827 !important;
-        box-shadow:0 6px 20px rgba(6,16,35,.30);
-    }
-
-    .login-actions{ display:flex; justify-content:center; }
-    .login-actions .stButton > button{
-        padding:0 18px; height:48px; border:none;
-        border-radius:10px; font-weight:700; font-size:1rem;
-        background:#2E5CB5 !important; color:#ffffff !important;
-        margin-top:12px; box-shadow:0 8px 22px rgba(11,45,110,.45);
-    }
-    .login-actions .stButton > button:hover{ filter:brightness(1.06); }
-
-    .cadastro-link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
-    .cadastro-link{ color: rgba(255,255,255,.72) !important; font-weight:600; font-size:.96rem; text-decoration:none; }
-    .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
-
-    .login-stack > div{
-        background: transparent !important; border: none !important; box-shadow: none !important;
-        outline: none !important; padding: 0 !important;
-    }
-
-    @media (max-width: 480px){
-        :root{ --lift: 28px; }
-        .login-title{ font-size:1.4rem; }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
+    """Tela de Login"""
+    st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
@@ -205,6 +218,11 @@ def render_login_screen():
         st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
                     unsafe_allow_html=True)
 
+        # sucesso pós-cadastro
+        if st.session_state.get("just_registered"):
+            st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
+            st.session_state.just_registered = False
+
         # ---- ENTER sem form (sem st.rerun() no callback) ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
@@ -218,7 +236,6 @@ def render_login_screen():
             st.session_state.authenticated = True
             st.session_state.user_email = email_val
             st.session_state.user_name = extract_name_from_email(email_val)
-            # NÃO chama do_rerun() aqui; o Streamlit reroda automaticamente após o on_change.
 
         st.text_input(
             "E-mail",
@@ -231,14 +248,75 @@ def render_login_screen():
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary"):
             _try_login()
-            do_rerun()  # aqui pode forçar para transição imediata no clique
+            do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="cadastro-link-wrap"><span class="cadastro-link">Cadastrar usuário</span></div>',
-                    unsafe_allow_html=True)
+        # Link para cadastro (estilo texto)
+        st.markdown('<div class="link-wrap link-like">', unsafe_allow_html=True)
+        if st.button("Cadastrar usuário", key="btn_go_register"):
+            st.session_state.auth_mode = "register"
+            do_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.stop()
+
+def render_register_screen():
+    """Tela de Cadastro (e-mail + senha)"""
+    st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
+    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
+    with col_mid:
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-stack">', unsafe_allow_html=True)
+
+        if logo_b64:
+            st.markdown(
+                f'''
+                <img alt="Logo Quadra"
+                     src="data:image/png;base64,{logo_b64}"
+                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
+                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
+                ''',
+                unsafe_allow_html=True
+            )
+
+        st.markdown('<span class="login-title">Criar conta</span>', unsafe_allow_html=True)
+        st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
+                    unsafe_allow_html=True)
+
+        email = st.text_input("E-mail corporativo", key="reg_email",
+                              placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+        senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
+        confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
+
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        criar = st.button("Cadastrar", type="primary")
+        voltar = st.button("Voltar para login")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if voltar:
+            st.session_state.auth_mode = "login"
+            do_rerun()
+
+        if criar:
+            email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
+            if not email_ok:
+                st.error("Use um e-mail válido **@quadra.com.vc**.")
+            elif not senha or len(senha) < 6:
+                st.error("A senha deve ter pelo menos 6 caracteres.")
+            elif senha != confirma:
+                st.error("As senhas não conferem.")
+            else:
+                # Aqui você pluga no backend real (Supabase/DB).
+                # Por enquanto, só retornamos ao login com e-mail preenchido.
+                st.session_state.login_email = email.strip().lower()
+                st.session_state.auth_mode = "login"
+                st.session_state.just_registered = True
+                do_rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -248,8 +326,12 @@ def render_login_screen():
 #                         FLUXO PRINCIPAL
 # =================================================================
 
+# Se não autenticado, mostra login ou cadastro
 if not st.session_state.authenticated:
-    render_login_screen()
+    if st.session_state.auth_mode == "register":
+        render_register_screen()
+    else:
+        render_login_screen()
 
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
