@@ -104,7 +104,7 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central com botão ENTRAR 100% centralizado + submit no ENTER e sem a linha de termos."""
+    """Login central com botão ENTRAR centralizado, Enter funcionando e SEM contorno."""
     st.markdown("""
     <style>
     :root{
@@ -125,6 +125,7 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
+    /* coluna do login, sem cards/bordas */
     div[data-testid="column"]:has(#login_card_anchor) > div{
         background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
         text-align:center;
@@ -136,17 +137,6 @@ def render_login_screen():
         text-align:center;
         transform: translateY(calc(var(--lift) * -1));
     }
-    /* Remove QUALQUER contorno/caixa do formulário de login */
-.login-stack [data-testid="stForm"],
-.login-stack [data-testid="stForm"] > div,
-.login-stack form,
-.login-stack form > div{
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  padding: 0 !important;
-}
 
     .login-logo{
         width:88px; height:88px; object-fit:contain; display:block;
@@ -170,6 +160,7 @@ def render_login_screen():
         margin:0 0 16px;
     }
 
+    /* Campo de e-mail */
     .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
     .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
     .login-stack [data-testid="stTextInput"] input{
@@ -180,7 +171,7 @@ def render_login_screen():
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
 
-    /* Centraliza o botão */
+    /* Botão ENTRAR centralizado */
     .login-actions{ display:flex; justify-content:center; }
     .login-actions .stButton > button{
         padding:0 18px; height:48px; border:none;
@@ -191,6 +182,7 @@ def render_login_screen():
     }
     .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
+    /* Link "Cadastrar usuário" */
     .cadastro-link-wrap{
         width:100%;
         display:flex; justify-content:center;
@@ -201,6 +193,15 @@ def render_login_screen():
         font-weight:600; font-size:.96rem; text-decoration:none;
     }
     .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
+
+    /* Garantir que nenhum contorno apareça em volta do bloco do login */
+    .login-stack > div{
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+        padding: 0 !important;
+    }
 
     @media (max-width: 480px){
         :root{ --lift: 28px; }
@@ -228,30 +229,42 @@ def render_login_screen():
             unsafe_allow_html=True
         )
 
-        # >>>>>>>>>>>>>>>>>>>> ALTERAÇÃO: formulário para permitir Enter <<<<<<<<<<<<<<<<<<<<
-        with st.form("login_form", clear_on_submit=False):
-            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
-            st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-            submitted = st.form_submit_button("Entrar", type="primary")
-            st.markdown('</div>', unsafe_allow_html=True)
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        # ---- ENTER sem form (evita moldura) ----
+        def _try_login():
+            email_val = (st.session_state.get("login_email") or "").strip().lower()
+            if "@" not in email_val:
+                st.session_state["login_error"] = "Por favor, insira um e-mail válido."
+                return
+            if not email_val.endswith("@quadra.com.vc"):
+                st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
+                return
+            # sucesso
+            st.session_state["login_error"] = ""
+            st.session_state.authenticated = True
+            st.session_state.user_email = email_val
+            st.session_state.user_name = extract_name_from_email(email_val)
+            do_rerun()
 
-        # Link "Cadastrar usuário" (sem função por enquanto)
+        st.text_input(
+            "E-mail",
+            key="login_email",
+            placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed",
+            on_change=_try_login,  # dispara no ENTER
+        )
+
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        if st.button("Entrar", type="primary"):
+            _try_login()  # clique no botão
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Link "Cadastrar usuário" (placeholder)
         st.markdown('<div class="cadastro-link-wrap"><span class="cadastro-link">Cadastrar usuário</span></div>',
                     unsafe_allow_html=True)
 
-        # Mesma validação de antes, disparada tanto por clique quanto por Enter
-        if submitted:
-            email = (email or "").strip().lower()
-            if "@" not in email:
-                st.error("Por favor, insira um e-mail válido.")
-            elif not email.endswith("@quadra.com.vc"):
-                st.error("Acesso restrito. Use seu e-mail **@quadra.com.vc**.")
-            else:
-                st.session_state.authenticated = True
-                st.session_state.user_email = email
-                st.session_state.user_name = extract_name_from_email(email)
-                do_rerun()
+        # Mensagem de erro (se houver)
+        if st.session_state.get("login_error"):
+            st.error(st.session_state["login_error"])
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -268,10 +281,10 @@ if not st.session_state.authenticated:
 # ====== MARCAÇÃO (Formatação de Texto) ======
 def formatar_markdown_basico(text: str) -> str:
     if not text: return ""
-    text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\1" target="_blank" rel="noopener noreferrer">\1</a>', text)
-    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    text = text.replace("\n", "<br>")
+    text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\\1" target="_blank" rel="noopener noreferrer">\\1</a>', text)
+    text = re.sub(r"\\*\\*(.*?)\\*\\*", r"<b>\\1</b>", text)
+    text = re.sub(r"\\*(.*?)\\*", r"<i>\\1</i>", text)
+    text = text.replace("\\n", "<br>")
     return text
 
 def linkify(text: str) -> str:
@@ -295,6 +308,7 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-max: 900px;
     --input-bottom: 60px;
 
+    /* PALETA UNIFICADA */
     --bg:#1C1F26;
     --panel:#0B0D10;
     --panel-header:#14171C;
