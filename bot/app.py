@@ -104,7 +104,7 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central (layout antigo) com logo maior, título central, degradê levemente mais escuro e bloco mais acima."""
+    """Login central com botão Entrar centralizado e botão Cadastrar usuário abaixo (sem ação)."""
     st.markdown("""
     <style>
     :root{
@@ -161,7 +161,7 @@ def render_login_screen():
         font-size:1rem; color:#C9D7FF; margin:0 0 16px;
     }
 
-    /* Campo e botão (inalterados, mas garantimos centralização) */
+    /* Campo e botões */
     .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
     .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
     .login-stack [data-testid="stTextInput"] input{
@@ -181,9 +181,23 @@ def render_login_screen():
     }
     .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
+    /* Estilo do botão secundário (ghost) */
+    .login-actions.ghost .stButton > button{
+        padding:0 18px; height:44px;
+        border-radius:10px; font-weight:700; font-size:.98rem;
+        background:transparent !important; color:#E5E7EB !important;
+        border:1px solid rgba(255,255,255,.28) !important;
+        box-shadow:none !important;
+        margin-top:8px;
+    }
+    .login-actions.ghost .stButton > button:hover{
+        border-color:rgba(255,255,255,.45) !important;
+        filter:none !important;
+    }
+
     .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
-    /* Failsafe: remove QUALQUER dica tipo “Press enter to apply/submit” */
+    /* Remove dicas tipo “Press enter…” */
     .login-stack [data-testid="stTextInput"] div[aria-live],
     .login-stack [data-testid="stTextInput"] [role="status"],
     .login-stack [data-testid="stTextInput"] [data-testid="stTextInputHelp"],
@@ -200,7 +214,6 @@ def render_login_screen():
         pointer-events:none !important;
     }
 
-    /* Em telas muito pequenas, reduz o lift pra não cortar nada */
     @media (max-width: 480px){
         :root{ --lift: 28px; }
         .login-logo{ width:76px; height:76px; }
@@ -209,7 +222,7 @@ def render_login_screen():
     </style>
     """, unsafe_allow_html=True)
 
-    # ===== layout em 3 colunas (igual ao seu antigo) =====
+    # ===== layout em 3 colunas =====
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
@@ -229,8 +242,14 @@ def render_login_screen():
 
         email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
 
+        # Botão ENTRAR centralizado
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         clicou = st.button("Entrar", type="primary")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Botão CADASTRAR USUÁRIO (sem ação por enquanto)
+        st.markdown('<div class="login-actions ghost">', unsafe_allow_html=True)
+        _cadastro_click = st.button("Cadastrar usuário", key="cadastro_user")
         st.markdown('</div>', unsafe_allow_html=True)
 
         if clicou:
@@ -569,12 +588,13 @@ st.markdown("""
         const input = document.querySelector('[data-testid="stChatInput"]');
         const card = document.getElementById('chatCard');
         if(!input||!card) return;
-        const rect = input.getBoundingClientRect();
         const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
         const gap = parseInt(gapVar || '24', 10);
         const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-        card.style.paddingBottom = alturaEfetiva + 'px';
-        card.style.scrollPaddingBottom = alturaEfetiva + 'px';
+        const rect = input.getBoundingClientRect();
+        const altura = (window.innerHeight - rect.top) + gap;
+        card.style.paddingBottom = altura + 'px';
+        card.style.scrollPaddingBottom = altura + 'px';
     }
     function autoGrow(){
         const ta = document.querySelector('[data-testid="stChatInput"] textarea');
