@@ -104,7 +104,7 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central com botão Entrar centralizado e botão Cadastrar usuário abaixo (sem ação)."""
+    """Login central com os dois botões centralizados e 'Cadastrar usuário' sem contorno (texto branco)."""
     st.markdown("""
     <style>
     :root{
@@ -148,7 +148,7 @@ def render_login_screen():
         filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
     }
 
-    /* Título bem central, com leve sombra para contraste */
+    /* Título e subtítulo centralizados */
     .login-title{
         display:block;
         text-align:center;
@@ -156,8 +156,8 @@ def render_login_screen():
         color:#F5F7FF; margin:6px 0 6px;
         text-shadow: 0 1px 2px rgba(0,0,0,.35);
     }
-
     .login-sub{
+        text-align:center;
         font-size:1rem; color:#C9D7FF; margin:0 0 16px;
     }
 
@@ -171,31 +171,39 @@ def render_login_screen():
         background:#ffffff !important; color:#111827 !important;
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
-    .login-actions{ display:flex; justify-content:center; }
-    .login-actions .stButton > button{
+
+    /* Container dos botões centralizado */
+    .login-actions{
+        display:flex; justify-content:center; align-items:center;
+        width:100%;
+    }
+
+    /* Botão principal (Entrar) */
+    .login-actions.primary .stButton > button{
         padding:0 18px; height:48px; border:none;
         border-radius:10px; font-weight:700; font-size:1rem;
         background:#2E5CB5 !important; color:#ffffff !important;
         margin-top:12px;
         box-shadow:0 8px 22px rgba(11,45,110,.45);
     }
-    .login-actions .stButton > button:hover{ filter:brightness(1.06); }
+    .login-actions.primary .stButton > button:hover{ filter:brightness(1.06); }
 
-    /* Estilo do botão secundário (ghost) */
-    .login-actions.ghost .stButton > button{
-        padding:0 18px; height:44px;
-        border-radius:10px; font-weight:700; font-size:.98rem;
-        background:transparent !important; color:#E5E7EB !important;
-        border:1px solid rgba(255,255,255,.28) !important;
+    /* "Cadastrar usuário" sem contorno, só texto branco (estilo link) */
+    .login-actions.linklike .stButton > button{
+        background:transparent !important;
+        color:#FFFFFF !important;
+        border:none !important;
         box-shadow:none !important;
+        padding:8px 4px !important;
+        height:auto !important;
+        font-weight:700; font-size:.98rem;
+        text-decoration:underline transparent;
         margin-top:8px;
     }
-    .login-actions.ghost .stButton > button:hover{
-        border-color:rgba(255,255,255,.45) !important;
+    .login-actions.linklike .stButton > button:hover{
+        text-decoration:underline;
         filter:none !important;
     }
-
-    .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
     /* Remove dicas tipo “Press enter…” */
     .login-stack [data-testid="stTextInput"] div[aria-live],
@@ -242,13 +250,13 @@ def render_login_screen():
 
         email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
 
-        # Botão ENTRAR centralizado
-        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        # Botão ENTRAR (centralizado)
+        st.markdown('<div class="login-actions primary">', unsafe_allow_html=True)
         clicou = st.button("Entrar", type="primary")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão CADASTRAR USUÁRIO (sem ação por enquanto)
-        st.markdown('<div class="login-actions ghost">', unsafe_allow_html=True)
+        # "Cadastrar usuário" (texto branco sem contorno)
+        st.markdown('<div class="login-actions linklike">', unsafe_allow_html=True)
         _cadastro_click = st.button("Cadastrar usuário", key="cadastro_user")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -264,8 +272,7 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email)
                 do_rerun()
 
-        st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
-                    unsafe_allow_html=True)
+        # (Removida a mensagem de Termos/Privacidade)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
@@ -590,7 +597,6 @@ st.markdown("""
         if(!input||!card) return;
         const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
         const gap = parseInt(gapVar || '24', 10);
-        const alturaEfetiva = (window.innerHeight - rect.top) + gap;
         const rect = input.getBoundingClientRect();
         const altura = (window.innerHeight - rect.top) + gap;
         card.style.paddingBottom = altura + 'px';
