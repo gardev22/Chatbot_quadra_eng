@@ -136,33 +136,22 @@ def render_login_screen():
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
 
-    /* ===== PILHA CENTRALIZADA PARA OS CONTROLES ===== */
-    .login-actions-stack{
-        width:100%; display:flex; flex-direction:column;
-        align-items:center; justify-content:center; gap:12px; margin-top:12px;
-    }
-    .login-actions-stack .stButton > button{
+    /* botão principal */
+    .btn-primary .stButton>button{
         padding:0 18px; height:48px; border:none;
         border-radius:10px; font-weight:700; font-size:1rem;
         background:#2E5CB5 !important; color:#ffffff !important;
-        box-shadow:0 8px 22px rgba(11,45,110,.45);
+        margin-top:12px; box-shadow:0 8px 22px rgba(11,45,110,.45);
+        display:inline-flex; align-items:center; justify-content:center;
     }
-    .login-actions-stack .stButton > button:hover{ filter:brightness(1.06); }
+    .btn-primary .stButton>button:hover{ filter:brightness(1.06); }
 
-    /* Link "Cadastrar usuário" com menos destaque */
+    /* "Cadastrar usuário" como texto branco sem contorno */
     .cadastro-link{
-        color: rgba(255,255,255,.72) !important;
-        font-weight:600; font-size:.96rem; text-decoration:none;
-        display:inline-block; cursor:default;
+        margin-top:10px; display:inline-block; color:#FFFFFF !important;
+        font-weight:700; font-size:.98rem; text-decoration:underline transparent; cursor:default;
     }
-    .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
-
-    /* Remove dicas tipo “Press enter…” */
-    .login-stack [data-testid="stTextInput"] div[aria-live],
-    .login-stack [data-testid="stTextInput"] [role="status"],
-    .login-stack [data-testid="stTextInput"] [data-testid="stTextInputHelp"],
-    .login-stack [data-testid="stTextInput"] .st-keypress-hint],
-    .login-stack [data-testid="stFormSubmitter"]{ display:none !important; }
+    .cadastro-link:hover{ text-decoration:underline; }
 
     @media (max-width: 480px){
         :root{ --lift: 28px; }
@@ -188,11 +177,17 @@ def render_login_screen():
 
         email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
 
-        # ---- PILHA CENTRALIZADA: ENTRAR + CADASTRAR ----
-        st.markdown('<div class="login-actions-stack">', unsafe_allow_html=True)
-        clicou = st.button("Entrar", type="primary")
-        st.markdown('<span class="cadastro-link">Cadastrar usuário</span>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # ---- ENTRAR centralizado via colunas ----
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c2:
+            with st.container():
+                st.markdown('<div class="btn-primary">', unsafe_allow_html=True)
+                clicou = st.button("Entrar", type="primary")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+        # ---- "Cadastrar usuário" como texto branco, sem contorno (sem ação) ----
+        st.markdown('<div style="text-align:center;"><span class="cadastro-link">Cadastrar usuário</span></div>',
+                    unsafe_allow_html=True)
 
         if clicou:
             email_norm = (email or "").strip().lower()
