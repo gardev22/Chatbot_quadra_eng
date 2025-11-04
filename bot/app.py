@@ -75,9 +75,13 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# CORREÇÃO: Definição da logo_img_tag para uso no Header
+# CORREÇÃO: logo sempre com tamanho inline (evita "flash" gigante na transição)
 if logo_b64:
-    logo_img_tag = f'<img class="logo" src="data:image/png;base64,{logo_b64}" />'
+    logo_img_tag = (
+        f'<img alt="Logo Quadra" class="logo" '
+        f'style="height:44px;width:auto;display:inline-block" '
+        f'src="data:image/png;base64,{logo_b64}" />'
+    )
 else:
     logo_img_tag = '<span style="font-size: 2rem; color: #1C3364; font-weight: 900;">Q</span>'
 
@@ -138,12 +142,7 @@ def render_login_screen():
         transform: translateY(calc(var(--lift) * -1));
     }
 
-    .login-logo{
-        width:88px; height:88px; object-fit:contain; display:block;
-        margin:0 auto 14px;
-        filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
-    }
-
+    /* (mantido por compatibilidade, mas o tamanho agora é inline) */
     .login-title{
         display:block;
         text-align:center;
@@ -205,7 +204,6 @@ def render_login_screen():
 
     @media (max-width: 480px){
         :root{ --lift: 28px; }
-        .login-logo{ width:76px; height:76px; }
         .login-title{ font-size:1.4rem; }
     }
     </style>
@@ -218,8 +216,14 @@ def render_login_screen():
         st.markdown('<div class="login-stack">', unsafe_allow_html=True)
 
         if logo_b64:
+            # Logo com tamanho inline: elimina "flash" gigante entre reruns
             st.markdown(
-                f'<img class="login-logo" alt="Logo Quadra" src="data:image/png;base64,{logo_b64}"/>',
+                f'''
+                <img alt="Logo Quadra"
+                     src="data:image/png;base64,{logo_b64}"
+                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
+                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
+                ''',
                 unsafe_allow_html=True
             )
 
@@ -250,7 +254,7 @@ def render_login_screen():
             key="login_email",
             placeholder="seu.nome@quadra.com.vc",
             label_visibility="collapsed",
-            on_change=_try_login,  # dispara no ENTER
+            on_change=_try_login,  # disparo ao pressionar Enter
         )
 
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
