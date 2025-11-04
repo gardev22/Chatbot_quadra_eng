@@ -105,7 +105,7 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
-# Modo de autenticação: 'login' ou 'register'
+# Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
 
@@ -151,6 +151,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     display:block; width:100%; text-align:center; font-size:1rem; color:#C9D7FF; margin:0 0 16px;
 }
 
+/* Inputs */
 .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
 .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
 .login-stack [data-testid="stTextInput"] input{
@@ -166,23 +167,28 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
+/* Por padrão, TODO botão vira "link" (sem contorno/pílula) */
+.stButton > button{
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
+    padding:0 !important; height:auto !important;
+}
+
+/* Botões dentro de .login-actions viram o botão azul centralizado (Entrar / Cadastrar) */
 .login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .login-actions .stButton > button{
-    padding:0 18px; height:48px; border:none;
-    border-radius:10px; font-weight:700; font-size:1rem;
+    padding:0 18px !important; height:48px !important; border:none !important;
+    border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
     background:#2E5CB5 !important; color:#ffffff !important;
-    margin-top:12px; box-shadow:0 8px 22px rgba(11,45,110,.45);
+    margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
+    text-decoration:none !important;
 }
 .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
+/* Container para centralizar o "link" */
 .link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
-.link-like .stButton>button{
-    background:transparent !important; border:none !important;
-    color: rgba(255,255,255,.82) !important; font-weight:600; font-size:.96rem;
-    text-decoration:underline; box-shadow:none !important; padding:0 !important; height:auto !important;
-}
-.link-like .stButton>button:hover{ color:#FFFFFF !important; }
 
+/* Remover qualquer cartão/contorno */
 .login-stack > div{
     background: transparent !important; border: none !important; box-shadow: none !important;
     outline: none !important; padding: 0 !important;
@@ -223,7 +229,7 @@ def render_login_screen():
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- ENTER sem form (sem st.rerun() no callback) ----
+        # ---- ENTER sem form ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
             if "@" not in email_val:
@@ -245,17 +251,20 @@ def render_login_screen():
             on_change=_try_login,  # Enter
         )
 
+        # Botão ENTRAR (azul, centralizado, sem contorno extra)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        if st.button("Entrar", type="primary"):
+        if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Link para cadastro (estilo texto)
-        st.markdown('<div class="link-wrap link-like">', unsafe_allow_html=True)
-        if st.button("Cadastrar usuário", key="btn_go_register"):
-            st.session_state.auth_mode = "register"
-            do_rerun()
+        # "Cadastrar usuário" como link centralizado (sem pílula)
+        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1,1,1])
+        with col_b:
+            if st.button("Cadastrar usuário", key="btn_go_register"):
+                st.session_state.auth_mode = "register"
+                do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.get("login_error"):
@@ -293,9 +302,16 @@ def render_register_screen():
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
+        # Botão principal Cadastrar (azul)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        criar = st.button("Cadastrar", type="primary")
-        voltar = st.button("Voltar para login")
+        criar = st.button("Cadastrar", type="primary", key="btn_register")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Link "Voltar para login" (sem pílula)
+        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1,1,1])
+        with col_b:
+            voltar = st.button("Voltar para login", key="btn_back_login")
         st.markdown('</div>', unsafe_allow_html=True)
 
         if voltar:
@@ -311,8 +327,7 @@ def render_register_screen():
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
-                # Aqui você pluga no backend real (Supabase/DB).
-                # Por enquanto, só retornamos ao login com e-mail preenchido.
+                # Plugue seu backend aqui (Supabase/DB). Por enquanto, só volta ao login com aviso.
                 st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
                 st.session_state.just_registered = True
