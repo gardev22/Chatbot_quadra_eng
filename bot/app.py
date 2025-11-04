@@ -104,12 +104,15 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central (layout antigo) com logo maior, título central, degradê levemente mais escuro e bloco mais acima."""
+    """Login central com ajuste fino do botão ENTRAR e link 'Cadastrar usuário' centralizado."""
     st.markdown("""
     <style>
     :root{
         --login-max: 520px;   /* largura do bloco central */
         --lift: 90px;         /* quanto sobe o bloco (ajuste fino) */
+
+        /* 👉 Ajuste fino do botão ENTRAR (negativo = esquerda, positivo = direita) */
+        --enter-shift: -14px;  /* mude para -10px, -18px, 0px... conforme precisar */
     }
 
     /* Degradê ligeiramente mais escuro */
@@ -148,7 +151,7 @@ def render_login_screen():
         filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
     }
 
-    /* Título bem central, com leve sombra para contraste */
+    /* Título */
     .login-title{
         display:block;
         text-align:center;
@@ -161,7 +164,7 @@ def render_login_screen():
         font-size:1rem; color:#C9D7FF; margin:0 0 16px;
     }
 
-    /* Campo e botão (inalterados, mas garantimos centralização) */
+    /* Campo */
     .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
     .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
     .login-stack [data-testid="stTextInput"] input{
@@ -171,7 +174,10 @@ def render_login_screen():
         background:#ffffff !important; color:#111827 !important;
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
+
+    /* Botão ENTRAR (centralizado + deslocamento fino por --enter-shift) */
     .login-actions{ display:flex; justify-content:center; }
+    .login-actions .stButton{ transform: translateX(var(--enter-shift)); }
     .login-actions .stButton > button{
         padding:0 18px; height:48px; border:none;
         border-radius:10px; font-weight:700; font-size:1rem;
@@ -180,6 +186,18 @@ def render_login_screen():
         box-shadow:0 8px 22px rgba(11,45,110,.45);
     }
     .login-actions .stButton > button:hover{ filter:brightness(1.06); }
+
+    /* Link "Cadastrar usuário" centralizado (sem contorno) */
+    .cadastro-link-wrap{
+        width:100%;
+        display:flex; justify-content:center;
+        margin-top:28px;
+    }
+    .cadastro-link{
+        color: rgba(255,255,255,.72) !important;
+        font-weight:600; font-size:.96rem; text-decoration:none;
+    }
+    .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
 
     .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
 
@@ -233,6 +251,10 @@ def render_login_screen():
         clicou = st.button("Entrar", type="primary")
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # Link "Cadastrar usuário" centralizado (sem função por enquanto)
+        st.markdown('<div class="cadastro-link-wrap"><span class="cadastro-link">Cadastrar usuário</span></div>',
+                    unsafe_allow_html=True)
+
         if clicou:
             email = (email or "").strip().lower()
             if "@" not in email:
@@ -245,6 +267,7 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email)
                 do_rerun()
 
+        # (mantive sua mensagem; se quiser remover depois, me avise)
         st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
                     unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
