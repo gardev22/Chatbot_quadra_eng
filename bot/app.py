@@ -136,6 +136,17 @@ def render_login_screen():
         text-align:center;
         transform: translateY(calc(var(--lift) * -1));
     }
+    /* Remove QUALQUER contorno/caixa do formulário de login */
+.login-stack [data-testid="stForm"],
+.login-stack [data-testid="stForm"] > div,
+.login-stack form,
+.login-stack form > div{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+}
 
     .login-logo{
         width:88px; height:88px; object-fit:contain; display:block;
