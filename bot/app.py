@@ -104,7 +104,7 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central com botão ENTRAR 100% centralizado e sem a linha de termos."""
+    """Login central com botão ENTRAR 100% centralizado + submit no ENTER e sem a linha de termos."""
     st.markdown("""
     <style>
     :root{
@@ -112,14 +112,12 @@ def render_login_screen():
         --lift: 90px;         /* quanto sobe o bloco (ajuste fino) */
     }
 
-    /* Degradê ligeiramente mais escuro */
     .stApp{
         background: radial-gradient(1100px 620px at 50% 35%, #264E9A 0%, #16356B 50%, #0B1730 100%) !important;
         min-height:100vh !important; overflow:hidden !important;
     }
     header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important; }
 
-    /* Centralização vertical/horizontal */
     [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
     .block-container{
         height:100%;
@@ -127,13 +125,11 @@ def render_login_screen():
         padding:0 !important; margin:0 !important;
     }
 
-    /* Mesma coluna do layout antigo, mas sem card */
     div[data-testid="column"]:has(#login_card_anchor) > div{
         background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
         text-align:center;
     }
 
-    /* Stack central limitado + ligeiro lift para cima */
     .login-stack{
         width:min(92vw, var(--login-max));
         margin:0 auto;
@@ -141,14 +137,12 @@ def render_login_screen():
         transform: translateY(calc(var(--lift) * -1));
     }
 
-    /* Logo maior + destaque */
     .login-logo{
         width:88px; height:88px; object-fit:contain; display:block;
         margin:0 auto 14px;
         filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
     }
 
-    /* Título */
     .login-title{
         display:block;
         text-align:center;
@@ -157,7 +151,6 @@ def render_login_screen():
         text-shadow: 0 1px 2px rgba(0,0,0,.35);
     }
 
-    /* Subtítulo centralizado sem margem lateral escondida */
     .login-sub{
         display:block;
         width:100%;
@@ -166,7 +159,6 @@ def render_login_screen():
         margin:0 0 16px;
     }
 
-    /* Campo */
     .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
     .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
     .login-stack [data-testid="stTextInput"] input{
@@ -177,7 +169,7 @@ def render_login_screen():
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
 
-    /* Botão ENTRAR (centralizado) */
+    /* Centraliza o botão */
     .login-actions{ display:flex; justify-content:center; }
     .login-actions .stButton > button{
         padding:0 18px; height:48px; border:none;
@@ -188,7 +180,6 @@ def render_login_screen():
     }
     .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
-    /* Link "Cadastrar usuário" centralizado (sem contorno) */
     .cadastro-link-wrap{
         width:100%;
         display:flex; justify-content:center;
@@ -200,7 +191,6 @@ def render_login_screen():
     }
     .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
 
-    /* Em telas muito pequenas, reduz o lift pra não cortar nada */
     @media (max-width: 480px){
         :root{ --lift: 28px; }
         .login-logo{ width:76px; height:76px; }
@@ -209,7 +199,7 @@ def render_login_screen():
     </style>
     """, unsafe_allow_html=True)
 
-    # ===== layout em 3 colunas (igual ao seu antigo) =====
+    # ===== layout em 3 colunas =====
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
@@ -227,18 +217,20 @@ def render_login_screen():
             unsafe_allow_html=True
         )
 
-        email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+        # >>>>>>>>>>>>>>>>>>>> ALTERAÇÃO: formulário para permitir Enter <<<<<<<<<<<<<<<<<<<<
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+            st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+            submitted = st.form_submit_button("Entrar", type="primary")
+            st.markdown('</div>', unsafe_allow_html=True)
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-        # Botão Entrar (100% centralizado)
-        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        clicou = st.button("Entrar", type="primary")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Link "Cadastrar usuário" centralizado (sem função por enquanto)
+        # Link "Cadastrar usuário" (sem função por enquanto)
         st.markdown('<div class="cadastro-link-wrap"><span class="cadastro-link">Cadastrar usuário</span></div>',
                     unsafe_allow_html=True)
 
-        if clicou:
+        # Mesma validação de antes, disparada tanto por clique quanto por Enter
+        if submitted:
             email = (email or "").strip().lower()
             if "@" not in email:
                 st.error("Por favor, insira um e-mail válido.")
@@ -250,7 +242,6 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email)
                 do_rerun()
 
-        # (REMOVIDO: linha de termos/política)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
@@ -293,7 +284,6 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-max: 900px;
     --input-bottom: 60px;
 
-    /* PALETA UNIFICADA */
     --bg:#1C1F26;
     --panel:#0B0D10;
     --panel-header:#14171C;
@@ -508,7 +498,6 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <!-- Botão Sair: MESMA ABA, sem ícone, sem <form>/JS -->
         <a href="?logout=1" target="_self"
           style="text-decoration:none;background:transparent;
           border:1px solid rgba(255,255,255,0.14);
