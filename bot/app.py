@@ -104,15 +104,12 @@ st.session_state.setdefault("pending_question", None)
 
 # ====== AUTENTICAÇÃO (Tela de Login) ======
 def render_login_screen():
-    """Login central com ajuste fino do botão ENTRAR e link 'Cadastrar usuário' centralizado."""
+    """Login central com botão ENTRAR 100% centralizado e sem a linha de termos."""
     st.markdown("""
     <style>
     :root{
         --login-max: 520px;   /* largura do bloco central */
         --lift: 90px;         /* quanto sobe o bloco (ajuste fino) */
-
-        /* 👉 Ajuste fino do botão ENTRAR (negativo = esquerda, positivo = direita) */
-        --enter-shift: -14px;  /* mude para -10px, -18px, 0px... conforme precisar */
     }
 
     /* Degradê ligeiramente mais escuro */
@@ -160,8 +157,13 @@ def render_login_screen():
         text-shadow: 0 1px 2px rgba(0,0,0,.35);
     }
 
+    /* Subtítulo centralizado sem margem lateral escondida */
     .login-sub{
-        font-size:1rem; color:#C9D7FF; margin:0 0 16px;
+        display:block;
+        width:100%;
+        text-align:center;
+        font-size:1rem; color:#C9D7FF;
+        margin:0 0 16px;
     }
 
     /* Campo */
@@ -175,9 +177,8 @@ def render_login_screen():
         box-shadow:0 6px 20px rgba(6,16,35,.30);
     }
 
-    /* Botão ENTRAR (centralizado + deslocamento fino por --enter-shift) */
+    /* Botão ENTRAR (centralizado) */
     .login-actions{ display:flex; justify-content:center; }
-    .login-actions .stButton{ transform: translateX(var(--enter-shift)); }
     .login-actions .stButton > button{
         padding:0 18px; height:48px; border:none;
         border-radius:10px; font-weight:700; font-size:1rem;
@@ -198,25 +199,6 @@ def render_login_screen():
         font-weight:600; font-size:.96rem; text-decoration:none;
     }
     .cadastro-link:hover{ color:#FFFFFF !important; text-decoration:underline; }
-
-    .login-disc{ font-size:.82rem; color:#B8C6E8; margin-top:16px; }
-
-    /* Failsafe: remove QUALQUER dica tipo “Press enter to apply/submit” */
-    .login-stack [data-testid="stTextInput"] div[aria-live],
-    .login-stack [data-testid="stTextInput"] [role="status"],
-    .login-stack [data-testid="stTextInput"] [data-testid="stTextInputHelp"],
-    .login-stack [data-testid="stTextInput"] .st-keypress-hint,
-    .login-stack [data-testid="stTextInput"] .st-emotion-cache[aria-live],
-    .login-stack [data-testid="stTextInput"] + div[aria-live],
-    .login-stack [data-testid="stTextInput"] *[aria-live],
-    .login-stack [data-testid="stFormSubmitter"],
-    .login-stack [data-testid="stFormSubmitter"] *{
-        display:none !important;
-        height:0 !important;
-        overflow:hidden !important;
-        visibility:hidden !important;
-        pointer-events:none !important;
-    }
 
     /* Em telas muito pequenas, reduz o lift pra não cortar nada */
     @media (max-width: 480px){
@@ -247,6 +229,7 @@ def render_login_screen():
 
         email = st.text_input("E-mail", placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
 
+        # Botão Entrar (100% centralizado)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         clicou = st.button("Entrar", type="primary")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -267,9 +250,7 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email)
                 do_rerun()
 
-        # (mantive sua mensagem; se quiser remover depois, me avise)
-        st.markdown('<div class="login-disc">Ao fazer login, você concorda com nossos Termos de Serviço e Política de Privacidade.</div>',
-                    unsafe_allow_html=True)
+        # (REMOVIDO: linha de termos/política)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
