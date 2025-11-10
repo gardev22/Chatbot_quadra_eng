@@ -78,7 +78,7 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# Logo do header com tamanho inline (evita “flash” gigante)
+# Logo do header com tamanho inline
 if logo_b64:
     logo_img_tag = (
         f'<img alt="Logo Quadra" class="logo" '
@@ -167,38 +167,43 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* BOTÃO PRIMÁRIO (Entrar / Cadastrar na tela de cadastro) */
-.login-stack .stButton > button{
+/* Por padrão, TODO botão vira "link" (sem contorno/pílula) */
+.stButton > button{
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
+    padding:0 !important; height:auto !important;
+}
+
+/* Botões principais (Entrar / Cadastrar) */
+.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+.login-actions .stButton > button{
     padding:0 18px !important; height:48px !important; border:none !important;
     border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
     background:#2E5CB5 !important; color:#ffffff !important;
     margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
     text-decoration:none !important;
 }
-.login-stack .stButton > button:hover{ filter:brightness(1.06); }
+.login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
-/* BOTÃO SECUNDÁRIO DISCRETO (Cadastrar usuário na tela de login) */
-.login-stack .secondary-actions .stButton > button{
-    height:44px !important; padding:0 16px !important;
-    border-radius:10px !important; font-weight:600 !important; font-size:.98rem !important;
-    background:rgba(255,255,255,.10) !important;  /* azul translúcido ligeiro */
-    color:#E9F1FF !important;
-    border:1px solid rgba(255,255,255,.22) !important;
-    box-shadow:0 6px 18px rgba(6,16,35,.35) !important;
-    text-decoration:none !important;
-}
-.login-stack .secondary-actions .stButton > button:hover{
-    background:rgba(255,255,255,.14) !important;
-    border-color:rgba(255,255,255,.30) !important;
-}
-
-/* Link centrado (mantido para "Voltar para login" na tela de cadastro) */
+/* Link-wrap (Cadastrar usuário / Voltar para login) — GHOST DISCRETO */
 .link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .link-wrap .stButton > button{
-    background:transparent !important; border:none !important; box-shadow:none !important;
-    color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
-    padding:0 !important; height:auto !important;
+    text-decoration:none !important;
+    background:rgba(255,255,255,.06) !important;
+    border:1px solid rgba(255,255,255,.22) !important;
+    color:#E8EEF9 !important;
+    padding:10px 16px !important;
+    height:42px !important;
+    border-radius:12px !important;
+    box-shadow:none !important;
+    font-weight:600 !important;
+    transition:background .12s ease, border-color .12s ease, transform .02s ease;
 }
+.link-wrap .stButton > button:hover{
+    background:rgba(255,255,255,.10) !important;
+    border-color:rgba(255,255,255,.28) !important;
+}
+.link-wrap .stButton > button:active{ transform:translateY(1px); }
 
 /* Remover qualquer cartão/contorno */
 .login-stack > div{
@@ -236,12 +241,10 @@ def render_login_screen():
         st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
                     unsafe_allow_html=True)
 
-        # sucesso pós-cadastro
         if st.session_state.get("just_registered"):
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- ENTER sem form ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
             if "@" not in email_val:
@@ -260,18 +263,18 @@ def render_login_screen():
             key="login_email",
             placeholder="seu.nome@quadra.com.vc",
             label_visibility="collapsed",
-            on_change=_try_login,  # Enter
+            on_change=_try_login,
         )
 
-        # Botão ENTRAR (primário)
+        # Botão ENTRAR (azul)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # "Cadastrar usuário" como BOTÃO SECUNDÁRIO discreto
-        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
+        # "Cadastrar usuário" — ghost discreto
+        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
             if st.button("Cadastrar usuário", key="btn_go_register"):
@@ -314,12 +317,12 @@ def render_register_screen():
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
-        # Botão principal Cadastrar (primário)
+        # Botão principal Cadastrar (azul)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Link "Voltar para login"
+        # "Voltar para login" — ghost discreto
         st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -334,12 +337,11 @@ def render_register_screen():
             email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
             if not email_ok:
                 st.error("Use um e-mail válido **@quadra.com.vc**.")
-            elif not senha or len(senha) < 6:  # corrigido
+            elif not senha or len(senha) < 6:
                 st.error("A senha deve ter pelo menos 6 caracteres.")
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
-                # Plugue seu backend aqui (Supabase/DB). Por enquanto, só volta ao login com aviso.
                 st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
                 st.session_state.just_registered = True
@@ -430,7 +432,14 @@ section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
 
-section[data-testid="stSidebar"] .sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
+section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-items-top-gap) !important; }}
+.sidebar-bar p, .sidebar-header p{{ margin: 0 !important; line-height: 1.15 !important; }}
+.sidebar-bar{{ margin-top: var(--sidebar-sub-top-gap) !important; }}
+.hist-row:first-of-type{{ margin-top: var(--sidebar-list-start-gap) !important; }}
+
+div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
+
+.sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
 .sidebar-sub{{ font-size:.88rem; color:var(--muted) }}
 .hist-empty{{ color:var(--muted); font-size:.9rem; padding:8px 10px }}
 .hist-row{{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
