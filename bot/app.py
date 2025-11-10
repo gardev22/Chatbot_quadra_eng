@@ -78,7 +78,7 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# Logo do header com tamanho inline
+# Logo do header com tamanho inline (evita “flash” gigante)
 if logo_b64:
     logo_img_tag = (
         f'<img alt="Logo Quadra" class="logo" '
@@ -154,12 +154,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 /* Inputs */
 .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
 .login-stack [data-testid="stTextInput"] > label{ display:none !important; }
-.login-stack [data-testid="stTextInput"] input{
-    width:100%; height:48px; font-size:1rem;
-    border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
-    background:#ffffff !important; color:#111827 !important;
-    box-shadow:0 6px 20px rgba(6,16,35,.30);
-}
+.login-stack [data-testid="stTextInput"] input,
 .login-stack [data-testid="stPassword"] input{
     width:100%; height:48px; font-size:1rem;
     border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
@@ -167,49 +162,34 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* Por padrão, TODO botão vira "link" (sem contorno/pílula) */
-.stButton > button{
-    background:transparent !important; border:none !important; box-shadow:none !important;
-    color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
-    padding:0 !important; height:auto !important;
+/* ===== Reset dos botões na área de login: formato de botão discreto por padrão ===== */
+.login-stack .stButton > button{
+    height:44px !important; padding:0 16px !important;
+    border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
+    background:rgba(255,255,255,.08) !important; color:#E6EEFF !important;
+    border:1px solid rgba(255,255,255,.18) !important;
+    box-shadow:0 6px 16px rgba(7,22,50,.35) !important;
+    text-decoration:none !important;
 }
+.login-stack .stButton > button:hover{ filter:brightness(1.06); }
 
-/* Botões principais (Entrar / Cadastrar) */
+/* ===== Botão primário (destaque) ===== */
 .login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .login-actions .stButton > button{
-    padding:0 18px !important; height:48px !important; border:none !important;
+    height:48px !important; padding:0 20px !important;
     border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
-    background:#2E5CB5 !important; color:#ffffff !important;
-    margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
-    text-decoration:none !important;
+    background:#2E5CB5 !important; color:#ffffff !important; border:1px solid rgba(255,255,255,.20) !important;
+    box-shadow:0 10px 24px rgba(11,45,110,.45) !important;
 }
-.login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
-/* Link-wrap (Cadastrar usuário / Voltar para login) — GHOST DISCRETO */
-.link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
-.link-wrap .stButton > button{
-    text-decoration:none !important;
-    background:rgba(255,255,255,.06) !important;
-    border:1px solid rgba(255,255,255,.22) !important;
-    color:#E8EEF9 !important;
-    padding:10px 16px !important;
-    height:42px !important;
-    border-radius:12px !important;
-    box-shadow:none !important;
-    font-weight:600 !important;
-    transition:background .12s ease, border-color .12s ease, transform .02s ease;
+/* ===== Botões secundários (harmonizados e discretos) ===== */
+.secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
+.secondary-actions .stButton > button{
+    background:rgba(255,255,255,.08) !important; color:#D7E3FF !important;
+    border:1px solid rgba(255,255,255,.18) !important; height:44px !important; padding:0 16px !important;
+    box-shadow:0 6px 16px rgba(7,22,50,.35) !important;
 }
-.link-wrap .stButton > button:hover{
-    background:rgba(255,255,255,.10) !important;
-    border-color:rgba(255,255,255,.28) !important;
-}
-.link-wrap .stButton > button:active{ transform:translateY(1px); }
-
-/* Remover qualquer cartão/contorno */
-.login-stack > div{
-    background: transparent !important; border: none !important; box-shadow: none !important;
-    outline: none !important; padding: 0 !important;
-}
+.secondary-actions .stButton > button:hover{ background:rgba(255,255,255,.12) !important; }
 
 @media (max-width: 480px){
     :root{ --lift: 28px; }
@@ -241,10 +221,12 @@ def render_login_screen():
         st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
                     unsafe_allow_html=True)
 
+        # sucesso pós-cadastro
         if st.session_state.get("just_registered"):
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
+        # ---- ENTER sem form ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
             if "@" not in email_val:
@@ -263,18 +245,18 @@ def render_login_screen():
             key="login_email",
             placeholder="seu.nome@quadra.com.vc",
             label_visibility="collapsed",
-            on_change=_try_login,
+            on_change=_try_login,  # Enter
         )
 
-        # Botão ENTRAR (azul)
+        # Botão ENTRAR (primário/destaque)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # "Cadastrar usuário" — ghost discreto
-        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
+        # Botão secundário centralizado: Cadastrar usuário
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
             if st.button("Cadastrar usuário", key="btn_go_register"):
@@ -317,13 +299,13 @@ def render_register_screen():
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
-        # Botão principal Cadastrar (azul)
+        # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # "Voltar para login" — ghost discreto
-        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
+        # Botão secundário: Voltar para login
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
             voltar = st.button("Voltar para login", key="btn_back_login")
@@ -342,6 +324,7 @@ def render_register_screen():
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
+                # Plugue seu backend aqui (Supabase/DB). Por enquanto, só volta ao login com aviso.
                 st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
                 st.session_state.just_registered = True
@@ -363,17 +346,27 @@ if not st.session_state.authenticated:
         render_login_screen()
 
 # ====== MARCAÇÃO ======
+
 def formatar_markdown_basico(text: str) -> str:
+    """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
+
+    # Escapa HTML de origem para evitar injeção
     safe = escape(text)
+
+    # Links (usa lambda para não ter problema de \1 literal)
     safe = re.sub(
         r'(https?://[^\s<>"\]]+)',
         lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
         safe
     )
+
+    # **negrito** e *itálico*
     safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+
+    # Quebra de linha real
     safe = safe.replace('\n', '<br>')
     return safe
 
