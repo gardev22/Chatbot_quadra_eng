@@ -349,13 +349,29 @@ if not st.session_state.authenticated:
         render_login_screen()
 
 # ====== MARCAÇÃO ======
+
 def formatar_markdown_basico(text: str) -> str:
-    if not text: return ""
-    text = re.sub(r'(https?://[^\s<>"\]]+)', r'<a href="\\1" target="_blank" rel="noopener noreferrer">\\1</a>', text)
-    text = re.sub(r"\\*\\*(.*?)\\*\\*", r"<b>\\1</b>", text)
-    text = re.sub(r"\\*(.*?)\\*", r"<i>\\1</i>", text)
-    text = text.replace("\\n", "<br>")
-    return text
+    """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
+    if not text:
+        return ""
+
+    # Escapa HTML de origem para evitar injeção
+    safe = escape(text)
+
+    # Links (usa lambda para não ter problema de \1 literal)
+    safe = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
+        safe
+    )
+
+    # **negrito** e *itálico* (agora com barras corretas)
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
+    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+
+    # Quebra de linha real
+    safe = safe.replace('\n', '<br>')
+    return safe
 
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
