@@ -275,7 +275,7 @@ def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
 
-    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: mostra e deixa rótulos brancos ---
+    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: rótulos brancos ---
     st.markdown("""
     <style>
     .login-stack.reg [data-testid="stTextInput"] > label,
@@ -309,11 +309,11 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        # 1ª barra com rótulo "E-mail" visível
-        email = st.text_input("E-mail", key="reg_email",
+        # Rótulos exatamente como solicitado
+        email = st.text_input("Email", key="reg_email",
                               placeholder="seu.nome@quadra.com.vc", label_visibility="visible")
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
-        confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
+        confirma = st.text_input("Confirmar Senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
         # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
@@ -371,7 +371,7 @@ def formatar_markdown_basico(text: str) -> str:
     # Escapa HTML de origem para evitar injeção
     safe = escape(text)
 
-    # Links (usa lambda para não ter problema de \1 literal)
+    # Links
     safe = re.sub(
         r'(https?://[^\s<>"\]]+)',
         lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
