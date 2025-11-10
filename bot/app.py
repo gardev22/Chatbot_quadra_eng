@@ -162,7 +162,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* ===== Reset dos botões na área de login: formato de botão discreto por padrão ===== */
+/* ===== Reset dos botões na área de login ===== */
 .login-stack .stButton > button{
     height:44px !important; padding:0 16px !important;
     border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
@@ -275,11 +275,15 @@ def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
 
-    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: rótulos brancos ---
+    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: rótulos 100% brancos ---
     st.markdown("""
     <style>
-    .login-stack.reg [data-testid="stTextInput"] > label,
-    .login-stack.reg [data-testid="stPassword"] > label{
+    /* Torna os rótulos visíveis e brancos, cobrindo variações de DOM do Streamlit */
+    .login-stack.reg [data-testid="stTextInput"] label,
+    .login-stack.reg [data-testid="stPassword"] label,
+    .login-stack.reg [data-testid="stWidgetLabel"],
+    .login-stack.reg [data-testid="stWidgetLabel"] > p,
+    .login-stack.reg label{
         display:block !important;
         color:#FFFFFF !important;
         font-weight:600 !important;
