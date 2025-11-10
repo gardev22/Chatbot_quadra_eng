@@ -167,10 +167,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* Centralização do container de botões */
-.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
-
-/* ===== NOVO: estilo padrão de BOTÃO para tudo dentro da tela de login/cadastro ===== */
+/* BOTÃO PRIMÁRIO (Entrar / Cadastrar na tela de cadastro) */
 .login-stack .stButton > button{
     padding:0 18px !important; height:48px !important; border:none !important;
     border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
@@ -180,15 +177,28 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 }
 .login-stack .stButton > button:hover{ filter:brightness(1.06); }
 
-/* ===== NOVO: itens que estiverem dentro de .link-wrap viram "link" (Cadastrar usuário, Voltar para login) ===== */
+/* BOTÃO SECUNDÁRIO DISCRETO (Cadastrar usuário na tela de login) */
+.login-stack .secondary-actions .stButton > button{
+    height:44px !important; padding:0 16px !important;
+    border-radius:10px !important; font-weight:600 !important; font-size:.98rem !important;
+    background:rgba(255,255,255,.10) !important;  /* azul translúcido ligeiro */
+    color:#E9F1FF !important;
+    border:1px solid rgba(255,255,255,.22) !important;
+    box-shadow:0 6px 18px rgba(6,16,35,.35) !important;
+    text-decoration:none !important;
+}
+.login-stack .secondary-actions .stButton > button:hover{
+    background:rgba(255,255,255,.14) !important;
+    border-color:rgba(255,255,255,.30) !important;
+}
+
+/* Link centrado (mantido para "Voltar para login" na tela de cadastro) */
+.link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .link-wrap .stButton > button{
     background:transparent !important; border:none !important; box-shadow:none !important;
     color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
     padding:0 !important; height:auto !important;
 }
-
-/* Container para centralizar o "link" */
-.link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 
 /* Remover qualquer cartão/contorno */
 .login-stack > div{
@@ -253,15 +263,15 @@ def render_login_screen():
             on_change=_try_login,  # Enter
         )
 
-        # Botão ENTRAR (agora com visual de botão primário)
+        # Botão ENTRAR (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # "Cadastrar usuário" como link centralizado
-        st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
+        # "Cadastrar usuário" como BOTÃO SECUNDÁRIO discreto
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
             if st.button("Cadastrar usuário", key="btn_go_register"):
@@ -304,7 +314,7 @@ def render_register_screen():
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
-        # Botão principal Cadastrar (botão primário)
+        # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -324,7 +334,7 @@ def render_register_screen():
             email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
             if not email_ok:
                 st.error("Use um e-mail válido **@quadra.com.vc**.")
-            elif not senha or len(senha) < 6:  # corrigido 'or'
+            elif not senha or len(senha) < 6:  # corrigido
                 st.error("A senha deve ter pelo menos 6 caracteres.")
             elif senha != confirma:
                 st.error("As senhas não conferem.")
@@ -352,7 +362,6 @@ if not st.session_state.authenticated:
 
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
     safe = escape(text)
