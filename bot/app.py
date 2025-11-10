@@ -167,36 +167,24 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* Por padrão, TODO botão vira "link" (sem contorno/pílula) */
-.stButton > button{
+/* Centralização do container de botões */
+.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+
+/* ===== NOVO: estilo padrão de BOTÃO para tudo dentro da tela de login/cadastro ===== */
+.login-stack .stButton > button{
+    padding:0 18px !important; height:48px !important; border:none !important;
+    border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
+    background:#2E5CB5 !important; color:#ffffff !important;
+    margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
+    text-decoration:none !important;
+}
+.login-stack .stButton > button:hover{ filter:brightness(1.06); }
+
+/* ===== NOVO: itens que estiverem dentro de .link-wrap viram "link" (Cadastrar usuário, Voltar para login) ===== */
+.link-wrap .stButton > button{
     background:transparent !important; border:none !important; box-shadow:none !important;
     color: rgba(255,255,255,.82) !important; text-decoration:underline !important;
     padding:0 !important; height:auto !important;
-}
-
-/* Botões dentro de .login-actions viram o botão azul centralizado (Entrar / Cadastrar) */
-.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
-.login-actions .stButton > button{
-    padding:0 18px !important; height:48px !important; border:none !important;
-    border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
-    background:#2E5CB5 !important; color:#ffffff !important;
-    margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
-    text-decoration:none !important;
-}
-.login-actions .stButton > button:hover{ filter:brightness(1.06); }
-
-/* === Fallback exclusivo do botão ENTRAR === */
-div[data-testid="stVerticalBlock"]:has(> #login_actions)
-  + div[data-testid="stVerticalBlock"] .stButton > button{
-    padding:0 18px !important; height:48px !important; border:none !important;
-    border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
-    background:#2E5CB5 !important; color:#ffffff !important;
-    margin-top:12px !important; box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
-    text-decoration:none !important;
-}
-div[data-testid="stVerticalBlock"]:has(> #login_actions)
-  + div[data-testid="stVerticalBlock"]{
-    display:flex; justify-content:center;
 }
 
 /* Container para centralizar o "link" */
@@ -265,14 +253,14 @@ def render_login_screen():
             on_change=_try_login,  # Enter
         )
 
-        # Botão ENTRAR — mesmo visual de botão, com fallback robusto
-        st.markdown('<div id="login_actions" class="login-actions">', unsafe_allow_html=True)
+        # Botão ENTRAR (agora com visual de botão primário)
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # "Cadastrar usuário" como link centralizado (sem pílula)
+        # "Cadastrar usuário" como link centralizado
         st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -316,12 +304,12 @@ def render_register_screen():
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
-        # Botão principal Cadastrar (azul)
+        # Botão principal Cadastrar (botão primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Link "Voltar para login" (sem pílula)
+        # Link "Voltar para login"
         st.markdown('<div class="link-wrap">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -336,7 +324,7 @@ def render_register_screen():
             email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
             if not email_ok:
                 st.error("Use um e-mail válido **@quadra.com.vc**.")
-            elif not senha or len(senha) < 6:   # <<< corrigido: 'or' em vez de 'ou'
+            elif not senha or len(senha) < 6:  # corrigido 'or'
                 st.error("A senha deve ter pelo menos 6 caracteres.")
             elif senha != confirma:
                 st.error("As senhas não conferem.")
