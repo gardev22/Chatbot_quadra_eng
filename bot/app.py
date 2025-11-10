@@ -185,6 +185,30 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 }
 .login-actions .stButton > button:hover{ filter:brightness(1.06); }
 
+/* === Fallback só para o botão ENTRAR ===
+   O Streamlit às vezes renderiza o st.button fora do wrapper .login-actions.
+   Este seletor pega o bloco imediatamente após o que contém #login_actions
+   e estiliza o botão como primário azul. */
+div[data-testid="stVerticalBlock"]:has(> #login_actions)
+  + div[data-testid="stVerticalBlock"] .stButton > button{
+    padding:0 18px !important;
+    height:48px !important;
+    border:none !important;
+    border-radius:10px !important;
+    font-weight:700 !important;
+    font-size:1rem !important;
+    background:#2E5CB5 !important;
+    color:#ffffff !important;
+    margin-top:12px !important;
+    box-shadow:0 8px 22px rgba(11,45,110,.45) !important;
+    text-decoration:none !important;
+}
+/* Centraliza o bloco visual do ENTRAR */
+div[data-testid="stVerticalBlock"]:has(> #login_actions)
+  + div[data-testid="stVerticalBlock"]{
+    display:flex; justify-content:center;
+}
+
 /* Container para centralizar o "link" */
 .link-wrap{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 
@@ -251,8 +275,8 @@ def render_login_screen():
             on_change=_try_login,  # Enter
         )
 
-        # Botão ENTRAR (azul, centralizado, sem contorno extra)
-        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        # Botão ENTRAR — mantém wrapper e adiciona âncora para o CSS fallback
+        st.markdown('<div id="login_actions" class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
@@ -349,27 +373,18 @@ if not st.session_state.authenticated:
         render_login_screen()
 
 # ====== MARCAÇÃO ======
-
 def formatar_markdown_basico(text: str) -> str:
     """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
-
-    # Escapa HTML de origem para evitar injeção
     safe = escape(text)
-
-    # Links (usa lambda para não ter problema de \1 literal)
     safe = re.sub(
         r'(https?://[^\s<>"\]]+)',
         lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
         safe
     )
-
-    # **negrito** e *itálico* (agora com barras corretas)
     safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
-
-    # Quebra de linha real
     safe = safe.replace('\n', '<br>')
     return safe
 
@@ -428,14 +443,7 @@ section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
 
-section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-items-top-gap) !important; }}
-.sidebar-bar p, .sidebar-header p{{ margin: 0 !important; line-height: 1.15 !important; }}
-.sidebar-bar{{ margin-top: var(--sidebar-sub-top-gap) !important; }}
-.hist-row:first-of-type{{ margin-top: var(--sidebar-list-start-gap) !important; }}
-
-div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
-
-.sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
+section[data-testid="stSidebar"] .sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
 .sidebar-sub{{ font-size:.88rem; color:var(--muted) }}
 .hist-empty{{ color:var(--muted); font-size:.9rem; padding:8px 10px }}
 .hist-row{{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
