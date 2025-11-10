@@ -274,10 +274,25 @@ def render_login_screen():
 def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
+
+    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: mostra e deixa rótulos brancos ---
+    st.markdown("""
+    <style>
+    .login-stack.reg [data-testid="stTextInput"] > label,
+    .login-stack.reg [data-testid="stPassword"] > label{
+        display:block !important;
+        color:#FFFFFF !important;
+        font-weight:600 !important;
+        margin:6px 2px 6px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-stack">', unsafe_allow_html=True)
+        # adiciona classe "reg" para habilitar as regras acima
+        st.markdown('<div class="login-stack reg">', unsafe_allow_html=True)
 
         if logo_b64:
             st.markdown(
@@ -294,8 +309,9 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        email = st.text_input("E-mail corporativo", key="reg_email",
-                              placeholder="seu.nome@quadra.com.vc", label_visibility="collapsed")
+        # 1ª barra com rótulo "E-mail" visível
+        email = st.text_input("E-mail", key="reg_email",
+                              placeholder="seu.nome@quadra.com.vc", label_visibility="visible")
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
         confirma = st.text_input("Confirmar senha", key="reg_confirma", type="password", placeholder="Repita a senha")
 
