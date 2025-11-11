@@ -198,6 +198,79 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 </style>
 """
 
+def render_login_screen():
+    """Tela de Login"""
+    st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
+    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
+    with col_mid:
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-stack">', unsafe_allow_html=True)
+
+        if logo_b64:
+            st.markdown(
+                f'''
+                <img alt="Logo Quadra"
+                     src="data:image/png;base64,{logo_b64}"
+                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
+                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
+                ''',
+                unsafe_allow_html=True
+            )
+
+        st.markdown('<span class="login-title">Quadra Engenharia</span>', unsafe_allow_html=True)
+        st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+                    unsafe_allow_html=True)
+
+        # sucesso pós-cadastro
+        if st.session_state.get("just_registered"):
+            st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
+            st.session_state.just_registered = False
+
+        # ---- ENTER sem form ----
+        def _try_login():
+            email_val = (st.session_state.get("login_email") or "").strip().lower()
+            if "@" not in email_val:
+                st.session_state["login_error"] = "Por favor, insira um e-mail válido."
+                return
+            if not email_val.endswith("@quadra.com.vc"):
+                st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
+                return
+            st.session_state["login_error"] = ""
+            st.session_state.authenticated = True
+            st.session_state.user_email = email_val
+            st.session_state.user_name = extract_name_from_email(email_val)
+
+        st.text_input(
+            "E-mail",
+            key="login_email",
+            placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed",
+            on_change=_try_login,  # Enter
+        )
+
+        # Botão ENTRAR (primário/destaque)
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        if st.button("Entrar", type="primary", key="btn_login"):
+            _try_login()
+            do_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Botão secundário centralizado: Cadastrar usuário
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1,1,1])
+        with col_b:
+            if st.button("Cadastrar usuário", key="btn_go_register"):
+                st.session_state.auth_mode = "register"
+                do_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if st.session_state.get("login_error"):
+            st.error(st.session_state["login_error"])
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.stop()
+
 def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
@@ -240,7 +313,7 @@ def render_register_screen():
         email = st.text_input(
             label="", key="reg_email",
             placeholder="seu.nome@quadra.com.vc",
-            label_visibility="collapsed"   # esconde label nativo
+            label_visibility="collapsed"
         )
 
         st.markdown('<span class="field-label">Senha</span>', unsafe_allow_html=True)
@@ -291,98 +364,6 @@ def render_register_screen():
 
     st.stop()
 
-
-def render_register_screen():
-    """Tela de Cadastro (e-mail + senha)"""
-    st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
-
-    # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: rótulos 100% brancos ---
-    st.markdown("""
-    <style>
-    /* Mostra os rótulos e força cor branca (inclusive elementos internos) */
-    .login-stack.reg [data-testid="stTextInput"] label,
-    .login-stack.reg [data-testid="stPassword"] label,
-    .login-stack.reg [data-testid="stWidgetLabel"],
-    .login-stack.reg [data-testid="stWidgetLabel"] > p,
-    .login-stack.reg label{
-        display:block !important;
-        color:#FFFFFF !important;
-        opacity:1 !important;
-        font-weight:600 !important;
-        margin:6px 2px 6px !important;
-    }
-    .login-stack.reg [data-testid="stTextInput"] label *,
-    .login-stack.reg [data-testid="stPassword"] label *,
-    .login-stack.reg [data-testid="stWidgetLabel"] *,
-    .login-stack.reg label *{
-        color:#FFFFFF !important;
-        opacity:1 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
-    with col_mid:
-        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
-        # adiciona classe "reg" para habilitar as regras acima
-        st.markdown('<div class="login-stack reg">', unsafe_allow_html=True)
-
-        if logo_b64:
-            st.markdown(
-                f'''
-                <img alt="Logo Quadra"
-                     src="data:image/png;base64,{logo_b64}"
-                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
-                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
-                ''',
-                unsafe_allow_html=True
-            )
-
-        st.markdown('<span class="login-title">Criar conta</span>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
-                    unsafe_allow_html=True)
-
-        # Rótulos exatamente como solicitado (brancos via CSS acima)
-        email = st.text_input("Email", key="reg_email",
-                              placeholder="seu.nome@quadra.com.vc", label_visibility="visible")
-        senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
-        confirma = st.text_input("Confirmar Senha", key="reg_confirma", type="password", placeholder="Repita a senha")
-
-        # Botão principal Cadastrar (primário)
-        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        criar = st.button("Cadastrar", type="primary", key="btn_register")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Botão secundário: Voltar para login
-        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
-        col_a, col_b, col_c = st.columns([1,1,1])
-        with col_b:
-            voltar = st.button("Voltar para login", key="btn_back_login")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if voltar:
-            st.session_state.auth_mode = "login"
-            do_rerun()
-
-        if criar:
-            email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
-            if not email_ok:
-                st.error("Use um e-mail válido **@quadra.com.vc**.")
-            elif not senha or len(senha) < 6:
-                st.error("A senha deve ter pelo menos 6 caracteres.")
-            elif senha != confirma:
-                st.error("As senhas não conferem.")
-            else:
-                # Plugue seu backend aqui (Supabase/DB). Por enquanto, só volta ao login com aviso.
-                st.session_state.login_email = email.strip().lower()
-                st.session_state.auth_mode = "login"
-                st.session_state.just_registered = True
-                do_rerun()
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.stop()
-
 # =================================================================
 #                         FLUXO PRINCIPAL
 # =================================================================
@@ -395,13 +376,10 @@ if not st.session_state.authenticated:
         render_login_screen()
 
 # ====== MARCAÇÃO ======
-
 def formatar_markdown_basico(text: str) -> str:
     """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
-
-    # Escapa HTML de origem para evitar injeção
     safe = escape(text)
 
     # Links
@@ -410,14 +388,11 @@ def formatar_markdown_basico(text: str) -> str:
         lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
         safe
     )
-
     # **negrito** e *itálico*
     safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
 
-    # Quebra de linha real
-    safe = safe.replace('\n', '<br>')
-    return safe
+    return safe.replace('\n', '<br>')
 
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
