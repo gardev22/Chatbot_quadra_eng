@@ -182,14 +182,31 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 10px 24px rgba(11,45,110,.45) !important;
 }
 
-/* ===== Botões secundários (harmonizados e discretos) ===== */
+/* ===== Botões SECUNDÁRIOS: apenas "Cadastrar usuário" e "Voltar para login" ===== */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .secondary-actions .stButton > button{
-    background:rgba(255,255,255,.08) !important; color:#D7E3FF !important;
-    border:1px solid rgba(255,255,255,.18) !important; height:44px !important; padding:0 16px !important;
-    box-shadow:0 6px 16px rgba(7,22,50,.35) !important;
+    height:46px !important; padding:0 22px !important;
+    border-radius:999px !important; font-weight:600 !important; font-size:0.96rem !important;
+    background:linear-gradient(180deg,#FFFFFF 0%, #F2F4F8 100%) !important;
+    color:#0B1730 !important;
+    border:1px solid #E2E6EF !important;
+    box-shadow:0 8px 20px rgba(12,18,32,.18), inset 0 1px 0 rgba(255,255,255,.9) !important;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease !important;
 }
-.secondary-actions .stButton > button:hover{ background:rgba(255,255,255,.12) !important; }
+.secondary-actions .stButton > button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 12px 24px rgba(12,18,32,.22), inset 0 1px 0 rgba(255,255,255,1) !important;
+    border-color:#D5DBE7 !important;
+}
+.secondary-actions .stButton > button:active{
+    transform:translateY(0);
+    box-shadow:0 6px 16px rgba(12,18,32,.18) !important;
+}
+.secondary-actions .stButton > button:focus{
+    outline:none !important;
+    box-shadow:0 0 0 3px rgba(42,121,255,.25), 0 8px 20px rgba(12,18,32,.18) !important;
+    border-color:#7BA6FF !important;
+}
 
 @media (max-width: 480px){
     :root{ --lift: 28px; }
@@ -337,7 +354,7 @@ def render_register_screen():
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Voltar para login
+        # Botão secundário: Voltar para login (estilo pill branco)
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
