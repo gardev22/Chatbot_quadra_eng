@@ -198,13 +198,27 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 </style>
 """
 
-def render_login_screen():
-    """Tela de Login"""
+def render_register_screen():
+    """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
+
+    # CSS: rótulos customizados brancos
+    st.markdown("""
+    <style>
+    .login-stack.reg .field-label{
+        display:block !important;
+        color:#FFFFFF !important;
+        opacity:1 !important;
+        font-weight:600 !important;
+        margin:6px 2px 6px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-stack">', unsafe_allow_html=True)
+        st.markdown('<div class="login-stack reg">', unsafe_allow_html=True)
 
         if logo_b64:
             st.markdown(
@@ -217,59 +231,66 @@ def render_login_screen():
                 unsafe_allow_html=True
             )
 
-        st.markdown('<span class="login-title">Quadra Engenharia</span>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+        st.markdown('<span class="login-title">Criar conta</span>', unsafe_allow_html=True)
+        st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        # sucesso pós-cadastro
-        if st.session_state.get("just_registered"):
-            st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
-            st.session_state.just_registered = False
-
-        # ---- ENTER sem form ----
-        def _try_login():
-            email_val = (st.session_state.get("login_email") or "").strip().lower()
-            if "@" not in email_val:
-                st.session_state["login_error"] = "Por favor, insira um e-mail válido."
-                return
-            if not email_val.endswith("@quadra.com.vc"):
-                st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
-                return
-            st.session_state["login_error"] = ""
-            st.session_state.authenticated = True
-            st.session_state.user_email = email_val
-            st.session_state.user_name = extract_name_from_email(email_val)
-
-        st.text_input(
-            "E-mail",
-            key="login_email",
+        # ---- RÓTULOS BRANCOS CUSTOMIZADOS + labels nativos ocultos ----
+        st.markdown('<span class="field-label">Email</span>', unsafe_allow_html=True)
+        email = st.text_input(
+            label="", key="reg_email",
             placeholder="seu.nome@quadra.com.vc",
-            label_visibility="collapsed",
-            on_change=_try_login,  # Enter
+            label_visibility="collapsed"   # esconde label nativo
         )
 
-        # Botão ENTRAR (primário/destaque)
+        st.markdown('<span class="field-label">Senha</span>', unsafe_allow_html=True)
+        senha = st.text_input(
+            label="", key="reg_senha",
+            type="password", placeholder="Crie uma senha",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<span class="field-label">Confirmar Senha</span>', unsafe_allow_html=True)
+        confirma = st.text_input(
+            label="", key="reg_confirma",
+            type="password", placeholder="Repita a senha",
+            label_visibility="collapsed"
+        )
+
+        # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        if st.button("Entrar", type="primary", key="btn_login"):
-            _try_login()
-            do_rerun()
+        criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário centralizado: Cadastrar usuário
+        # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
-            if st.button("Cadastrar usuário", key="btn_go_register"):
-                st.session_state.auth_mode = "register"
-                do_rerun()
+            voltar = st.button("Voltar para login", key="btn_back_login")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        if st.session_state.get("login_error"):
-            st.error(st.session_state["login_error"])
+        if voltar:
+            st.session_state.auth_mode = "login"
+            do_rerun()
+
+        if criar:
+            email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
+            if not email_ok:
+                st.error("Use um e-mail válido **@quadra.com.vc**.")
+            elif not senha or len(senha) < 6:
+                st.error("A senha deve ter pelo menos 6 caracteres.")
+            elif senha != confirma:
+                st.error("As senhas não conferem.")
+            else:
+                st.session_state.login_email = email.strip().lower()
+                st.session_state.auth_mode = "login"
+                st.session_state.just_registered = True
+                do_rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
+
 
 def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
