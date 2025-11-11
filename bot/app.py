@@ -278,7 +278,7 @@ def render_register_screen():
     # --- CSS EXTRA APENAS PARA A TELA DE CADASTRO: rótulos 100% brancos ---
     st.markdown("""
     <style>
-    /* Torna os rótulos visíveis e brancos, cobrindo variações de DOM do Streamlit */
+    /* Mostra os rótulos e força cor branca (inclusive elementos internos) */
     .login-stack.reg [data-testid="stTextInput"] label,
     .login-stack.reg [data-testid="stPassword"] label,
     .login-stack.reg [data-testid="stWidgetLabel"],
@@ -286,8 +286,16 @@ def render_register_screen():
     .login-stack.reg label{
         display:block !important;
         color:#FFFFFF !important;
+        opacity:1 !important;
         font-weight:600 !important;
         margin:6px 2px 6px !important;
+    }
+    .login-stack.reg [data-testid="stTextInput"] label *,
+    .login-stack.reg [data-testid="stPassword"] label *,
+    .login-stack.reg [data-testid="stWidgetLabel"] *,
+    .login-stack.reg label *{
+        color:#FFFFFF !important;
+        opacity:1 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -313,7 +321,7 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        # Rótulos exatamente como solicitado
+        # Rótulos exatamente como solicitado (brancos via CSS acima)
         email = st.text_input("Email", key="reg_email",
                               placeholder="seu.nome@quadra.com.vc", label_visibility="visible")
         senha = st.text_input("Senha", key="reg_senha", type="password", placeholder="Crie uma senha")
