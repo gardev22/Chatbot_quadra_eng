@@ -275,19 +275,6 @@ def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
 
-    # CSS: rótulos customizados brancos
-    st.markdown("""
-    <style>
-    .login-stack.reg .field-label{
-        display:block !important;
-        color:#FFFFFF !important;
-        opacity:1 !important;
-        font-weight:600 !important;
-        margin:6px 2px 6px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
         st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
@@ -308,22 +295,22 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        # ---- RÓTULOS BRANCOS CUSTOMIZADOS + labels nativos ocultos ----
-        st.markdown('<span class="field-label">Email</span>', unsafe_allow_html=True)
+        # ---- RÓTULOS BRANCOS CUSTOMIZADOS (inline) + labels nativos ocultos ----
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         email = st.text_input(
             label="", key="reg_email",
             placeholder="seu.nome@quadra.com.vc",
-            label_visibility="collapsed"
+            label_visibility="collapsed"   # esconde label nativo
         )
 
-        st.markdown('<span class="field-label">Senha</span>', unsafe_allow_html=True)
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Senha</div>', unsafe_allow_html=True)
         senha = st.text_input(
             label="", key="reg_senha",
             type="password", placeholder="Crie uma senha",
             label_visibility="collapsed"
         )
 
-        st.markdown('<span class="field-label">Confirmar Senha</span>', unsafe_allow_html=True)
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Confirmar Senha</div>', unsafe_allow_html=True)
         confirma = st.text_input(
             label="", key="reg_confirma",
             type="password", placeholder="Repita a senha",
@@ -473,7 +460,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 .bubble{{ max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45; color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important; }}
 .bubble.user{{ background:var(--bubble-user); border-bottom-right-radius:6px }}
 .bubble.assistant{{ background:var(--bubble-assistant); border-bottom-left-radius:6px }}
-.chat-card a{{ color:var(--link); text-decoration:underline }} .chat-card a:hover{{ color:var(--link-hover) }}
+.chat-card a{{ color:var(--link) !important; text-decoration:underline }} .chat-card a:hover{{ color:var(--link-hover) }}
 
 [data-testid="stChatInput"]{{ position:fixed !important; left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important; transform:translateX(-50%) !important; bottom:var(--input-bottom) !important; width:min(var(--input-max), 96vw) !important; z-index:5000 !important; background:transparent !important; border:none !important; box-shadow:none !important; padding:0 !important; }}
 [data-testid="stChatInput"] *{{ background:transparent !important; color:var(--text) !important; }}
