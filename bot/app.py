@@ -226,26 +226,41 @@ def render_login_screen():
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- ENTER sem form ----
+        # ---- Lógica de login ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
+            pwd_val = st.session_state.get("login_senha") or ""
             if "@" not in email_val:
                 st.session_state["login_error"] = "Por favor, insira um e-mail válido."
                 return
             if not email_val.endswith("@quadra.com.vc"):
                 st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
                 return
+            if not pwd_val:
+                st.session_state["login_error"] = "Digite a senha."
+                return
+            if pwd_val != "quadra123":
+                st.session_state["login_error"] = "Senha inválida."
+                return
             st.session_state["login_error"] = ""
             st.session_state.authenticated = True
             st.session_state.user_email = email_val
             st.session_state.user_name = extract_name_from_email(email_val)
 
+        # ---- Campos com rótulos brancos, como no cadastro ----
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         st.text_input(
-            "E-mail",
-            key="login_email",
+            label="", key="login_email",
             placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:10px 2px 6px;">Senha</div>', unsafe_allow_html=True)
+        st.text_input(
+            label="", key="login_senha",
+            type="password", placeholder="Digite sua senha",
             label_visibility="collapsed",
-            on_change=_try_login,  # Enter
+            on_change=_try_login  # Enter na senha tenta login
         )
 
         # Botão ENTRAR (primário/destaque)
@@ -300,7 +315,7 @@ def render_register_screen():
         email = st.text_input(
             label="", key="reg_email",
             placeholder="seu.nome@quadra.com.vc",
-            label_visibility="collapsed"   # esconde label nativo
+            label_visibility="collapsed"
         )
 
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Senha</div>', unsafe_allow_html=True)
