@@ -82,6 +82,33 @@ def extract_name_from_email(email):
     name_parts = re.sub(r'[\._]', ' ', local_part).split()
     return " ".join(p.capitalize() for p in name_parts)
 
+# === Helpers de erro (melhor diagnóstico no login/cadastro) ===
+def _extract_err_msg(err) -> str:
+    """Tenta extrair uma mensagem legível de exceptions do Supabase/Auth."""
+    try:
+        msg = getattr(err, "message", None) or getattr(err, "error", None)
+        if isinstance(msg, str) and msg.strip():
+            return msg
+        if getattr(err, "args", None):
+            a0 = err.args[0]
+            if isinstance(a0, dict):
+                return a0.get("msg") or a0.get("message") or str(a0)
+            return str(a0)
+    except Exception:
+        pass
+    return str(err)
+
+def _friendly_auth_error(msg: str) -> str:
+    """Tradução amigável das mensagens mais comuns do Auth."""
+    low = (msg or "").lower()
+    if "email not confirmed" in low or "not confirmed" in low or "confirm" in low:
+        return "E-mail não confirmado. Abra o link de confirmação que foi enviado para o seu e-mail."
+    if "invalid login credentials" in low or "invalid" in low:
+        return "Credenciais inválidas. Verifique e-mail e senha."
+    if "rate limit" in low:
+        return "Muitas tentativas. Aguarde um pouco e tente novamente."
+    return msg or "Falha na autenticação."
+
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
@@ -301,10 +328,10 @@ def render_login_screen():
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- Lógica de login ----
+        # ---- Lógica de login (com mensagens detalhadas) ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
-            pwd_val = st.session_state.get("login_senha") or ""
+            pwd_val   = (st.session_state.get("login_senha") or "")
             if "@" not in email_val:
                 st.session_state["login_error"] = "Por favor, insira um e-mail válido."
                 return
@@ -315,38 +342,53 @@ def render_login_screen():
                 st.session_state["login_error"] = "Digite a senha."
                 return
 
-            # ---- Modo de teste: aceita 'quadra123' sem Supabase ----
+            # ---- BYPASS de testes: mantém 'quadra123' funcionando ----
             if pwd_val == "quadra123":
-                st.session_state["login_error"] = ""
-                st.session_state.authenticated = True
-                st.session_state.user_email = email_val
-                st.session_state.user_name = extract_name_from_email(email_val)
-                st.session_state.user_id = None         # sem persistência
-                st.session_state.conversation_id = None
+                st.session_state.update({
+                    "login_error": "",
+                    "authenticated": True,
+                    "user_email": email_val,
+                    "user_name": extract_name_from_email(email_val),
+                    "user_id": None,               # sem persistência
+                    "conversation_id": None,
+                })
                 return
 
             # ---- Login real via Supabase ----
             if not sb:
-                st.session_state["login_error"] = "Serviço de autenticação indisponível. Tente mais tarde."
+                st.session_state["login_error"] = "Serviço de autenticação indisponível no momento."
                 return
             try:
+                # encerra sessão antiga para evitar conflito de tokens
+                try:
+                    sb.auth.sign_out()
+                except Exception:
+                    pass
+
                 res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
-                user = getattr(res, "user", None) or res.get("user") if isinstance(res, dict) else None
+                user = getattr(res, "user", None)
+                if user is None and isinstance(res, dict):
+                    user = res.get("user")
+
                 if not user or not getattr(user, "id", None):
-                    raise Exception("Falha no login")
+                    raise Exception("Resposta inválida do Auth.")
+
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
                 st.session_state.user_email = email_val
                 st.session_state.user_name = extract_name_from_email(email_val)
-                st.session_state.user_id = user.id
+                st.session_state.user_id   = user.id
                 st.session_state.conversation_id = None
-                # garante profile
+
+                # garante profile (ignora erros)
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
                 except Exception:
                     pass
-            except Exception:
-                st.session_state["login_error"] = "Credenciais inválidas ou e-mail não confirmado."
+
+            except Exception as e:
+                raw = _extract_err_msg(e)
+                st.session_state["login_error"] = _friendly_auth_error(raw)
 
         # ---- Campos (rótulos brancos) ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
@@ -467,8 +509,8 @@ def render_register_screen():
                             "options": {"email_redirect_to": SITE_URL or "http://localhost:8501"}
                         })
                         st.success("Cadastro realizado. Verifique seu e-mail (ou faça login se a confirmação estiver desativada).")
-                    except Exception:
-                        st.error("Erro ao cadastrar. Verifique o e-mail e tente novamente.")
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar: {_friendly_auth_error(_extract_err_msg(e))}")
                         st.stop()
                 st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
@@ -659,6 +701,22 @@ with st.sidebar:
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
+def formatar_markdown_basico(text: str) -> str:
+    if not text:
+        return ""
+    safe = escape(text)
+    safe = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
+        safe
+    )
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
+    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+    return safe.replace('\n', '<br>')
+
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
+
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
