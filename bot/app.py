@@ -302,74 +302,51 @@ def render_login_screen():
             st.session_state.just_registered = False
 
         # ---- Lógica de login ----
-def _try_login():
-    """
-    Tenta logar no Supabase.
-    - Mantém o bypass de dev com a senha 'quadra123'
-    - Mostra o erro real do Supabase em st.session_state['login_error']
-    """
-    email_val = (st.session_state.get("login_email") or "").strip().lower()
-    pwd_val   = (st.session_state.get("login_senha") or "")
+        def _try_login():
+            email_val = (st.session_state.get("login_email") or "").strip().lower()
+            pwd_val = st.session_state.get("login_senha") or ""
+            if "@" not in email_val:
+                st.session_state["login_error"] = "Por favor, insira um e-mail válido."
+                return
+            if not email_val.endswith("@quadra.com.vc"):
+                st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
+                return
+            if not pwd_val:
+                st.session_state["login_error"] = "Digite a senha."
+                return
 
-    # validações básicas
-    if "@" not in email_val:
-        st.session_state["login_error"] = "Por favor, insira um e-mail válido."
-        return
-    if not email_val.endswith("@quadra.com.vc"):
-        st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
-        return
-    if not pwd_val:
-        st.session_state["login_error"] = "Digite a senha."
-        return
+            # ---- Modo de teste: aceita 'quadra123' sem Supabase ----
+            if pwd_val == "quadra123":
+                st.session_state["login_error"] = ""
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_val
+                st.session_state.user_name = extract_name_from_email(email_val)
+                st.session_state.user_id = None         # sem persistência
+                st.session_state.conversation_id = None
+                return
 
-    # BYPASS de desenvolvimento (continua valendo)
-    if pwd_val == "quadra123":
-        st.session_state.update({
-            "login_error": "",
-            "authenticated": True,
-            "user_email": email_val,
-            "user_name": extract_name_from_email(email_val),
-            "user_id": st.session_state.get("user_id") or f"dev-{email_val}",
-            "conversation_id": None,
-        })
-        return
-
-    # Login real no Supabase
-    try:
-        # encerra sessão antiga (se existir)
-        try:
-            sb.auth.sign_out()
-        except Exception:
-            pass
-
-        res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
-
-        # compat: objeto ou dict
-        user = getattr(res, "user", None)
-        if user is None and isinstance(res, dict):
-            user = res.get("user")
-
-        if not user or not getattr(user, "id", None):
-            raise Exception("Falha no login: resposta sem usuário.")
-
-        # sucesso
-        st.session_state["login_error"] = ""
-        st.session_state.authenticated = True
-        st.session_state.user_email = email_val
-        st.session_state.user_name = extract_name_from_email(email_val)
-        st.session_state.user_id   = user.id
-        st.session_state.conversation_id = None
-
-        # garante/atualiza profile (sem quebrar se falhar)
-        try:
-            sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
-        except Exception:
-            pass
-
-    except Exception as e:
-        # mensagem clara (inclui "Email not confirmed" ou "Invalid login credentials", etc.)
-        st.session_state["login_error"] = f"Falha no login: {e}"
-
+            # ---- Login real via Supabase ----
+            if not sb:
+                st.session_state["login_error"] = "Serviço de autenticação indisponível. Tente mais tarde."
+                return
+            try:
+                res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
+                user = getattr(res, "user", None) or res.get("user") if isinstance(res, dict) else None
+                if not user or not getattr(user, "id", None):
+                    raise Exception("Falha no login")
+                st.session_state["login_error"] = ""
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_val
+                st.session_state.user_name = extract_name_from_email(email_val)
+                st.session_state.user_id = user.id
+                st.session_state.conversation_id = None
+                # garante profile
+                try:
+                    sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
+                except Exception:
+                    pass
+            except Exception:
+                st.session_state["login_error"] = "Credenciais inválidas ou e-mail não confirmado."
 
         # ---- Campos (rótulos brancos) ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
