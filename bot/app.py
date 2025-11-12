@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase)
 
 import streamlit as st
 import base64
@@ -7,7 +7,7 @@ import re
 import warnings
 from html import escape
 
-# Importa a função de resposta do backend
+# ====== BACKEND LLM ======
 try:
     from openai_backend import responder_pergunta
 except ImportError:
@@ -15,6 +15,21 @@ except ImportError:
         return "Erro: O módulo 'openai_backend' ou a função 'responder_pergunta' não foi encontrado."
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
+
+# ====== SUPABASE (tolerante a falhas) ======
+SB_URL = None
+SB_KEY = None
+SITE_URL = None
+sb = None
+try:
+    from supabase import create_client, Client  # pip install supabase
+    SB_URL = st.secrets.get("supabase", {}).get("url")
+    SB_KEY = st.secrets.get("supabase", {}).get("anon_key")
+    SITE_URL = st.secrets.get("supabase", {}).get("site_url", "http://localhost:8501")
+    if SB_URL and SB_KEY:
+        sb = create_client(SB_URL, SB_KEY)
+except Exception:
+    sb = None  # segue sem Supabase
 
 # ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
@@ -37,34 +52,6 @@ def do_rerun():
         st.rerun()
     else:
         st.experimental_rerun()
-
-# ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
-def _clear_query_params():
-    try:
-        st.query_params.clear()           # >= 1.33
-    except Exception:
-        st.experimental_set_query_params()  # legado
-
-def _get_query_params():
-    try:
-        return dict(st.query_params)      # >= 1.33
-    except Exception:
-        return dict(st.experimental_get_query_params())  # legado
-
-qp = _get_query_params()
-if "logout" in qp:
-    st.session_state.update({
-        "authenticated": False,
-        "user_name": "Usuário",
-        "user_email": "nao_autenticado@quadra.com.vc",
-        "awaiting_answer": False,
-        "answering_started": False,
-        "pending_index": None,
-        "pending_question": None,
-        "historico": []
-    })
-    _clear_query_params()
-    do_rerun()
 
 # ====== UTILITÁRIOS ======
 def carregar_imagem_base64(path):
@@ -108,9 +95,79 @@ st.session_state.setdefault("pending_question", None)
 # Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
+# IDs para Supabase
+st.session_state.setdefault("user_id", None)
+st.session_state.setdefault("conversation_id", None)
+
+# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
+def get_or_create_conversation():
+    """Cria uma conversa no Supabase e memoriza o ID na sessão."""
+    if not sb or not st.session_state.get("user_id"):
+        return None
+    if st.session_state.get("conversation_id"):
+        return st.session_state["conversation_id"]
+    try:
+        r = sb.table("conversations").insert({
+            "user_id": st.session_state.user_id,
+            "title": f"Sessão de {st.session_state.user_name}"
+        }).execute()
+        cid = r.data[0]["id"]
+        st.session_state["conversation_id"] = cid
+        return cid
+    except Exception:
+        return None
+
+def save_message(cid, role, content):
+    """Salva uma mensagem no Supabase (ignora se não houver sb/cid)."""
+    if not sb or not cid or not content:
+        return
+    try:
+        sb.table("messages").insert({
+            "conversation_id": cid,
+            "role": role,
+            "content": content
+        }).execute()
+    except Exception:
+        pass
+
+# ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
+def _clear_query_params():
+    try:
+        st.query_params.clear()           # >= 1.33
+    except Exception:
+        st.experimental_set_query_params()  # legado
+
+def _get_query_params():
+    try:
+        return dict(st.query_params)      # >= 1.33
+    except Exception:
+        return dict(st.experimental_get_query_params())  # legado
+
+qp = _get_query_params()
+if "logout" in qp:
+    # Tenta encerrar sessão no Supabase também
+    try:
+        if sb:
+            sb.auth.sign_out()
+    except Exception:
+        pass
+
+    st.session_state.update({
+        "authenticated": False,
+        "user_name": "Usuário",
+        "user_email": "nao_autenticado@quadra.com.vc",
+        "awaiting_answer": False,
+        "answering_started": False,
+        "pending_index": None,
+        "pending_question": None,
+        "historico": [],
+        "user_id": None,
+        "conversation_id": None,
+    })
+    _clear_query_params()
+    do_rerun()
 
 # ====== TELAS DE AUTENTICAÇÃO ======
-
 BASE_LOGIN_CSS = """
 <style>
 :root{ --login-max: 520px; --lift: 90px; }
@@ -182,12 +239,12 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 10px 24px rgba(11,45,110,.45) !important;
 }
 
-/* ===== Botões SECUNDÁRIOS (apenas "Cadastrar usuário" e "Voltar para login") ===== */
+/* ===== Botões SECUNDÁRIOS ("Cadastrar usuário" e "Voltar para login") ===== */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .secondary-actions .stButton > button{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important; font-weight:600 !important; font-size:0.96rem !important;
-    background:linear-gradient(180deg,#6B7280 0%, #4B5563 100%) !important; /* cinza discreto */
+    background:linear-gradient(180deg,#6B7280 0%, #4B5563 100%) !important; /* cinza */
     color:#FFFFFF !important;
     border:1px solid #374151 !important;
     box-shadow:0 8px 20px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08) !important;
@@ -257,15 +314,41 @@ def render_login_screen():
             if not pwd_val:
                 st.session_state["login_error"] = "Digite a senha."
                 return
-            if pwd_val != "quadra123":
-                st.session_state["login_error"] = "Senha inválida."
-                return
-            st.session_state["login_error"] = ""
-            st.session_state.authenticated = True
-            st.session_state.user_email = email_val
-            st.session_state.user_name = extract_name_from_email(email_val)
 
-        # ---- Campos com rótulos brancos, como no cadastro ----
+            # ---- Modo de teste: aceita 'quadra123' sem Supabase ----
+            if pwd_val == "quadra123":
+                st.session_state["login_error"] = ""
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_val
+                st.session_state.user_name = extract_name_from_email(email_val)
+                st.session_state.user_id = None         # sem persistência
+                st.session_state.conversation_id = None
+                return
+
+            # ---- Login real via Supabase ----
+            if not sb:
+                st.session_state["login_error"] = "Serviço de autenticação indisponível. Tente mais tarde."
+                return
+            try:
+                res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
+                user = getattr(res, "user", None) or res.get("user") if isinstance(res, dict) else None
+                if not user or not getattr(user, "id", None):
+                    raise Exception("Falha no login")
+                st.session_state["login_error"] = ""
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_val
+                st.session_state.user_name = extract_name_from_email(email_val)
+                st.session_state.user_id = user.id
+                st.session_state.conversation_id = None
+                # garante profile
+                try:
+                    sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
+                except Exception:
+                    pass
+            except Exception:
+                st.session_state["login_error"] = "Credenciais inválidas ou e-mail não confirmado."
+
+        # ---- Campos (rótulos brancos) ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         st.text_input(
             label="", key="login_email",
@@ -288,7 +371,7 @@ def render_login_screen():
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário centralizado: Cadastrar usuário (cinza + texto branco)
+        # Botão secundário centralizado: Cadastrar usuário
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -355,7 +438,7 @@ def render_register_screen():
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Voltar para login (cinza + texto branco)
+        # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -375,6 +458,18 @@ def render_register_screen():
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
+                # Cadastro real via Supabase (se disponível). Se não, só volta pro login como antes.
+                if sb:
+                    try:
+                        sb.auth.sign_up({
+                            "email": email.strip().lower(),
+                            "password": senha,
+                            "options": {"email_redirect_to": SITE_URL or "http://localhost:8501"}
+                        })
+                        st.success("Cadastro realizado. Verifique seu e-mail (ou faça login se a confirmação estiver desativada).")
+                    except Exception:
+                        st.error("Erro ao cadastrar. Verifique o e-mail e tente novamente.")
+                        st.stop()
                 st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
                 st.session_state.just_registered = True
@@ -646,6 +741,14 @@ pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
+
+    # persiste pergunta (se login real)
+    try:
+        cid = get_or_create_conversation()
+        save_message(cid, "user", q)
+    except Exception:
+        pass
+
     st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
     st.session_state.awaiting_answer=True
@@ -662,6 +765,13 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     if idx is not None and 0 <= idx < len(st.session_state.historico):
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
+
+    # persiste resposta (se login real)
+    try:
+        cid = get_or_create_conversation()
+        save_message(cid, "assistant", resposta)
+    except Exception:
+        pass
 
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
