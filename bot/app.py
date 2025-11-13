@@ -107,6 +107,45 @@ def _friendly_auth_error(msg: str) -> str:
         return "Muitas tentativas. Aguarde um pouco e tente novamente."
     return msg or "Falha na autenticação."
 
+# === Patch: garantir JWT em toda operação PostgREST ===
+def _ensure_pg_jwt() -> bool:
+    """
+    Garante que o PostgREST esteja autenticado com o access_token atual do usuário.
+    Retorna True se conseguiu aplicar; False caso contrário.
+    """
+    if not sb:
+        return False
+    try:
+        # supabase-py v2
+        sess = None
+        try:
+            sess = sb.auth.get_session()
+        except Exception:
+            sess = None
+
+        token = None
+        if sess is not None:
+            token = getattr(sess, "access_token", None)
+            if token is None and isinstance(sess, dict):
+                token = sess.get("access_token")
+
+        if not token:
+            # alguns builds guardam interno
+            try:
+                token = getattr(getattr(sb, "auth", None), "_access_token", None)
+            except Exception:
+                token = None
+
+        if token:
+            try:
+                sb.postgrest.auth(token)
+                return True
+            except Exception:
+                return False
+        return False
+    except Exception:
+        return False
+
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
@@ -138,15 +177,16 @@ def _title_from_first_question(q: str) -> str:
 def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-    IMPORTANTE: NÃO envia user_id. O banco preenche via DEFAULT auth.uid().
+    Patch: força JWT e envia user_id explicitamente para passar nas RLS.
     """
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
     try:
+        _ensure_pg_jwt()
         r = sb.table("conversations").insert({
-            # user_id vem do DEFAULT auth.uid() no banco
+            "user_id": st.session_state.user_id,  # <- envia explicitamente
             "title": f"Sessão de {st.session_state.user_name}"
         }).execute()
         cid = r.data[0]["id"]
@@ -164,6 +204,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
         return
     title = _title_from_first_question(first_question)
     try:
+        _ensure_pg_jwt()
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
         # atualiza cache local
         for it in st.session_state.conversations_list:
@@ -179,6 +220,7 @@ def save_message(cid, role, content):
     if not sb or not cid or not content:
         return
     try:
+        _ensure_pg_jwt()
         sb.table("messages").insert({
             "conversation_id": cid,
             "role": role,
@@ -433,6 +475,11 @@ def render_login_screen():
                         sb.postgrest.auth(access_token)
                     except Exception:
                         pass
+                # reforço
+                try:
+                    _ensure_pg_jwt()
+                except Exception:
+                    pass
                 # <<< Fim do patch
 
                 st.session_state["login_error"] = ""
@@ -446,6 +493,7 @@ def render_login_screen():
 
                 # garante profile (ignora erros)
                 try:
+                    _ensure_pg_jwt()
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
                 except Exception:
                     pass
@@ -749,7 +797,7 @@ st.markdown(f"""
 # Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
-    # Para debugar, descomente:
+    # Para debugar:
     # st.write(st.session_state["_sb_last_error"])
     st.session_state["_sb_last_error"] = None
 
@@ -871,7 +919,7 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # cria conversa (sem user_id no payload) e persiste pergunta
+    # cria conversa e persiste pergunta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
