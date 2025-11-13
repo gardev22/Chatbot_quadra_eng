@@ -107,45 +107,6 @@ def _friendly_auth_error(msg: str) -> str:
         return "Muitas tentativas. Aguarde um pouco e tente novamente."
     return msg or "Falha na autenticação."
 
-# === Patch: garantir JWT em toda operação PostgREST ===
-def _ensure_pg_jwt() -> bool:
-    """
-    Garante que o PostgREST esteja autenticado com o access_token atual do usuário.
-    Retorna True se conseguiu aplicar; False caso contrário.
-    """
-    if not sb:
-        return False
-    try:
-        # supabase-py v2
-        sess = None
-        try:
-            sess = sb.auth.get_session()
-        except Exception:
-            sess = None
-
-        token = None
-        if sess is not None:
-            token = getattr(sess, "access_token", None)
-            if token is None and isinstance(sess, dict):
-                token = sess.get("access_token")
-
-        if not token:
-            # alguns builds guardam interno
-            try:
-                token = getattr(getattr(sb, "auth", None), "_access_token", None)
-            except Exception:
-                token = None
-
-        if token:
-            try:
-                sb.postgrest.auth(token)
-                return True
-            except Exception:
-                return False
-        return False
-    except Exception:
-        return False
-
 # ====== ESTADO ======
 if "historico" not in st.session_state:
     st.session_state.historico = []
@@ -167,7 +128,7 @@ st.session_state.setdefault("conversations_list", [])
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
 
-# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
+# ====== HELPERS DE PERSISTÊNCIA ======
 def _title_from_first_question(q: str) -> str:
     if not q:
         return "Nova conversa"
@@ -177,21 +138,19 @@ def _title_from_first_question(q: str) -> str:
 def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-    Patch: força JWT e envia user_id explicitamente para passar nas RLS.
+    Agora enviamos user_id explicitamente para satisfazer o RLS.
     """
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
     try:
-        _ensure_pg_jwt()
         r = sb.table("conversations").insert({
-            "user_id": st.session_state.user_id,  # <- envia explicitamente
+            "user_id": st.session_state.user_id,   # <── IMPORTANTE p/ RLS
             "title": f"Sessão de {st.session_state.user_name}"
         }).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # cache local (não muda UI)
         st.session_state.conversations_list.insert(0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"})
         return cid
     except Exception as e:
@@ -204,9 +163,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
         return
     title = _title_from_first_question(first_question)
     try:
-        _ensure_pg_jwt()
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        # atualiza cache local
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
@@ -220,7 +177,6 @@ def save_message(cid, role, content):
     if not sb or not cid or not content:
         return
     try:
-        _ensure_pg_jwt()
         sb.table("messages").insert({
             "conversation_id": cid,
             "role": role,
@@ -247,9 +203,8 @@ if "logout" in qp:
     # Tenta encerrar sessão no Supabase também
     try:
         if sb:
-            # limpa o token do PostgREST e encerra sessão
             try:
-                sb.postgrest.auth(None)
+                sb.postgrest.auth(None)   # limpa token do PostgREST
             except Exception:
                 pass
             sb.auth.sign_out()
@@ -458,29 +413,19 @@ def render_login_screen():
                     pass
 
                 res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
-                user = getattr(res, "user", None)
-                if user is None and isinstance(res, dict):
-                    user = res.get("user")
-
+                user = getattr(res, "user", None) or (res.get("user") if isinstance(res, dict) else None)
                 if not user or not getattr(user, "id", None):
                     raise Exception("Resposta inválida do Auth.")
 
-                # >>> Patch: injeta JWT no PostgREST (RLS vai reconhecer auth.uid())
-                session_obj = getattr(res, "session", None)
-                if session_obj is None and isinstance(res, dict):
-                    session_obj = res.get("session")
+                # >>> injeta JWT no PostgREST para o RLS ver o auth.uid()
+                session_obj = getattr(res, "session", None) or (res.get("session") if isinstance(res, dict) else None)
                 access_token = getattr(session_obj, "access_token", None) if session_obj else None
                 if access_token:
                     try:
                         sb.postgrest.auth(access_token)
                     except Exception:
                         pass
-                # reforço
-                try:
-                    _ensure_pg_jwt()
-                except Exception:
-                    pass
-                # <<< Fim do patch
+                # <<< fim
 
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
@@ -493,7 +438,6 @@ def render_login_screen():
 
                 # garante profile (ignora erros)
                 try:
-                    _ensure_pg_jwt()
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
                 except Exception:
                     pass
@@ -794,11 +738,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Toast se algo falhou ao salvar
+# Toast com a mensagem real do Supabase
 if st.session_state.get("_sb_last_error"):
-    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
-    # Para debugar:
-    # st.write(st.session_state["_sb_last_error"])
+    st.toast(f"Supabase: {st.session_state['_sb_last_error']}", icon="⚠️")
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
@@ -820,22 +762,6 @@ with st.sidebar:
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
-def formatar_markdown_basico(text: str) -> str:
-    if not text:
-        return ""
-    safe = escape(text)
-    safe = re.sub(
-        r'(https?://[^\s<>"\]]+)',
-        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
-        safe
-    )
-    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
-    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
-    return safe.replace('\n', '<br>')
-
-def linkify(text: str) -> str:
-    return formatar_markdown_basico(text or "")
-
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
@@ -919,11 +845,10 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # cria conversa e persiste pergunta
+    # cria conversa (com user_id) e persiste pergunta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
-        # atualiza título com a 1ª pergunta (uma única vez)
         update_conversation_title_if_first_question(cid, q)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
@@ -945,7 +870,7 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    # persiste resposta (se login real)
+    # persiste resposta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "assistant", resposta)
