@@ -130,7 +130,7 @@ st.session_state.setdefault("_sb_last_error", None)
 
 # ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
 def _title_from_first_question(q: str) -> str:
-    if not q: 
+    if not q:
         return "Nova conversa"
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
@@ -205,6 +205,11 @@ if "logout" in qp:
     # Tenta encerrar sessão no Supabase também
     try:
         if sb:
+            # limpa o token do PostgREST e encerra sessão
+            try:
+                sb.postgrest.auth(None)
+            except Exception:
+                pass
             sb.auth.sign_out()
     except Exception:
         pass
@@ -377,6 +382,12 @@ def render_login_screen():
 
             # ---- BYPASS de testes: mantém 'quadra123' funcionando ----
             if pwd_val == "quadra123":
+                # garante que não fique token antigo aplicado
+                try:
+                    if sb:
+                        sb.postgrest.auth(None)
+                except Exception:
+                    pass
                 st.session_state.update({
                     "login_error": "",
                     "authenticated": True,
@@ -396,6 +407,10 @@ def render_login_screen():
             try:
                 # encerra sessão antiga para evitar conflito de tokens
                 try:
+                    sb.postgrest.auth(None)  # LIMPA token do PostgREST antes
+                except Exception:
+                    pass
+                try:
                     sb.auth.sign_out()
                 except Exception:
                     pass
@@ -407,6 +422,18 @@ def render_login_screen():
 
                 if not user or not getattr(user, "id", None):
                     raise Exception("Resposta inválida do Auth.")
+
+                # >>> Patch: injeta JWT no PostgREST (RLS vai reconhecer auth.uid())
+                session_obj = getattr(res, "session", None)
+                if session_obj is None and isinstance(res, dict):
+                    session_obj = res.get("session")
+                access_token = getattr(session_obj, "access_token", None) if session_obj else None
+                if access_token:
+                    try:
+                        sb.postgrest.auth(access_token)
+                    except Exception:
+                        pass
+                # <<< Fim do patch
 
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
