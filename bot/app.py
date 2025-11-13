@@ -135,7 +135,7 @@ def _title_from_first_question(q: str) -> str:
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
 
-# >>>>>>>>>>>>>>>>>>>>>>>>> PATCH APLICADO AQUI <<<<<<<<<<<<<<<<<<<<<<<<<<
+# >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 1: inserir user_id no INSERT <<<<<<<<<<<<<<<<<<<<<<<<<<
 def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
@@ -147,7 +147,7 @@ def get_or_create_conversation():
         return st.session_state["conversation_id"]
 
     payload = {
-        "user_id": st.session_state.user_id,  # <<< essencial para passar na policy de INSERT
+        "user_id": st.session_state.user_id,  # <- essencial p/ passar na RLS de INSERT
         "title": f"Sessão de {st.session_state.user_name}",
     }
     try:
@@ -160,7 +160,7 @@ def get_or_create_conversation():
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
         return None
-# >>>>>>>>>>>>>>>>>>>>>>>>> FIM DO PATCH <<<<<<<<<<<<<<<<<<<<<<<<<<
+# >>>>>>>>>>>>>>>>>>>>>>>>> FIM PATCH 1 <<<<<<<<<<<<<<<<<<<<<<<<<<
 
 def update_conversation_title_if_first_question(cid, first_question: str):
     """Atualiza título para a 1ª pergunta (apenas uma vez por sessão)."""
@@ -209,11 +209,12 @@ if "logout" in qp:
     # Tenta encerrar sessão no Supabase também
     try:
         if sb:
-            # limpa o token do PostgREST e encerra sessão
+            # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 4: limpar token do PostgREST no logout <<<<<<<<<<<<<<<<<<<<<<<<<<
             try:
                 sb.postgrest.auth(None)
             except Exception:
                 pass
+            # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 4 <<<<<<<<<<<<<<<<<<<<<<<<<<
             sb.auth.sign_out()
     except Exception:
         pass
@@ -386,12 +387,13 @@ def render_login_screen():
 
             # ---- BYPASS de testes: mantém 'quadra123' funcionando ----
             if pwd_val == "quadra123":
-                # garante que não fique token antigo aplicado
+                # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 2: limpar token do PostgREST no bypass <<<<<<<<<<<<<<<<<<<<<<<<<<
                 try:
                     if sb:
                         sb.postgrest.auth(None)
                 except Exception:
                     pass
+                # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 2 <<<<<<<<<<<<<<<<<<<<<<<<<<
                 st.session_state.update({
                     "login_error": "",
                     "authenticated": True,
@@ -427,7 +429,7 @@ def render_login_screen():
                 if not user or not getattr(user, "id", None):
                     raise Exception("Resposta inválida do Auth.")
 
-                # >>> Injeta JWT no PostgREST (RLS enxerga auth.uid())
+                # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 3: Injeta JWT no PostgREST (RLS enxerga auth.uid()) <<<<<<<<<<<<<<<<<<<<<<<<<<
                 session_obj = getattr(res, "session", None)
                 if session_obj is None and isinstance(res, dict):
                     session_obj = res.get("session")
@@ -437,7 +439,7 @@ def render_login_screen():
                         sb.postgrest.auth(access_token)
                     except Exception:
                         pass
-                # <<< Fim do patch
+                # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 3 <<<<<<<<<<<<<<<<<<<<<<<<<<
 
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
@@ -753,6 +755,8 @@ st.markdown(f"""
 # Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
+    # Para debugar, descomente:
+    # st.write(st.session_state["_sb_last_error"])
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
