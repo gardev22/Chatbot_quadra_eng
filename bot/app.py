@@ -128,34 +128,39 @@ st.session_state.setdefault("conversations_list", [])
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
 
-# ====== HELPERS DE PERSISTÊNCIA ======
+# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
 def _title_from_first_question(q: str) -> str:
     if not q:
         return "Nova conversa"
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
 
+# >>>>>>>>>>>>>>>>>>>>>>>>> PATCH APLICADO AQUI <<<<<<<<<<<<<<<<<<<<<<<<<<
 def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-    Agora enviamos user_id explicitamente para satisfazer o RLS.
+    IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
     """
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
+
+    payload = {
+        "user_id": st.session_state.user_id,  # <<< essencial para passar na policy de INSERT
+        "title": f"Sessão de {st.session_state.user_name}",
+    }
     try:
-        r = sb.table("conversations").insert({
-            "user_id": st.session_state.user_id,   # <── IMPORTANTE p/ RLS
-            "title": f"Sessão de {st.session_state.user_name}"
-        }).execute()
+        r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"})
+        # cache local (não muda UI)
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
         return cid
     except Exception as e:
-        st.session_state["_sb_last_error"] = f"conv.insert: {_extract_err_msg(e)}"
+        st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
         return None
+# >>>>>>>>>>>>>>>>>>>>>>>>> FIM DO PATCH <<<<<<<<<<<<<<<<<<<<<<<<<<
 
 def update_conversation_title_if_first_question(cid, first_question: str):
     """Atualiza título para a 1ª pergunta (apenas uma vez por sessão)."""
@@ -164,6 +169,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
+        # atualiza cache local
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
@@ -203,8 +209,9 @@ if "logout" in qp:
     # Tenta encerrar sessão no Supabase também
     try:
         if sb:
+            # limpa o token do PostgREST e encerra sessão
             try:
-                sb.postgrest.auth(None)   # limpa token do PostgREST
+                sb.postgrest.auth(None)
             except Exception:
                 pass
             sb.auth.sign_out()
@@ -413,19 +420,24 @@ def render_login_screen():
                     pass
 
                 res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
-                user = getattr(res, "user", None) or (res.get("user") if isinstance(res, dict) else None)
+                user = getattr(res, "user", None)
+                if user is None and isinstance(res, dict):
+                    user = res.get("user")
+
                 if not user or not getattr(user, "id", None):
                     raise Exception("Resposta inválida do Auth.")
 
-                # >>> injeta JWT no PostgREST para o RLS ver o auth.uid()
-                session_obj = getattr(res, "session", None) or (res.get("session") if isinstance(res, dict) else None)
+                # >>> Injeta JWT no PostgREST (RLS enxerga auth.uid())
+                session_obj = getattr(res, "session", None)
+                if session_obj is None and isinstance(res, dict):
+                    session_obj = res.get("session")
                 access_token = getattr(session_obj, "access_token", None) if session_obj else None
                 if access_token:
                     try:
                         sb.postgrest.auth(access_token)
                     except Exception:
                         pass
-                # <<< fim
+                # <<< Fim do patch
 
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
@@ -738,9 +750,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Toast com a mensagem real do Supabase
+# Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
-    st.toast(f"Supabase: {st.session_state['_sb_last_error']}", icon="⚠️")
+    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
@@ -762,6 +774,22 @@ with st.sidebar:
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
+def formatar_markdown_basico(text: str) -> str:
+    if not text:
+        return ""
+    safe = escape(text)
+    safe = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
+        safe
+    )
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
+    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+    return safe.replace('\n', '<br>')
+
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
+
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
@@ -845,10 +873,11 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # cria conversa (com user_id) e persiste pergunta
+    # cria conversa e persiste pergunta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
+        # atualiza título com a 1ª pergunta (uma única vez)
         update_conversation_title_if_first_question(cid, q)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
@@ -870,7 +899,7 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    # persiste resposta
+    # persiste resposta (se login real)
     try:
         cid = get_or_create_conversation()
         save_message(cid, "assistant", resposta)
