@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase + Patch histórico)
 
 import streamlit as st
 import base64
@@ -122,28 +122,18 @@ st.session_state.setdefault("pending_question", None)
 # Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
-# IDs para Supabase
+# IDs/Lista para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-# Lista local (não altera o layout): conversas recentes
-st.session_state.setdefault("conversations_list", [])
-# Erro Supabase (toast opcional)
+st.session_state.setdefault("conversations_list", [])  # usado apenas em memória (não altera visual)
 st.session_state.setdefault("_sb_last_error", None)
 
-# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
-
-def _title_from_first_question(q: str) -> str:
-    s = re.sub(r"\s+", " ", (q or "").strip())
-    if not s:
-        return "Nova conversa"
-    if len(s) > 80:
-        s = s[:80] + "…"
-    return s
-
-# PATCH PEDIDO: substitui get_or_create_conversation
+# ====== HELPERS DE PERSISTÊNCIA (com patch) ======
 def get_or_create_conversation():
+    """Cria uma conversa no Supabase e memoriza o ID na sessão."""
     if not sb or not st.session_state.get("user_id"):
         return None
+    # já existe na sessão?
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
     try:
@@ -153,31 +143,36 @@ def get_or_create_conversation():
         }).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # reflete local sem fetch extra
-        st.session_state.conversations_list.insert(
-            0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"}
-        )
+        # reflete local sem fetch extra (não altera UI)
+        st.session_state.conversations_list.insert(0, {
+            "id": cid, "title": f"Sessão de {st.session_state.user_name}"
+        })
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.insert: {_extract_err_msg(e)}"
         return None
 
-# NOVA: atualizar título com a 1ª pergunta
+def _title_from_first_question(q: str) -> str:
+    q = (q or "").strip().replace("\n", " ")
+    return (q[:60] + "…") if len(q) > 60 else (q or "Nova conversa")
+
 def update_conversation_title_if_first_question(cid, first_question: str):
+    """Atualiza o título para a 1ª pergunta (idempotente/seguro)."""
     if not sb or not cid or not first_question:
         return
-    title = _title_from_first_question(first_question)
     try:
+        title = _title_from_first_question(first_question)
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        for it in st.session_state.conversations_list:
+        # reflete local
+        for it in st.session_state.get("conversations_list", []):
             if it.get("id") == cid:
                 it["title"] = title
                 break
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
-# PATCH PEDIDO: substituir save_message para não engolir erro
 def save_message(cid, role, content):
+    """Salva uma mensagem no Supabase (ignora se não houver sb/cid)."""
     if not sb or not cid or not content:
         return
     try:
@@ -223,7 +218,6 @@ if "logout" in qp:
         "user_id": None,
         "conversation_id": None,
         "conversations_list": [],
-        "_sb_last_error": None,
     })
     _clear_query_params()
     do_rerun()
@@ -718,9 +712,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Toast opcional de erro Supabase (não mexe no layout)
+# === DEBUG SUPABASE: mostra erro completo (pode remover depois) ===
 if st.session_state.get("_sb_last_error"):
-    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
+    st.toast(st.session_state["_sb_last_error"], icon="⚠️")
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
@@ -770,7 +764,7 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
 if not msgs_html:
-    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;"></div>')
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
@@ -845,9 +839,8 @@ if pergunta and pergunta.strip():
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
-        # se for a 1ª pergunta da sessão, atualiza o título da conversa
-        if len(st.session_state.historico) == 1:
-            update_conversation_title_if_first_question(cid, q)
+        # define o título com a 1ª pergunta (idempotente/seguro)
+        update_conversation_title_if_first_question(cid, q)
     except Exception:
         pass
 
