@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase + Patch histórico)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase)
 
 import streamlit as st
 import base64
@@ -84,7 +84,6 @@ def extract_name_from_email(email):
 
 # === Helpers de erro (melhor diagnóstico no login/cadastro) ===
 def _extract_err_msg(err) -> str:
-    """Tenta extrair uma mensagem legível de exceptions do Supabase/Auth."""
     try:
         msg = getattr(err, "message", None) or getattr(err, "error", None)
         if isinstance(msg, str) and msg.strip():
@@ -99,7 +98,6 @@ def _extract_err_msg(err) -> str:
     return str(err)
 
 def _friendly_auth_error(msg: str) -> str:
-    """Tradução amigável das mensagens mais comuns do Auth."""
     low = (msg or "").lower()
     if "email not confirmed" in low or "not confirmed" in low or "confirm" in low:
         return "E-mail não confirmado. Abra o link de confirmação que foi enviado para o seu e-mail."
@@ -122,52 +120,57 @@ st.session_state.setdefault("pending_question", None)
 # Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
-# IDs/Lista para Supabase
+# IDs para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-st.session_state.setdefault("conversations_list", [])  # usado apenas em memória (não altera visual)
+# Suporte a título da conversa (1ª pergunta) e lista local
+st.session_state.setdefault("conversations_list", [])
+st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
 
-# ====== HELPERS DE PERSISTÊNCIA (com patch) ======
+# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
+def _title_from_first_question(q: str) -> str:
+    if not q: 
+        return "Nova conversa"
+    t = re.sub(r"\s+", " ", q.strip())
+    return (t[:60] + "…") if len(t) > 60 else t
+
 def get_or_create_conversation():
-    """Cria uma conversa no Supabase e memoriza o ID na sessão."""
+    """
+    Cria uma conversa no Supabase e memoriza o ID na sessão.
+    IMPORTANTE: NÃO envia user_id. O banco preenche via DEFAULT auth.uid().
+    """
     if not sb or not st.session_state.get("user_id"):
         return None
-    # já existe na sessão?
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
     try:
         r = sb.table("conversations").insert({
-            "user_id": st.session_state.user_id,
+            # user_id vem do DEFAULT auth.uid() no banco
             "title": f"Sessão de {st.session_state.user_name}"
         }).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # reflete local sem fetch extra (não altera UI)
-        st.session_state.conversations_list.insert(0, {
-            "id": cid, "title": f"Sessão de {st.session_state.user_name}"
-        })
+        # cache local (não muda UI)
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.insert: {_extract_err_msg(e)}"
         return None
 
-def _title_from_first_question(q: str) -> str:
-    q = (q or "").strip().replace("\n", " ")
-    return (q[:60] + "…") if len(q) > 60 else (q or "Nova conversa")
-
 def update_conversation_title_if_first_question(cid, first_question: str):
-    """Atualiza o título para a 1ª pergunta (idempotente/seguro)."""
-    if not sb or not cid or not first_question:
+    """Atualiza título para a 1ª pergunta (apenas uma vez por sessão)."""
+    if not sb or not cid or not first_question or st.session_state.get("_title_set"):
         return
+    title = _title_from_first_question(first_question)
     try:
-        title = _title_from_first_question(first_question)
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        # reflete local
-        for it in st.session_state.get("conversations_list", []):
+        # atualiza cache local
+        for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
                 break
+        st.session_state["_title_set"] = True
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
@@ -217,6 +220,8 @@ if "logout" in qp:
         "historico": [],
         "user_id": None,
         "conversation_id": None,
+        "_title_set": False,
+        "_sb_last_error": None,
         "conversations_list": [],
     })
     _clear_query_params()
@@ -379,6 +384,7 @@ def render_login_screen():
                     "user_name": extract_name_from_email(email_val),
                     "user_id": None,               # sem persistência
                     "conversation_id": None,
+                    "_title_set": False,
                     "conversations_list": [],
                 })
                 return
@@ -408,6 +414,7 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email_val)
                 st.session_state.user_id   = user.id
                 st.session_state.conversation_id = None
+                st.session_state._title_set = False
                 st.session_state.conversations_list = []
 
                 # garante profile (ignora erros)
@@ -712,9 +719,11 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# === DEBUG SUPABASE: mostra erro completo (pode remover depois) ===
+# Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
-    st.toast(st.session_state["_sb_last_error"], icon="⚠️")
+    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
+    # Para debugar, descomente:
+    # st.write(st.session_state["_sb_last_error"])
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
@@ -835,14 +844,14 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # persiste pergunta (se login real)
+    # cria conversa (sem user_id no payload) e persiste pergunta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
-        # define o título com a 1ª pergunta (idempotente/seguro)
+        # atualiza título com a 1ª pergunta (uma única vez)
         update_conversation_title_if_first_question(cid, q)
-    except Exception:
-        pass
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
 
     st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
@@ -865,8 +874,8 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
     try:
         cid = get_or_create_conversation()
         save_message(cid, "assistant", resposta)
-    except Exception:
-        pass
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"save.assistant: {_extract_err_msg(e)}"
 
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
