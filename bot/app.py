@@ -84,6 +84,7 @@ def extract_name_from_email(email):
 
 # === Helpers de erro (melhor diagnóstico no login/cadastro) ===
 def _extract_err_msg(err) -> str:
+    """Tenta extrair uma mensagem legível de exceptions do Supabase/Auth."""
     try:
         msg = getattr(err, "message", None) or getattr(err, "error", None)
         if isinstance(msg, str) and msg.strip():
@@ -98,6 +99,7 @@ def _extract_err_msg(err) -> str:
     return str(err)
 
 def _friendly_auth_error(msg: str) -> str:
+    """Tradução amigável das mensagens mais comuns do Auth."""
     low = (msg or "").lower()
     if "email not confirmed" in low or "not confirmed" in low or "confirm" in low:
         return "E-mail não confirmado. Abra o link de confirmação que foi enviado para o seu e-mail."
@@ -107,13 +109,9 @@ def _friendly_auth_error(msg: str) -> str:
         return "Muitas tentativas. Aguarde um pouco e tente novamente."
     return msg or "Falha na autenticação."
 
-def _title_from_first_question(text: str, max_len: int = 80) -> str:
-    t = (text or "").strip().replace("\n", " ")
-    return t if len(t) <= max_len else t[:max_len] + "…"
-
 # ====== ESTADO ======
 if "historico" not in st.session_state:
-    st.session_state.historico = []  # [(pergunta, resposta)]
+    st.session_state.historico = []
 st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
 st.session_state.setdefault("user_email", "nao_autenticado@quadra.com.vc")
@@ -127,34 +125,23 @@ st.session_state.setdefault("just_registered", False)
 # IDs para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-# Lista de conversas para a sidebar (quando logado no Supabase)
-st.session_state.setdefault("conversations_list", [])   # [{id,title,created_at}]
-st.session_state.setdefault("conversations_loaded", False)
+# Lista local (não altera o layout): conversas recentes
+st.session_state.setdefault("conversations_list", [])
+# Erro Supabase (toast opcional)
+st.session_state.setdefault("_sb_last_error", None)
 
-# ====== PERSISTÊNCIA ======
-def refresh_conversations():
-    """
-    Carrega as conversas do usuário para a sidebar.
-    IMPORTANTE: se estiver sem Supabase ou sem user_id, NÃO limpa a lista atual.
-    """
-    if not sb or not st.session_state.get("user_id"):
-        return  # preserva o que já está em memória (ou fallback mostra perguntas da sessão)
-    try:
-        r = (
-            sb.table("conversations")
-            .select("id,title,created_at")
-            .eq("user_id", st.session_state.user_id)
-            .order("created_at", desc=True)
-            .execute()
-        )
-        st.session_state.conversations_list = r.data or []
-    except Exception:
-        pass
-    finally:
-        st.session_state.conversations_loaded = True
+# ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
 
+def _title_from_first_question(q: str) -> str:
+    s = re.sub(r"\s+", " ", (q or "").strip())
+    if not s:
+        return "Nova conversa"
+    if len(s) > 80:
+        s = s[:80] + "…"
+    return s
+
+# PATCH PEDIDO: substitui get_or_create_conversation
 def get_or_create_conversation():
-    """Cria conversa no Supabase e guarda o ID na sessão."""
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
@@ -166,31 +153,31 @@ def get_or_create_conversation():
         }).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # opcional: já coloca localmente no topo
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"})
+        # reflete local sem fetch extra
+        st.session_state.conversations_list.insert(
+            0, {"id": cid, "title": f"Sessão de {st.session_state.user_name}"}
+        )
         return cid
-    except Exception:
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.insert: {_extract_err_msg(e)}"
         return None
 
+# NOVA: atualizar título com a 1ª pergunta
 def update_conversation_title_if_first_question(cid, first_question: str):
-    """Atualiza o título para a primeira pergunta."""
     if not sb or not cid or not first_question:
         return
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        # reflete em memória sem depender de novo fetch
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
                 break
-        else:
-            st.session_state.conversations_list.insert(0, {"id": cid, "title": title})
-    except Exception:
-        pass
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
+# PATCH PEDIDO: substituir save_message para não engolir erro
 def save_message(cid, role, content):
-    """Salva mensagem no Supabase (ignora se não houver sb/cid)."""
     if not sb or not cid or not content:
         return
     try:
@@ -199,10 +186,10 @@ def save_message(cid, role, content):
             "role": role,
             "content": content
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
 def _clear_query_params():
     try:
         st.query_params.clear()           # >= 1.33
@@ -217,6 +204,7 @@ def _get_query_params():
 
 qp = _get_query_params()
 if "logout" in qp:
+    # Tenta encerrar sessão no Supabase também
     try:
         if sb:
             sb.auth.sign_out()
@@ -235,7 +223,7 @@ if "logout" in qp:
         "user_id": None,
         "conversation_id": None,
         "conversations_list": [],
-        "conversations_loaded": False,
+        "_sb_last_error": None,
     })
     _clear_query_params()
     do_rerun()
@@ -292,7 +280,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* Reset dos botões na área de login */
+/* ===== Reset dos botões na área de login ===== */
 .login-stack .stButton > button{
     height:44px !important; padding:0 16px !important;
     border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
@@ -303,7 +291,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 }
 .login-stack .stButton > button:hover{ filter:brightness(1.06); }
 
-/* Botão primário (destaque) */
+/* ===== Botão primário (destaque) ===== */
 .login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .login-actions .stButton > button{
     height:48px !important; padding:0 20px !important;
@@ -312,15 +300,31 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 10px 24px rgba(11,45,110,.45) !important;
 }
 
-/* Botões secundários */
+/* ===== Botões SECUNDÁRIOS ("Cadastrar usuário" e "Voltar para login") ===== */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .secondary-actions .stButton > button{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important; font-weight:600 !important; font-size:0.96rem !important;
-    background:linear-gradient(180deg,#6B7280 0%, #4B5563 100%) !important;
+    background:linear-gradient(180deg,#6B7280 0%, #4B5563 100%) !important; /* cinza */
     color:#FFFFFF !important;
     border:1px solid #374151 !important;
     box-shadow:0 8px 20px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08) !important;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease !important;
+}
+.secondary-actions .stButton > button:hover{
+    filter:brightness(1.05);
+    transform:translateY(-1px);
+    box-shadow:0 12px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.10) !important;
+    border-color:#303645 !important;
+}
+.secondary-actions .stButton > button:active{
+    transform:translateY(0);
+    box-shadow:0 6px 16px rgba(0,0,0,.18) !important;
+}
+.secondary-actions .stButton > button:focus{
+    outline:none !important;
+    box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(0,0,0,.18) !important;
+    border-color:#2563EB !important;
 }
 
 @media (max-width: 480px){
@@ -358,7 +362,7 @@ def render_login_screen():
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- Lógica de login ----
+        # ---- Lógica de login (com mensagens detalhadas) ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
             pwd_val   = (st.session_state.get("login_senha") or "")
@@ -372,7 +376,7 @@ def render_login_screen():
                 st.session_state["login_error"] = "Digite a senha."
                 return
 
-            # ---- BYPASS de testes ----
+            # ---- BYPASS de testes: mantém 'quadra123' funcionando ----
             if pwd_val == "quadra123":
                 st.session_state.update({
                     "login_error": "",
@@ -382,7 +386,6 @@ def render_login_screen():
                     "user_id": None,               # sem persistência
                     "conversation_id": None,
                     "conversations_list": [],
-                    "conversations_loaded": False,
                 })
                 return
 
@@ -391,7 +394,7 @@ def render_login_screen():
                 st.session_state["login_error"] = "Serviço de autenticação indisponível no momento."
                 return
             try:
-                # encerra sessão antiga para evitar conflito
+                # encerra sessão antiga para evitar conflito de tokens
                 try:
                     sb.auth.sign_out()
                 except Exception:
@@ -411,21 +414,19 @@ def render_login_screen():
                 st.session_state.user_name = extract_name_from_email(email_val)
                 st.session_state.user_id   = user.id
                 st.session_state.conversation_id = None
+                st.session_state.conversations_list = []
 
-                # garante profile
+                # garante profile (ignora erros)
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
                 except Exception:
                     pass
 
-                # carrega conversas para a sidebar
-                refresh_conversations()
-
             except Exception as e:
                 raw = _extract_err_msg(e)
                 st.session_state["login_error"] = _friendly_auth_error(raw)
 
-        # ---- Campos ----
+        # ---- Campos (rótulos brancos) ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         st.text_input(
             label="", key="login_email",
@@ -438,17 +439,17 @@ def render_login_screen():
             label="", key="login_senha",
             type="password", placeholder="Digite sua senha",
             label_visibility="collapsed",
-            on_change=_try_login
+            on_change=_try_login  # Enter na senha tenta login
         )
 
-        # Botão ENTRAR
+        # Botão ENTRAR (primário/destaque)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Cadastrar
+        # Botão secundário centralizado: Cadastrar usuário
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -488,23 +489,34 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
+        # ---- RÓTULOS BRANCOS (inline) + labels nativos ocultos ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
-        email = st.text_input(label="", key="reg_email",
-                              placeholder="seu.nome@quadra.com.vc",
-                              label_visibility="collapsed")
+        email = st.text_input(
+            label="", key="reg_email",
+            placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed"
+        )
 
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Senha</div>', unsafe_allow_html=True)
-        senha = st.text_input(label="", key="reg_senha", type="password",
-                              placeholder="Crie uma senha", label_visibility="collapsed")
+        senha = st.text_input(
+            label="", key="reg_senha",
+            type="password", placeholder="Crie uma senha",
+            label_visibility="collapsed"
+        )
 
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Confirmar Senha</div>', unsafe_allow_html=True)
-        confirma = st.text_input(label="", key="reg_confirma", type="password",
-                                 placeholder="Repita a senha", label_visibility="collapsed")
+        confirma = st.text_input(
+            label="", key="reg_confirma",
+            type="password", placeholder="Repita a senha",
+            label_visibility="collapsed"
+        )
 
+        # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
+        # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1,1,1])
         with col_b:
@@ -524,6 +536,7 @@ def render_register_screen():
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
+                # Cadastro real via Supabase (se disponível). Se não, só volta pro login como antes.
                 if sb:
                     try:
                         sb.auth.sign_up({
@@ -535,7 +548,7 @@ def render_register_screen():
                     except Exception as e:
                         st.error(f"Erro ao cadastrar: {_friendly_auth_error(_extract_err_msg(e))}")
                         st.stop()
-                st.session_state.login_email = (email or "").strip().lower()
+                st.session_state.login_email = email.strip().lower()
                 st.session_state.auth_mode = "login"
                 st.session_state.just_registered = True
                 do_rerun()
@@ -555,16 +568,13 @@ if not st.session_state.authenticated:
     else:
         render_login_screen()
 
-# Se autenticado e ainda não carregamos as conversas, busca (somente Supabase)
-if sb and st.session_state.user_id and not st.session_state.conversations_loaded:
-    refresh_conversations()
-
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte subset simples de markdown para HTML seguro."""
+    """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
     safe = escape(text)
+
     # Links
     safe = re.sub(
         r'(https?://[^\s<>"\]]+)',
@@ -574,6 +584,7 @@ def formatar_markdown_basico(text: str) -> str:
     # **negrito** e *itálico*
     safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+
     return safe.replace('\n', '<br>')
 
 def linkify(text: str) -> str:
@@ -641,7 +652,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 .sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
 .sidebar-sub{{ font-size:.88rem; color:var(--muted) }}
 .hist-empty{{ color:var(--muted); font-size:.9rem; padding:8px 10px }}
-.hist-row{{ padding:6px 6px; font-size:1.05rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
+.hist-row{{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
 .hist-row + .hist-row{{ margin-top:6px }}
 .hist-row:hover{{ background:#161a20 }}
 
@@ -707,44 +718,59 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# Toast opcional de erro Supabase (não mexe no layout)
+if st.session_state.get("_sb_last_error"):
+    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
+    st.session_state["_sb_last_error"] = None
+
 # ====== SIDEBAR (Histórico) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Perguntas desta sessão</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Se tiver Supabase + conversas carregadas e houver conversas, mostra conversas
-    if sb and st.session_state.user_id and st.session_state.conversations_list:
-        st.markdown('<div class="sidebar-sub">Conversas do seu usuário</div>', unsafe_allow_html=True)
-        for conv in st.session_state.conversations_list:
-            t = (conv.get("title") or "").strip()
-            if len(t) > 80: t = t[:80] + "…"
-            st.markdown(f'<div class="hist-row">{escape(t or "Sem título")}</div>', unsafe_allow_html=True)
+    if not st.session_state.historico:
+        st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        # fallback: perguntas da sessão
-        st.markdown('<div class="sidebar-sub">Perguntas desta sessão</div>', unsafe_allow_html=True)
-        if not st.session_state.historico:
-            st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
-        else:
-            for pergunta_hist, _resp in st.session_state.historico:
-                titulo = pergunta_hist.strip().replace("\n", " ")
-                if len(titulo) > 80:
-                    titulo = titulo[:80] + "…"
-                st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
+        for pergunta_hist, _resp in st.session_state.historico:
+            titulo = pergunta_hist.strip().replace("\n", " ")
+            if len(titulo) > 80:
+                titulo = titulo[:80] + "…"
+            st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
+def formatar_markdown_basico(text: str) -> str:
+    if not text:
+        return ""
+    safe = escape(text)
+    safe = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
+        safe
+    )
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
+    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+    return safe.replace('\n', '<br>')
+
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
+
 msgs_html = []
-for pergunta_, resposta_ in st.session_state.historico:
-    p_html = linkify(pergunta_)
+for pergunta, resposta in st.session_state.historico:
+    p_html = linkify(pergunta)
     msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
-    if resposta_:
-        r_html = linkify(resposta_)
+    if resposta:
+        r_html = linkify(resposta)
         msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
     msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
 if not msgs_html:
-    # Nada de "Faça sua primeira pergunta..." — deixo só um ponto invisível
-    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;"></div>')
 
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
@@ -815,29 +841,24 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # Cria conversa (se Supabase) e salva pergunta
+    # persiste pergunta (se login real)
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
-
-        # Se for a 1ª mensagem desta sessão (ou recém-criada), título = primeira pergunta
-        if cid and len(st.session_state.historico) == 1:
+        # se for a 1ª pergunta da sessão, atualiza o título da conversa
+        if len(st.session_state.historico) == 1:
             update_conversation_title_if_first_question(cid, q)
-
-        # Atualiza sidebar imediatamente quando houver cid
-        if cid and sb:
-            refresh_conversations()
     except Exception:
         pass
 
-    st.session_state.pending_index = len(st.session_state.historico) - 1
+    st.session_state.pending_index = len(st.session_state.historico)-1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
-    st.session_state.answering_started = False
+    st.session_state.awaiting_answer=True
+    st.session_state.answering_started=False
     do_rerun()
 
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started = True
+    st.session_state.answering_started=True
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
@@ -847,14 +868,10 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    # Salva resposta e (se houver cid) atualiza a sidebar a partir do Supabase
+    # persiste resposta (se login real)
     try:
-        cid = st.session_state.get("conversation_id")
+        cid = get_or_create_conversation()
         save_message(cid, "assistant", resposta)
-
-        # Só atualiza a lista do histórico se já houver conversa persistida
-        if cid and sb:
-            refresh_conversations()
     except Exception:
         pass
 
