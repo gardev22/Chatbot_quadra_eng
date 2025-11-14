@@ -72,12 +72,15 @@ def sanitize_doc_name(name: str) -> str:
     name = re.sub(r"\.(docx?|pdf|txt|jsonl?|JSONL?)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
+
 def _strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
 
 def _tokenize(s: str):
     s = _strip_accents((s or "").lower())
     return re.findall(r"[a-zA-Z0-9_]{3,}", s)
+
 
 def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
     q_tokens = set(_tokenize(query))
@@ -89,6 +92,7 @@ def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
             return True
     return False
 
+
 def _is_fallback_output(text: str) -> bool:
     if not text:
         return False
@@ -98,12 +102,16 @@ def _is_fallback_output(text: str) -> bool:
     first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
     return (fallback_norm in norm) or norm.startswith(first_line)
 
+
 _NOINFO_RE = re.compile(
     r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
     re.IGNORECASE
 )
+
+
 def _looks_like_noinfo(text: str) -> bool:
     return bool(text and _NOINFO_RE.search(text))
+
 
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
@@ -113,10 +121,12 @@ def get_drive_client(_v=CACHE_BUSTER):
     )
     return build('drive', 'v3', credentials=creds)
 
+
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
@@ -126,6 +136,7 @@ def get_cross_encoder(_v=CACHE_BUSTER):
     from sentence_transformers import CrossEncoder
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
+
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _drive_list_all(drive_service, query: str, fields: str):
@@ -148,23 +159,29 @@ def _drive_list_all(drive_service, query: str, fields: str):
             break
     return all_files
 
+
 def _list_by_mime_query(drive_service, folder_id, mime_query):
     query = f"'{folder_id}' in parents and ({mime_query}) and trashed = false"
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     return _drive_list_all(drive_service, query, fields)
 
+
 def _list_docx_metadata(drive_service, folder_id):
     return _list_by_mime_query(
-        drive_service, folder_id,
+        drive_service,
+        folder_id,
         "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
     )
 
+
 def _list_json_metadata(drive_service, folder_id):
     files = _list_by_mime_query(
-        drive_service, folder_id,
+        drive_service,
+        folder_id,
         "mimeType='application/json' or mimeType='text/plain'"
     )
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
+
 
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
@@ -172,17 +189,21 @@ def _list_named_files(drive_service, folder_id, wanted_names):
     files = _drive_list_all(drive_service, query, fields)
     return {f["name"]: f for f in files if f.get("name") in wanted_names}
 
+
 def _download_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
     return request.execute()
 
+
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
+
 
 # ========================= PARSE DOCX/JSON =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+
 
 def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
     doc = Document(io.BytesIO(file_bytes))
@@ -191,6 +212,7 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
         {"pagina": file_name, "texto": chunk, "file_id": file_id}
         for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
     ]
+
 
 def _records_from_json_text(text: str):
     recs = []
@@ -213,15 +235,17 @@ def _records_from_json_text(text: str):
                 continue
     return recs
 
+
 def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     out = []
     for r in recs:
         pagina = r.get("pagina") or r.get("page") or r.get("doc") or fallback_name
-        texto  = r.get("texto")  or r.get("text") or r.get("content") or ""
-        fid    = r.get("file_id") or r.get("source_id") or file_id
+        texto = r.get("texto") or r.get("text") or r.get("content") or ""
+        fid = r.get("file_id") or r.get("source_id") or file_id
         if str(texto).strip():
             out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
+
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
 @st.cache_data(show_spinner=False, ttl=600)
@@ -231,8 +255,10 @@ def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     files_docx = _list_docx_metadata(drive, folder_id)
     return {"json": files_json, "docx": files_docx}
 
+
 def _signature_from_files(files):
     return [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])]
+
 
 def _build_signature_json_docx(files_json, files_docx):
     payload = {
@@ -241,16 +267,19 @@ def _build_signature_json_docx(files_json, files_docx):
     }
     return json.dumps(payload, ensure_ascii=False)
 
+
 @st.cache_data(show_spinner=False)
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
+
 
 @st.cache_data(show_spinner=False)
 def _parse_json_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     recs = _records_from_json_text(_download_text(drive, file_id))
     return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
+
 
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
@@ -276,17 +305,19 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
 
     return blocks
 
+
 def load_all_blocks_cached(folder_id: str):
     src = _list_sources_cached(folder_id)
     signature = _build_signature_json_docx(src.get("json", []), src.get("docx", []))
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
 
+
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     grouped = []
     for i in range(0, len(blocos), 1):
-        group = blocos[i:i+janela]
+        group = blocos[i:i + janela]
         if not group:
             continue
         grouped.append({
@@ -296,12 +327,14 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
         })
     return grouped
 
+
 # ========================= ÍNDICE PRÉ-COMPUTADO =========================
 def _list_named_files_map():
     drive = get_drive_client()
     want = {PRECOMP_FAISS_NAME, PRECOMP_VECTORS_NAME, PRECOMP_BLOCKS_NAME}
     name_map = _list_named_files(drive, FOLDER_ID, want)
     return name_map if all(n in name_map for n in want) else None
+
 
 @st.cache_resource(show_spinner=False)
 def _load_precomputed_index(_v=CACHE_BUSTER):
@@ -325,6 +358,7 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
     except Exception:
         return None
 
+
 # ========================= ÍNDICE (GERAR OU USAR PRONTO) =========================
 def try_import_faiss():
     try:
@@ -332,6 +366,7 @@ def try_import_faiss():
         return faiss
     except Exception:
         return None
+
 
 @st.cache_resource(show_spinner=False)
 def build_vector_index(signature: str, _v=CACHE_BUSTER):
@@ -364,9 +399,11 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
 
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
+
 def get_vector_index():
     _blocks, signature = load_all_blocks_cached(FOLDER_ID)
     return build_vector_index(signature)
+
 
 # ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
@@ -390,6 +427,7 @@ def ann_search(query_text: str, top_n: int):
 
     return [{"idx": i, "score": float(s), "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
 
+
 # ========================= RERANKING (CE OPCIONAL) =========================
 def crossencoder_rerank(query: str, candidates, top_k: int):
     if not candidates:
@@ -399,12 +437,13 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
         packed = [{"block": c["block"], "score": float(c["score"])} for c in candidates]
         packed.sort(key=lambda x: x["score"], reverse=True)
         return packed[:top_k]
-    
+
     pairs = [(query, c["block"]["texto"]) for c in candidates]
     scores = ce.predict(pairs, batch_size=96)
     packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
     packed.sort(key=lambda x: x["score"], reverse=True)
     return packed[:top_k]
+
 
 # ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
@@ -441,6 +480,7 @@ def montar_prompt_rag(pergunta, blocos):
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
+
 
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
@@ -531,20 +571,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        # === LINK DO DOCUMENTO (ajuste para sempre tentar anexar) ===
-        bloco_para_link = None
-        try:
-            if blocos_relevantes:
-                bloco_para_link = blocos_relevantes[0]
-        except NameError:
-            bloco_para_link = None
-
-        if bloco_para_link is None and candidates:
-            bloco_para_link = candidates[0]["block"]
-
-        if bloco_para_link:
-            doc_id = bloco_para_link.get("file_id")
-            raw_nome = bloco_para_link.get("pagina", "?")
+        if blocos_relevantes:
+            primeiro = blocos_relevantes[0]
+            doc_id = primeiro.get("file_id")
+            raw_nome = primeiro.get("pagina", "?")
             doc_nome = sanitize_doc_name(raw_nome)
             if doc_id:
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
@@ -560,6 +590,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
+
 
 # ========================= CLI =========================
 if __name__ == "__main__":
