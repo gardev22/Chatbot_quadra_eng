@@ -4,6 +4,7 @@ import os
 import io
 import re
 import json
+import time
 import unicodedata
 import numpy as np
 import requests
@@ -17,18 +18,26 @@ from google.oauth2 import service_account
 API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o-mini"
 
-# ========= PERFORMANCE & QUALIDADE =========
+# ========= PERFORMANCE & QUALIDADE (MODO TURBO) =========
 USE_JSONL = True
 USE_CE = False
 SKIP_CE_IF_ANN_BEST = 0.80
-TOP_N_ANN = 24
-TOP_K = 6
-MAX_WORDS_PER_BLOCK = 220
-GROUP_WINDOW = 3
+
+# menos candidatos na ANN e menos blocos no contexto
+TOP_N_ANN = 12
+TOP_K = 3
+
+# blocos menores e janela menor (contexto mais enxuto)
+MAX_WORDS_PER_BLOCK = 160
+GROUP_WINDOW = 2
+
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
-MAX_TOKENS = 500
-REQUEST_TIMEOUT = 40
+
+# resposta mais curta
+MAX_TOKENS = 280
+
+REQUEST_TIMEOUT = 20
 TEMPERATURE = 0.15
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
@@ -48,7 +57,6 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-# Mantemos um valor estável; a invalidação agora é guiada por 'signature' dos arquivos.
 CACHE_BUSTER = "2025-10-27-DOCX-NOVO-03"
 
 # ========= HTTP SESSION =========
@@ -121,7 +129,6 @@ def get_cross_encoder(_v=CACHE_BUSTER):
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _drive_list_all(drive_service, query: str, fields: str):
-    """Lista paginada (até 1000 por página) para não perder arquivos grandes."""
     all_files = []
     page_token = None
     while True:
@@ -217,7 +224,6 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     return out
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
-# Agora esta listagem tem TTL curto para detectar novos arquivos automaticamente.
 @st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
@@ -235,7 +241,6 @@ def _build_signature_json_docx(files_json, files_docx):
     }
     return json.dumps(payload, ensure_ascii=False)
 
-# Cache por arquivo (id + md5) — se o arquivo mudar, md5 muda e invalida só ele.
 @st.cache_data(show_spinner=False)
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
@@ -247,7 +252,6 @@ def _parse_json_cached(file_id: str, md5: str, name: str):
     recs = _records_from_json_text(_download_text(drive, file_id))
     return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
 
-# Função unificada para montar todos os blocos, direcionando para os caches por arquivo.
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     sources = _list_sources_cached(folder_id)
@@ -329,14 +333,13 @@ def try_import_faiss():
     except Exception:
         return None
 
-# A PARTIR DAQUI: o índice é cacheado POR ASSINATURA (estado real da pasta).
 @st.cache_resource(show_spinner=False)
 def build_vector_index(signature: str, _v=CACHE_BUSTER):
     pre = _load_precomputed_index()
     if pre is not None:
         return pre
 
-    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)  # _sig == signature
+    blocks_raw, _sig = load_all_blocks_cached(FOLDER_ID)
     grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
     if not grouped:
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
@@ -346,7 +349,6 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
 
     @st.cache_data(show_spinner=False)
     def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
-        # chaveamos pelo conteúdo e pela assinatura
         return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
 
     emb = _embed_texts_cached(texts, signature)
@@ -363,7 +365,6 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
 def get_vector_index():
-    # Obtém a assinatura atual e devolve o índice cacheado para essa assinatura.
     _blocks, signature = load_all_blocks_cached(FOLDER_ID)
     return build_vector_index(signature)
 
@@ -405,45 +406,45 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
     packed.sort(key=lambda x: x["score"], reverse=True)
     return packed[:top_k]
 
-# ========================= PROMPT =========================
+# ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
-    # 1) Caso sem blocos ou com contexto fraco: tente orientar só se for claramente um procedimento interno;
-    # caso contrário, devolva o FALLBACK_MSG.
+    # Caso sem blocos: tenta orientar de forma genérica, mas com fallback rígido
     if not blocos:
         return (
             "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
-            "Analise a pergunta e siga as regras:\n"
-            "• Se a pergunta estiver claramente relacionada a procedimentos internos corporativos (ex.: RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico), forneça uma orientação geral e prudente baseada em boas práticas organizacionais.\n"
-            "• Se a pergunta NÃO estiver relacionada a procedimentos internos ou não permitir orientação segura, responda exatamente o texto abaixo, sem acrescentar nada:\n"
+            "Responda em prosa, de forma breve e direta.\n"
+            "Só responda se a pergunta estiver claramente relacionada a procedimentos internos corporativos "
+            "(RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico).\n"
+            f"Se não estiver relacionado, responda exatamente o texto abaixo, sem acrescentar nada:\n"
             f"{FALLBACK_MSG}\n\n"
-            "Saída obrigatória: A resposta deve ser APENAS em parágrafos coesos (em prosa), sem listas, marcadores ou travessões. "
-            "Não invente fatos específicos da Quadra. Seja prático e realista, explicando em prosa quem faz, onde faz (sistema/e-mail/formulário), quando/prazos e como proceder de forma geral. "
-            "Se, ainda assim, não houver base minimamente segura para orientar, retorne exatamente o texto de fallback acima.\n\n"
             f"Pergunta: {pergunta}\n\n"
             "➡️ Resposta:"
         )
 
-    # 2) Caso com blocos: responda estritamente com base nos documentos.
-    contexto = ""
+    # Com blocos: contexto enxuto e truncado
+    contexto_parts = []
     for b in blocos:
-        contexto += f"[Documento {b.get('pagina', '?')}]:\n{b['texto']}\n\n"
+        texto = b["texto"] or ""
+        # Trunca cada bloco para evitar prompt gigante
+        if len(texto) > 1200:
+            texto = texto[:1200]
+        contexto_parts.append(f"[Documento {b.get('pagina', '?')}]:\n{texto}")
+
+    contexto_str = "\n\n".join(contexto_parts)
 
     return (
         "Você é um assistente da Quadra especializado em Procedimentos Operacionais (POPs).\n"
-        "Responda exclusivamente com base nos documentos abaixo. Interprete a intenção mesmo com sinônimos, abreviações ou sem acentos. "
-        "Se não estiver escrito exatamente, mas puder ser deduzido com segurança, explique a dedução em prosa. "
-        "Se não houver evidência suficiente relacionada ao tema, retorne exatamente o texto de fallback ao final desta instrução.\n\n"
-        "Saída obrigatória: A resposta deve ser APENAS em parágrafos coesos (em prosa), sem listas numeradas, marcadores ou travessões. "
-        "Sempre que fizer referência direta a um trecho do documento, coloque-o entre aspas. "
-        "Explique, quando aplicável, quem é responsável, o que fazer, onde (sistema/e-mail/formulário), quando/prazos, como executar e quem aprova/valida.\n\n"
-        f"Se, após analisar, ainda não houver evidência suficiente, responda exatamente:\n{FALLBACK_MSG}\n\n"
-        f"{contexto}\n"
+        "Use apenas as informações abaixo para responder. Seja sucinto e responda somente em parágrafos, sem listas.\n"
+        "Quando fizer referência direta a um trecho, coloque-o entre aspas. "
+        f"Se não houver informação suficiente para responder com segurança, responda exatamente:\n{FALLBACK_MSG}\n\n"
+        f"{contexto_str}\n\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
 
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
+    t0 = time.perf_counter()
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
@@ -452,13 +453,12 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
-            # Sem blocos relevantes -> fallback direto
             return FALLBACK_MSG
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
 
-        # 2) Decide se usa CrossEncoder (no seu caso, está desativado)
+        # 2) Decide se usa CrossEncoder (desativado no momento)
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
         if run_ce:
             subset = candidates[:12]
@@ -475,18 +475,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         top_texts = [r["block"]["texto"] for r in reranked]
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
 
-        # Se não bateu o threshold mas há evidência lexical, libera
         if not pass_threshold and evidence_ok:
             pass_threshold = True
 
-        # Decide blocos que vão para o prompt
         if pass_threshold:
             blocos_relevantes = [r["block"] for r in reranked]
         else:
-            # Threshold ruim e pouca evidência -> ainda tenta poucos blocos ou cai no fallback via prompt
             blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
 
-        # 3) Monta prompt RAG
+        t_rag = time.perf_counter()
+
+        # 3) Monta prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
@@ -498,10 +497,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
-            "stream": False  # <===== sem streaming
+            "stream": False
         }
 
-        # 4) Chamada à API da OpenAI (sem streaming)
+        # 4) Chamada à API da OpenAI
         try:
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -524,14 +523,14 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
         resposta = resposta_final.strip()
+        t_api = time.perf_counter()
 
-        # 5) Pós-processamento: detectar “sem informação” ou fallback disfarçado
+        # 5) Pós-processamento
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        # 6) Anexa link de documento (se houver)
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -541,11 +540,16 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
+        t_end = time.perf_counter()
+        # LOG DE TEMPO (vai aparecer nos logs do servidor / terminal)
+        print(
+            f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
+        )
+
         return resposta
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
-
 
 # ========================= CLI =========================
 if __name__ == "__main__":
