@@ -1,4 +1,4 @@
-# openai_backend.py — Drive refresh + índice sincronizado + caching por arquivo (MODO TURBO + RH GERAL)
+# openai_backend.py — Drive refresh + índice sincronizado + caching por arquivo
 
 import os
 import io
@@ -102,94 +102,8 @@ _NOINFO_RE = re.compile(
     r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
     re.IGNORECASE
 )
-
 def _looks_like_noinfo(text: str) -> bool:
     return bool(text and _NOINFO_RE.search(text))
-
-# ========================= DETECÇÃO DE PERGUNTAS DE RH GERAL =========================
-def _is_pergunta_procedimento_geral(pergunta: str) -> bool:
-    """
-    Detecta perguntas de procedimento interno genérico (principalmente RH),
-    que podem ser respondidas com uma orientação geral, mesmo sem POP.
-    """
-    p = _strip_accents((pergunta or "").lower())
-    keywords = [
-        "ferias",        # férias
-        "contrat",       # contratação / contratar / contrato (RH)
-        "admissao",      # admissão
-        "demissao",      # demissão
-        "reembolso",
-        "ressarcimento",
-        "adiantamento",
-        "vale transporte",
-        "vale-transporte",
-        "vale refeicao",
-        "vale-refeicao",
-        "vale alimentacao",
-        "vale-alimentacao",
-        "plano de saude",
-        "beneficio",
-        "holerite",
-        "contra cheque",
-        "contra-cheque",
-        "folha de pagamento",
-        "ponto eletronico",
-        "banco de horas",
-    ]
-    return any(k in p for k in keywords)
-
-def responder_procedimento_geral(pergunta, api_key: str = API_KEY, model_id: str = MODEL_ID) -> str:
-    """
-    Fluxo rápido para perguntas de procedimento geral (especialmente RH),
-    sem usar RAG nem fallback. Sempre responde com orientação geral.
-    """
-    prompt = (
-        "Você é um assistente de RH corporativo no Brasil. "
-        "Explique para o colaborador, de forma objetiva e em prosa, como ele deve proceder.\n"
-        "Use boas práticas de empresas brasileiras, mas NÃO invente nomes específicos de sistemas, "
-        "formulários ou e-mails da Quadra. Use expressões genéricas como 'sistema de RH', "
-        "'portal interno', 'formulário padrão' ou 'e-mail do RH'.\n"
-        "Sempre recomende que o colaborador confirme o procedimento nos POPs internos da empresa, "
-        "com o RH ou com o gestor direto, para obter os detalhes oficiais.\n\n"
-        f"Pergunta do colaborador: {pergunta}\n\n"
-        "➡️ Resposta:"
-    )
-
-    payload = {
-        "model": model_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Você é um assistente de RH corporativo brasileiro, prudente, claro e objetivo."
-            },
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": MAX_TOKENS,
-        "temperature": TEMPERATURE,
-        "n": 1,
-        "stream": False,
-    }
-
-    try:
-        resp = session.post(
-            "https://api.openai.com/v1/chat/completions",
-            json=payload,
-            timeout=REQUEST_TIMEOUT
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        resposta_final = (
-            data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-        )
-        if not resposta_final or not resposta_final.strip():
-            return "⚠️ A resposta da API veio vazia ou incompleta."
-        return resposta_final.strip()
-    except requests.exceptions.RequestException as e:
-        return f"❌ Erro de conexão com a API: {e}"
-    except (ValueError, KeyError, IndexError):
-        return "⚠️ Não consegui interpretar a resposta da API."
 
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
@@ -440,7 +354,7 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
     emb = _embed_texts_cached(texts, signature)
 
     faiss = try_import_faiss()
-    use_faiss = False    # default
+    use_faiss = False
     index = None
     if faiss is not None:
         dim = emb.shape[1]
@@ -492,32 +406,25 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
     packed.sort(key=lambda x: x["score"], reverse=True)
     return packed[:top_k]
 
-# ========================= PROMPT RAG =========================
+# ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
-    escopo = (
-        "procedimentos internos corporativos, por exemplo: RH, férias, contratação/admissão, "
-        "reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, "
-        "obras, qualidade, jurídico, etc."
-    )
-
-    # Caso sem blocos de contexto
+    # Caso sem blocos: tenta orientar de forma genérica, mas com fallback rígido
     if not blocos:
         return (
             "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
-            f"Seu escopo são {escopo}\n"
-            "Se a pergunta estiver claramente dentro desse escopo, dê uma orientação geral, prudente e objetiva "
-            "em prosa, baseada em boas práticas de empresas. Não invente detalhes específicos da Quadra "
-            "(nomes de sistemas, formulários ou e-mails) se eles não forem mencionados.\n"
-            f"Se a pergunta NÃO estiver dentro desse escopo, responda exatamente o texto abaixo, sem acrescentar nada:\n{FALLBACK_MSG}\n\n"
-            "Saída obrigatória: responda apenas em parágrafos coesos (prosa), sem listas, marcadores ou travessões.\n\n"
+            "Responda em prosa, de forma breve e direta.\n"
+            "Só responda se a pergunta estiver claramente relacionada a procedimentos internos corporativos "
+            "(RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico).\n"
+            f"Se não estiver relacionado, responda exatamente o texto abaixo, sem acrescentar nada:\n"
+            f"{FALLBACK_MSG}\n\n"
             f"Pergunta: {pergunta}\n\n"
             "➡️ Resposta:"
         )
 
-    # Com blocos: usa POP se tiver, senão pode orientar de forma geral
+    # Com blocos: contexto enxuto e truncado
     contexto_parts = []
     for b in blocos:
-        texto = b.get("texto") or ""
+        texto = b["texto"] or ""
         # Trunca cada bloco para evitar prompt gigante
         if len(texto) > 1200:
             texto = texto[:1200]
@@ -527,15 +434,9 @@ def montar_prompt_rag(pergunta, blocos):
 
     return (
         "Você é um assistente da Quadra especializado em Procedimentos Operacionais (POPs).\n"
-        f"Seu escopo são {escopo}\n"
-        "Você recebeu trechos de POPs abaixo.\n"
-        "1. Se os trechos trouxerem informação clara e suficiente sobre o tema da pergunta, responda com base neles, "
-        "em prosa, de forma objetiva.\n"
-        "2. Se os trechos forem insuficientes, mas a pergunta ainda estiver claramente dentro desse escopo de procedimentos internos, "
-        "dê uma orientação geral baseada em boas práticas de empresas, deixando claro que é uma orientação genérica e recomendando "
-        "que o colaborador consulte o POP específico, o RH ou o gestor responsável na Quadra para confirmar detalhes.\n"
-        f"3. Se a pergunta não estiver dentro desse escopo, responda exatamente o texto abaixo, sem acrescentar nada:\n{FALLBACK_MSG}\n\n"
-        "Saída obrigatória: responda apenas em parágrafos coesos (prosa), sem listas numeradas, marcadores ou travessões.\n\n"
+        "Use apenas as informações abaixo para responder. Seja sucinto e responda somente em parágrafos, sem listas.\n"
+        "Quando fizer referência direta a um trecho, coloque-o entre aspas. "
+        f"Se não houver informação suficiente para responder com segurança, responda exatamente:\n{FALLBACK_MSG}\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
@@ -545,19 +446,13 @@ def montar_prompt_rag(pergunta, blocos):
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     t0 = time.perf_counter()
     try:
-        # Normaliza a pergunta
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # 0) Pergunta claramente de procedimento geral (RH etc)? -> fluxo rápido sem RAG, SEM fallback
-        if _is_pergunta_procedimento_geral(pergunta):
-            return responder_procedimento_geral(pergunta, api_key=api_key, model_id=model_id)
-
-        # 1) Busca ANN (POP / procedimentos específicos)
+        # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
-            # Sem blocos relevantes -> fallback padrão
             return FALLBACK_MSG
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
@@ -580,11 +475,9 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         top_texts = [r["block"]["texto"] for r in reranked]
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
 
-        # Se não bateu o threshold mas há evidência lexical, libera
         if not pass_threshold and evidence_ok:
             pass_threshold = True
 
-        # Decide blocos que vão para o prompt
         if pass_threshold:
             blocos_relevantes = [r["block"] for r in reranked]
         else:
@@ -592,17 +485,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         t_rag = time.perf_counter()
 
-        # 3) Monta prompt RAG
+        # 3) Monta prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
             "model": model_id,
             "messages": [
-                {
-                    "role": "system",
-                    "content": "Você é um assistente da Quadra que orienta colaboradores sobre procedimentos internos, "
-                               "sendo objetivo, claro e consistente com o contexto fornecido."
-                },
+                {"role": "system", "content": "Você responde apenas com base no conteúdo fornecido."},
                 {"role": "user", "content": prompt}
             ],
             "max_tokens": MAX_TOKENS,
@@ -611,7 +500,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "stream": False
         }
 
-        # 4) Chamada à API da OpenAI (sem streaming)
+        # 4) Chamada à API da OpenAI
         try:
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -636,23 +525,30 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         resposta = resposta_final.strip()
         t_api = time.perf_counter()
 
-        # 5) Pós-processamento (apenas para o fluxo RAG)
+        # 5) Pós-processamento
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        # 6) Anexa link de documento (se houver)
+        # 6) Gera link do documento relacionado (mesma lógica de antes,
+        #     mas garantindo que sempre tente usar pelo menos o primeiro candidato)
+        bloco_para_link = None
         if blocos_relevantes:
-            primeiro = blocos_relevantes[0]
-            doc_id = primeiro.get("file_id")
-            raw_nome = primeiro.get("pagina", "?")
+            bloco_para_link = blocos_relevantes[0]
+        elif candidates:
+            bloco_para_link = candidates[0]["block"]
+
+        if bloco_para_link:
+            doc_id = bloco_para_link.get("file_id")
+            raw_nome = bloco_para_link.get("pagina", "?")
             doc_nome = sanitize_doc_name(raw_nome)
             if doc_id:
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
+        # LOG DE TEMPO (vai aparecer nos logs do servidor / terminal)
         print(
             f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
         )
