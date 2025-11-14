@@ -531,10 +531,20 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        if blocos_relevantes:
-            primeiro = blocos_relevantes[0]
-            doc_id = primeiro.get("file_id")
-            raw_nome = primeiro.get("pagina", "?")
+        # === LINK DO DOCUMENTO (ajuste para sempre tentar anexar) ===
+        bloco_para_link = None
+        try:
+            if blocos_relevantes:
+                bloco_para_link = blocos_relevantes[0]
+        except NameError:
+            bloco_para_link = None
+
+        if bloco_para_link is None and candidates:
+            bloco_para_link = candidates[0]["block"]
+
+        if bloco_para_link:
+            doc_id = bloco_para_link.get("file_id")
+            raw_nome = bloco_para_link.get("pagina", "?")
             doc_nome = sanitize_doc_name(raw_nome)
             if doc_id:
                 link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
