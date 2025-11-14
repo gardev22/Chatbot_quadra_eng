@@ -27,7 +27,7 @@ MAX_WORDS_PER_BLOCK = 220
 GROUP_WINDOW = 3
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.18
-MAX_TOKENS = 700
+MAX_TOKENS = 500
 REQUEST_TIMEOUT = 40
 TEMPERATURE = 0.15
 
@@ -218,7 +218,7 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
 
 # ========================= CACHE DE FONTE (DOCX/JSON) =========================
 # Agora esta listagem tem TTL curto para detectar novos arquivos automaticamente.
-@st.cache_data(show_spinner=False, ttl=15)
+@st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
