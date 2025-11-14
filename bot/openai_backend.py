@@ -53,7 +53,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 # ========= FALLBACK =========
 FALLBACK_MSG = (
     "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
-    "Departamento de Estratégia & Inovação."
+    "Departamento de Estratéggia & Inovação."
 )
 
 # ========= CACHE BUSTER =========
@@ -531,10 +531,9 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
-        # 6) Gera link do documento relacionado (mesma lógica de antes,
-        #     mas garantindo que sempre tente usar pelo menos o primeiro candidato)
+        # 6) Anexa link de documento relacionado (robusto)
         bloco_para_link = None
-        if blocos_relevantes:
+        if 'blocos_relevantes' in locals() and blocos_relevantes:
             bloco_para_link = blocos_relevantes[0]
         elif candidates:
             bloco_para_link = candidates[0]["block"]
@@ -548,7 +547,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
-        # LOG DE TEMPO (vai aparecer nos logs do servidor / terminal)
         print(
             f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
         )
