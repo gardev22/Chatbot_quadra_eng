@@ -113,6 +113,34 @@ def _looks_like_noinfo(text: str) -> bool:
     return bool(text and _NOINFO_RE.search(text))
 
 
+def _expand_query_for_hr(query: str) -> str:
+    """
+    Expande algumas queries curtas de RH para melhorar o match semântico.
+    Ex: 'contratar', 'contratação', 'admissão' etc.
+    """
+    q_norm = _strip_accents(query.lower())
+    extras = []
+
+    if "contrat" in q_norm:
+        extras.append(
+            "contratação de funcionários admissão de colaboradores "
+            "processo de admissão contratação de pessoal recrutamento seleção de candidatos"
+        )
+
+    if "admiss" in q_norm:
+        extras.append(
+            "admissão de pessoal contratação de funcionários contratação de colaboradores "
+            "processo de admissão recrutamento"
+        )
+
+    # você pode adicionar outras palavras-chave aqui se quiser
+    # ex: demissão, desligamento, reembolso, etc.
+
+    if extras:
+        return query + " " + " ".join(extras)
+    return query
+
+
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
 def get_drive_client(_v=CACHE_BUSTER):
@@ -168,16 +196,14 @@ def _list_by_mime_query(drive_service, folder_id, mime_query):
 
 def _list_docx_metadata(drive_service, folder_id):
     return _list_by_mime_query(
-        drive_service,
-        folder_id,
+        drive_service, folder_id,
         "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
     )
 
 
 def _list_json_metadata(drive_service, folder_id):
     files = _list_by_mime_query(
-        drive_service,
-        folder_id,
+        drive_service, folder_id,
         "mimeType='application/json' or mimeType='text/plain'"
     )
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
@@ -413,7 +439,11 @@ def ann_search(query_text: str, top_n: int):
         return []
 
     sbert = get_sbert_model()
-    q = sbert.encode([query_text], convert_to_numpy=True, normalize_embeddings=True)[0]
+
+    # <<< ajuste: expande semanticamente queries de RH antes de embedar >>>
+    query_for_embed = _expand_query_for_hr(query_text)
+
+    q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
         D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
