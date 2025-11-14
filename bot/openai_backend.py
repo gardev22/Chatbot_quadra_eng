@@ -449,35 +449,44 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # Busca ANN
+        # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
+            # Sem blocos relevantes -> fallback direto
             return FALLBACK_MSG
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
 
+        # 2) Decide se usa CrossEncoder (no seu caso, está desativado)
         run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
-
         if run_ce:
             subset = candidates[:12]
             reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
-            best_score = reranked[0]["score"] if reranked else 0.0
-            pass_threshold = (best_score >= CE_SCORE_THRESHOLD)
-            top_texts = [r["block"]["texto"] for r in reranked]
         else:
             reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
-            best_score = reranked[0]["score"] if reranked else 0.0
-            pass_threshold = (best_score >= ANN_SCORE_THRESHOLD)
-            top_texts = [c["block"]["texto"] for c in candidates[:top_k]]
 
+        if not reranked:
+            return FALLBACK_MSG
+
+        best_score = reranked[0]["score"]
+        pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
+
+        top_texts = [r["block"]["texto"] for r in reranked]
         evidence_ok = _has_lexical_evidence(pergunta, top_texts)
+
+        # Se não bateu o threshold mas há evidência lexical, libera
         if not pass_threshold and evidence_ok:
             pass_threshold = True
-        if not pass_threshold:
-           blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
 
-        blocos_relevantes = [r["block"] for r in reranked]
+        # Decide blocos que vão para o prompt
+        if pass_threshold:
+            blocos_relevantes = [r["block"] for r in reranked]
+        else:
+            # Threshold ruim e pouca evidência -> ainda tenta poucos blocos ou cai no fallback via prompt
+            blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
+
+        # 3) Monta prompt RAG
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
@@ -489,41 +498,40 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
-            "stream": True
+            "stream": False  # <===== sem streaming
         }
 
-        resposta_final = ""
+        # 4) Chamada à API da OpenAI (sem streaming)
         try:
-            resp = session.post("https://api.openai.com/v1/chat/completions", json=payload, timeout=REQUEST_TIMEOUT, stream=True)
+            resp = session.post(
+                "https://api.openai.com/v1/chat/completions",
+                json=payload,
+                timeout=REQUEST_TIMEOUT
+            )
             resp.raise_for_status()
-            for chunk in resp.iter_lines():
-                if chunk:
-                    chunk_str = chunk.decode('utf-8')
-                    if chunk_str.startswith("data: "):
-                        data_str = chunk_str[6:]
-                        if data_str.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(data_str)
-                            delta = data["choices"][0].get("delta", {})
-                            content = delta.get("content")
-                            if content:
-                                resposta_final += content
-                        except (json.JSONDecodeError, IndexError):
-                            continue
+            data = resp.json()
+            resposta_final = (
+                data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+            )
         except requests.exceptions.RequestException as e:
             return f"❌ Erro de conexão com a API: {e}"
+        except (ValueError, KeyError, IndexError):
+            return "⚠️ Não consegui interpretar a resposta da API."
 
-        if not resposta_final.strip():
+        if not resposta_final or not resposta_final.strip():
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
         resposta = resposta_final.strip()
 
+        # 5) Pós-processamento: detectar “sem informação” ou fallback disfarçado
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
+        # 6) Anexa link de documento (se houver)
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -537,6 +545,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
+
 
 # ========================= CLI =========================
 if __name__ == "__main__":
