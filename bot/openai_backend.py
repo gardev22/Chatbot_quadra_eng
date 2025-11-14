@@ -408,23 +408,33 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
 
 # ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
-    # Caso sem blocos: tenta orientar de forma genérica, mas com fallback rígido
+    escopo = (
+        "procedimentos internos corporativos, por exemplo: RH, férias, contratação/admissão, "
+        "reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, "
+        "obras, qualidade, jurídico, etc."
+    )
+
+    # CASO 1: sem blocos -> orientação geral se for claramente procedimento interno
     if not blocos:
         return (
             "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
-            "Responda em prosa, de forma breve e direta.\n"
-            "Só responda se a pergunta estiver claramente relacionada a procedimentos internos corporativos "
-            "(RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico).\n"
-            f"Se não estiver relacionado, responda exatamente o texto abaixo, sem acrescentar nada:\n"
-            f"{FALLBACK_MSG}\n\n"
+            f"Seu escopo são {escopo}\n"
+            "Regras de decisão:\n"
+            "1. Se a pergunta estiver claramente dentro desse escopo, dê uma orientação geral, prudente e objetiva, "
+            "em prosa, baseada em boas práticas de empresas. Não invente detalhes específicos da Quadra "
+            "(nomes de sistemas, formulários ou e-mails) se eles não forem mencionados.\n"
+            f"2. Se a pergunta NÃO estiver dentro desse escopo, responda exatamente o texto abaixo, sem acrescentar nada:\n{FALLBACK_MSG}\n\n"
+            "Saída obrigatória: responda apenas em parágrafos coesos (prosa), sem listas, marcadores ou travessões. "
+            "Nunca diga que 'não há informação suficiente' ou 'não foi possível encontrar'; em vez disso, "
+            "aplique as regras acima.\n\n"
             f"Pergunta: {pergunta}\n\n"
             "➡️ Resposta:"
         )
 
-    # Com blocos: contexto enxuto e truncado
+    # CASO 2: com blocos -> usa POP se tiver, senão orienta de forma geral
     contexto_parts = []
     for b in blocos:
-        texto = b["texto"] or ""
+        texto = b.get("texto") or ""
         # Trunca cada bloco para evitar prompt gigante
         if len(texto) > 1200:
             texto = texto[:1200]
@@ -434,13 +444,22 @@ def montar_prompt_rag(pergunta, blocos):
 
     return (
         "Você é um assistente da Quadra especializado em Procedimentos Operacionais (POPs).\n"
-        "Use apenas as informações abaixo para responder. Seja sucinto e responda somente em parágrafos, sem listas.\n"
-        "Quando fizer referência direta a um trecho, coloque-o entre aspas. "
-        f"Se não houver informação suficiente para responder com segurança, responda exatamente:\n{FALLBACK_MSG}\n\n"
+        f"Seu escopo são {escopo}\n"
+        "Você recebeu trechos de POPs abaixo.\n"
+        "Regras de decisão:\n"
+        "1. Se os trechos trouxerem informação clara e suficiente sobre o tema da pergunta, responda com base neles, "
+        "em prosa, de forma objetiva.\n"
+        "2. Se os trechos forem insuficientes, mas a pergunta ainda estiver claramente dentro desse escopo de procedimentos internos, "
+        "dê uma orientação geral baseada em boas práticas de empresas. Deixe explícito que é uma orientação genérica e recomende "
+        "que o colaborador consulte o POP específico, o RH ou o gestor responsável na Quadra para confirmar detalhes.\n"
+        f"3. Se a pergunta não estiver dentro desse escopo, responda exatamente o texto abaixo, sem acrescentar nada:\n{FALLBACK_MSG}\n\n"
+        "Saída obrigatória: responda apenas em parágrafos coesos (prosa), sem listas numeradas, marcadores ou travessões. "
+        "Nunca diga que 'não há informação suficiente' ou 'não foi possível encontrar'; em vez disso, aplique as regras acima.\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta: {pergunta}\n\n"
         "➡️ Resposta:"
     )
+
 
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
@@ -452,40 +471,45 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
-        if not candidates:
-            return FALLBACK_MSG
 
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        best_ann = candidates[0]["score"]
+        if candidates:
+            candidates.sort(key=lambda x: x["score"], reverse=True)
+            best_ann = candidates[0]["score"]
 
-        # 2) Decide se usa CrossEncoder (desativado no momento)
-        run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
-        if run_ce:
-            subset = candidates[:12]
-            reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
+            # 2) Decide se usa CrossEncoder (desativado no momento)
+            run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
+            if run_ce:
+                subset = candidates[:12]
+                reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
+            else:
+                reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
+
+            if not reranked:
+                blocos_relevantes = []
+            else:
+                best_score = reranked[0]["score"]
+                pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
+
+                top_texts = [r["block"]["texto"] for r in reranked]
+                evidence_ok = _has_lexical_evidence(pergunta, top_texts)
+
+                # Se não bateu o threshold mas há evidência lexical, libera
+                if not pass_threshold and evidence_ok:
+                    pass_threshold = True
+
+                # Decide blocos que vão para o prompt
+                if pass_threshold:
+                    blocos_relevantes = [r["block"] for r in reranked]
+                else:
+                    blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
         else:
-            reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
-
-        if not reranked:
-            return FALLBACK_MSG
-
-        best_score = reranked[0]["score"]
-        pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
-
-        top_texts = [r["block"]["texto"] for r in reranked]
-        evidence_ok = _has_lexical_evidence(pergunta, top_texts)
-
-        if not pass_threshold and evidence_ok:
-            pass_threshold = True
-
-        if pass_threshold:
-            blocos_relevantes = [r["block"] for r in reranked]
-        else:
-            blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
+            # Sem candidatos na ANN -> sem blocos de contexto, mas ainda podemos orientar de forma genérica.
+            reranked = []
+            blocos_relevantes = []
 
         t_rag = time.perf_counter()
 
-        # 3) Monta prompt
+        # 3) Monta prompt RAG (com ou sem blocos)
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
@@ -525,12 +549,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         resposta = resposta_final.strip()
         t_api = time.perf_counter()
 
-        # 5) Pós-processamento
+        # 5) Pós-processamento: detectar “sem informação” ou fallback disfarçado
         if _looks_like_noinfo(resposta):
             return FALLBACK_MSG
         if _is_fallback_output(resposta):
             return FALLBACK_MSG
 
+        # 6) Anexa link de documento (se houver)
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
             doc_id = primeiro.get("file_id")
@@ -541,7 +566,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
-        # LOG DE TEMPO (vai aparecer nos logs do servidor / terminal)
         print(
             f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
         )
@@ -550,6 +574,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
+
 
 # ========================= CLI =========================
 if __name__ == "__main__":
