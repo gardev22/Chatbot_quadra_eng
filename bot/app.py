@@ -753,10 +753,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Toast se algo falhou ao salvar
+
 if st.session_state.get("_sb_last_error"):
+    # Toast padrão
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
-    # DEBUG visível: mostra a mensagem real de erro do Supabase
-    st.write("💾 Detalhes Supabase:", st.session_state["_sb_last_error"])
+    # DEBUG visível embaixo do chat (não muda layout geral)
+    st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
