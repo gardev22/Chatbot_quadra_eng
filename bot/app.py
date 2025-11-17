@@ -671,7 +671,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
 .user-circle {{ width: 32px; height: 32px; border-radius: 50%; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1rem; }}
 
-section[data-testid="stSidebar"]{{ position:fixed !important; top:var(--header-height) !important; left:0 !important; height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important; background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !important; transform:none !important; visibility:visible !important; overflow:hidden !important; color:var(--text); }}
+section[data-testid="stSidebar"]{{ position:fixed !important; top:var(--header-height) !important; left:0 !important; height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important; background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !重要; transform:none !important; visibility:visible !important; overflow:hidden !important; color:var(--text); }}
 section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
@@ -755,8 +755,8 @@ st.markdown(f"""
 # Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
-    # Para debugar, descomente:
-    # st.write(st.session_state["_sb_last_error"])
+    # DEBUG visível: mostra a mensagem real de erro do Supabase
+    st.write("💾 Detalhes Supabase:", st.session_state["_sb_last_error"])
     st.session_state["_sb_last_error"] = None
 
 # ====== SIDEBAR (Histórico) ======
