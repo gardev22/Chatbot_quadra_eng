@@ -127,6 +127,9 @@ st.session_state.setdefault("conversation_id", None)
 st.session_state.setdefault("conversations_list", [])
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
+# Histórico global (Supabase) para a sidebar
+st.session_state.setdefault("sidebar_history", [])
+st.session_state.setdefault("_sidebar_loaded", False)
 
 # ====== HELPERS DE PERSISTÊNCIA (não falham se sb=None) ======
 def _title_from_first_question(q: str) -> str:
@@ -191,6 +194,31 @@ def save_message(cid, role, content):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
+def load_sidebar_history_from_supabase():
+    """
+    Carrega do Supabase as 20 últimas PERGUNTAS (role = 'user') do usuário logado
+    e guarda em st.session_state.sidebar_history (apenas textos das perguntas).
+    """
+    if not sb or not st.session_state.get("user_id"):
+        return
+    try:
+        res = (
+            sb.table("messages")
+            .select("content, role, created_at, conversations!inner(user_id)")
+            .eq("role", "user")
+            .eq("conversations.user_id", st.session_state.user_id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        rows = res.data or []
+
+        # Ordena do mais antigo para o mais recente (visual cronológico na sidebar)
+        rows_sorted = sorted(rows, key=lambda r: r.get("created_at") or "")
+        st.session_state.sidebar_history = [r["content"] for r in rows_sorted]
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"sidebar.load: {_extract_err_msg(e)}"
+
 # ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
 def _clear_query_params():
     try:
@@ -233,6 +261,8 @@ if "logout" in qp:
         "_title_set": False,
         "_sb_last_error": None,
         "conversations_list": [],
+        "sidebar_history": [],
+        "_sidebar_loaded": False,
     })
     _clear_query_params()
     do_rerun()
@@ -403,6 +433,8 @@ def render_login_screen():
                     "conversation_id": None,
                     "_title_set": False,
                     "conversations_list": [],
+                    "sidebar_history": [],
+                    "_sidebar_loaded": False,
                 })
                 return
 
@@ -449,6 +481,8 @@ def render_login_screen():
                 st.session_state.conversation_id = None
                 st.session_state._title_set = False
                 st.session_state.conversations_list = []
+                st.session_state.sidebar_history = []
+                st.session_state._sidebar_loaded = False
 
                 # garante profile (ignora erros)
                 try:
@@ -602,6 +636,11 @@ if not st.session_state.authenticated:
     else:
         render_login_screen()
 
+# Usuário autenticado: carrega histórico global da sidebar (uma única vez)
+if sb and st.session_state.get("user_id") and not st.session_state.get("_sidebar_loaded"):
+    load_sidebar_history_from_supabase()
+    st.session_state["_sidebar_loaded"] = True
+
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
     """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
@@ -671,7 +710,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 .header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
 .user-circle {{ width: 32px; height: 32px; border-radius: 50%; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1rem; }}
 
-section[data-testid="stSidebar"]{{ position:fixed !important; top:var(--header-height) !important; left:0 !important; height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important; background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !重要; transform:none !important; visibility:visible !important; overflow:hidden !important; color:var(--text); }}
+section[data-testid="stSidebar"]{{ position:fixed !important; top:var(--header-height) !important; left:0 !important; height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important; background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !important; transform:none !important; visibility:visible !important; overflow:hidden !important; color:var(--text); }}
 section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
@@ -753,7 +792,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Toast se algo falhou ao salvar
-
 if st.session_state.get("_sb_last_error"):
     # Toast padrão
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
@@ -770,10 +808,17 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    if not st.session_state.historico:
+    # Se tiver user_id e histórico global carregado, usa ele (20 últimas)
+    if st.session_state.get("user_id") and st.session_state.sidebar_history:
+        perguntas_sidebar = st.session_state.sidebar_history[-20:]
+    else:
+        # fallback: usa somente o histórico local da sessão
+        perguntas_sidebar = [p for p, _ in st.session_state.historico][-20:]
+
+    if not perguntas_sidebar:
         st.markdown('<div class="hist-empty">Sem perguntas ainda.</div>', unsafe_allow_html=True)
     else:
-        for pergunta_hist, _resp in st.session_state.historico:
+        for pergunta_hist in perguntas_sidebar:
             titulo = pergunta_hist.strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
@@ -878,6 +923,12 @@ pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
+
+    # Atualiza histórico da sidebar em memória (20 últimas perguntas do usuário)
+    if st.session_state.get("user_id"):
+        st.session_state.sidebar_history.append(q)
+        if len(st.session_state.sidebar_history) > 20:
+            st.session_state.sidebar_history = st.session_state.sidebar_history[-20:]
 
     # cria conversa e persiste pergunta
     try:
