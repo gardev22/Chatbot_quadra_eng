@@ -57,8 +57,8 @@ FALLBACK_MSG = (
 )
 
 # ========= CACHE BUSTER =========
-# (mudei para forçar rebuild do índice após correção do agrupamento)
-CACHE_BUSTER = "2025-11-19-MARKETING-FIX"
+# mudei de novo pra forçar rebuild de tudo
+CACHE_BUSTER = "2025-11-19-LINK-FIX-02"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -139,13 +139,54 @@ def _expand_query_for_hr(query: str) -> str:
     return query
 
 
+# --------- auxílio para escolher o documento certo pro link ----------
+def _overlap_score(a: str, b: str) -> float:
+    """
+    Score simples de sobreposição lexical entre dois textos.
+    """
+    ta = set(_tokenize(a))
+    tb = set(_tokenize(b))
+    if not ta or not tb:
+        return 0.0
+    inter = len(ta & tb)
+    # peso pelo tamanho da resposta para não favorecer textos gigantes
+    return inter / max(1.0, len(ta))
+
+
+def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
+    """
+    Escolhe o bloco cujo texto mais se parece com a RESPOSTA (e, de quebra, com a pergunta).
+    Assim, se a resposta falar de Marketing, tende a escolher o bloco do POP de Marketing,
+    mesmo que o primeiro bloco do contexto seja de Compras.
+    """
+    if not blocos:
+        return None
+
+    melhor = None
+    melhor_score = 0.0
+    for b in blocos:
+        txt = b.get("texto") or ""
+        if not txt.strip():
+            continue
+        s_resp = _overlap_score(resposta or "", txt)
+        s_perg = _overlap_score(pergunta or "", txt)
+        score = s_resp + 0.5 * s_perg  # resposta pesa mais que a pergunta
+        if score > melhor_score:
+            melhor_score = score
+            melhor = b
+
+    # se o score for muito baixo, melhor não linkar nada pra não errar
+    if melhor is None or melhor_score < 0.02:
+        return None
+    return melhor
+
+
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
                                        api_key: str = API_KEY,
                                        model_id: str = MODEL_ID) -> str:
     """
-    Gera uma resposta mais conversada quando não há informação nos POPs,
-    no estilo dos exemplos (saudação, explicação do escopo e orientação).
+    Gera uma resposta mais conversada quando não há informação nos POPs.
     """
     try:
         prompt_usuario = (
@@ -412,8 +453,6 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     """
     Agrupa blocos em janelas, mas **sem misturar documentos diferentes**.
     Se o próximo bloco tiver file_id diferente, o grupo é cortado ali.
-    Isso garante que cada grupo tenha um único file_id/pagina, evitando
-    links errados de documento.
     """
     grouped = []
     n = len(blocos)
@@ -425,7 +464,6 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
         current_file_id = base.get("file_id")
         group = [base]
 
-        # tenta adicionar até (janela - 1) blocos seguintes com mesmo file_id
         for offset in range(1, janela):
             j = i + offset
             if j >= n:
@@ -530,7 +568,6 @@ def ann_search(query_text: str, top_n: int):
 
     sbert = get_sbert_model()
 
-    # <<< ajuste: expande semanticamente queries de RH antes de embedar >>>
     query_for_embed = _expand_query_for_hr(query_text)
 
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
@@ -567,7 +604,6 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
 
 # ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
-    # Caso sem blocos: tenta orientar de forma genérica, mas com fallback rígido
     if not blocos:
         return (
             "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
@@ -580,7 +616,6 @@ def montar_prompt_rag(pergunta, blocos):
             "➡️ Resposta:"
         )
 
-    # Com blocos: contexto enxuto e truncado
     contexto_parts = []
     for b in blocos:
         texto = b["texto"] or ""
@@ -689,13 +724,14 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         if blocos_relevantes:
-            primeiro = blocos_relevantes[0]
-            doc_id = primeiro.get("file_id")
-            raw_nome = primeiro.get("pagina", "?")
-            doc_nome = sanitize_doc_name(raw_nome)
-            if doc_id:
-                link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
-                resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
+            bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
+            if bloco_link:
+                doc_id = bloco_link.get("file_id")
+                raw_nome = bloco_link.get("pagina", "?")
+                doc_nome = sanitize_doc_name(raw_nome)
+                if doc_id:
+                    link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
+                    resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
         print(
