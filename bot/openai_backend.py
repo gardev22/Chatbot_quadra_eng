@@ -51,14 +51,14 @@ FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 # ========= FALLBACK =========
-# (mensagem bem seca – fica só como backup se der erro na chamada interativa)
 FALLBACK_MSG = (
     "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
     "Departamento de Estratégia & Inovação."
 )
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-10-27-DOCX-NOVO-03"
+# (mudei para forçar rebuild do índice após correção do agrupamento)
+CACHE_BUSTER = "2025-11-19-MARKETING-FIX"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -133,9 +133,6 @@ def _expand_query_for_hr(query: str) -> str:
             "admissão de pessoal contratação de funcionários contratação de colaboradores "
             "processo de admissão recrutamento"
         )
-
-    # você pode adicionar outras palavras-chave aqui se quiser
-    # ex: demissão, desligamento, reembolso, etc.
 
     if extras:
         return query + " " + " ".join(extras)
@@ -412,16 +409,38 @@ def load_all_blocks_cached(folder_id: str):
 
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
+    """
+    Agrupa blocos em janelas, mas **sem misturar documentos diferentes**.
+    Se o próximo bloco tiver file_id diferente, o grupo é cortado ali.
+    Isso garante que cada grupo tenha um único file_id/pagina, evitando
+    links errados de documento.
+    """
     grouped = []
-    for i in range(0, len(blocos), 1):
-        group = blocos[i:i + janela]
-        if not group:
-            continue
+    n = len(blocos)
+    if n == 0:
+        return grouped
+
+    for i in range(n):
+        base = blocos[i]
+        current_file_id = base.get("file_id")
+        group = [base]
+
+        # tenta adicionar até (janela - 1) blocos seguintes com mesmo file_id
+        for offset in range(1, janela):
+            j = i + offset
+            if j >= n:
+                break
+            b_next = blocos[j]
+            if b_next.get("file_id") != current_file_id:
+                break
+            group.append(b_next)
+
         grouped.append({
             "pagina": group[0].get("pagina", "?"),
             "texto": " ".join(b["texto"] for b in group),
-            "file_id": group[0].get("file_id")
+            "file_id": current_file_id,
         })
+
     return grouped
 
 
@@ -565,7 +584,6 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for b in blocos:
         texto = b["texto"] or ""
-        # Trunca cada bloco para evitar prompt gigante
         if len(texto) > 1200:
             texto = texto[:1200]
         contexto_parts.append(f"[Documento {b.get('pagina', '?')}]:\n{texto}")
@@ -594,7 +612,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
-            # Nada relevante nos POPs → usa resposta interativa
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
@@ -609,7 +626,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
 
         if not reranked:
-            # Nenhum candidato “bom” → resposta interativa
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         best_score = reranked[0]["score"]
@@ -669,8 +685,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         t_api = time.perf_counter()
 
         # 5) Pós-processamento
-        # Se o modelo dizer que não encontrou nada ou devolver o fallback seco,
-        # trocamos pela resposta interativa.
         if _looks_like_noinfo(resposta) or _is_fallback_output(resposta):
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
@@ -684,7 +698,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
-        # LOG DE TEMPO (vai aparecer nos logs do servidor / terminal)
         print(
             f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
         )
