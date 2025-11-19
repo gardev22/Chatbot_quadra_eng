@@ -51,6 +51,7 @@ FOLDER_ID = "1fdcVl6RcoyaCpa6PmOX1kUAhXn5YIPTa"
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 # ========= FALLBACK =========
+# (mensagem bem seca – fica só como backup se der erro na chamada interativa)
 FALLBACK_MSG = (
     "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
     "Departamento de Estratégia & Inovação."
@@ -139,6 +140,76 @@ def _expand_query_for_hr(query: str) -> str:
     if extras:
         return query + " " + " ".join(extras)
     return query
+
+
+# ========================= FALLBACK INTERATIVO =========================
+def gerar_resposta_fallback_interativa(pergunta: str,
+                                       api_key: str = API_KEY,
+                                       model_id: str = MODEL_ID) -> str:
+    """
+    Gera uma resposta mais conversada quando não há informação nos POPs,
+    no estilo dos exemplos (saudação, explicação do escopo e orientação).
+    """
+    try:
+        prompt_usuario = (
+            "O usuário fez a pergunta abaixo, mas não encontramos nenhum conteúdo correspondente "
+            "nos documentos internos ou POPs da Quadra Engenharia.\n\n"
+            "Sua tarefa:\n"
+            "1. Cumprimente o usuário de forma cordial.\n"
+            "2. Explique que você é um assistente treinado principalmente com documentos internos "
+            "   (procedimentos, POPs, rotinas, fluxos da Quadra) e que não localizou nada específico "
+            "   sobre essa pergunta nos documentos.\n"
+            "3. Se a pergunta for claramente de conhecimento geral (por exemplo, eventos públicos, "
+            "   datas comemorativas, conceitos amplos), você pode dar uma resposta curta com base "
+            "   em conhecimento geral, deixando claro que isso vem de informações públicas e não "
+            "   de documentos da Quadra.\n"
+            "4. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
+            "   políticas, POPs, rotinas ou documentos da Quadra.\n"
+            "5. Use um tom profissional, mas próximo e amigável, como em uma conversa. "
+            "   Evite listas muito longas (no máximo 3 itens) e responda em português do Brasil.\n\n"
+            f"Pergunta do usuário:\n\"{pergunta}\""
+        )
+
+        payload = {
+            "model": model_id,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é um assistente virtual da Quadra Engenharia. "
+                        "Responda sempre em português do Brasil, de forma clara, educada e objetiva."
+                    ),
+                },
+                {"role": "user", "content": prompt_usuario},
+            ],
+            "max_tokens": max(320, MAX_TOKENS),
+            "temperature": 0.35,
+            "n": 1,
+            "stream": False,
+        }
+
+        resp = session.post(
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        texto = (
+            data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+        )
+        if not texto or not texto.strip():
+            return FALLBACK_MSG
+        return texto.strip()
+
+    except requests.exceptions.RequestException as e:
+        print(f"[DEBUG POP-BOT] Erro na chamada de fallback interativo: {e}")
+        return FALLBACK_MSG
+    except Exception as e:
+        print(f"[DEBUG POP-BOT] Erro inesperado no fallback interativo: {e}")
+        return FALLBACK_MSG
 
 
 # ========================= CLIENTES CACHEADOS =========================
@@ -523,7 +594,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
-            return FALLBACK_MSG
+            # Nada relevante nos POPs → usa resposta interativa
+            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
@@ -537,7 +609,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
 
         if not reranked:
-            return FALLBACK_MSG
+            # Nenhum candidato “bom” → resposta interativa
+            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         best_score = reranked[0]["score"]
         pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
@@ -596,10 +669,10 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         t_api = time.perf_counter()
 
         # 5) Pós-processamento
-        if _looks_like_noinfo(resposta):
-            return FALLBACK_MSG
-        if _is_fallback_output(resposta):
-            return FALLBACK_MSG
+        # Se o modelo dizer que não encontrou nada ou devolver o fallback seco,
+        # trocamos pela resposta interativa.
+        if _looks_like_noinfo(resposta) or _is_fallback_output(resposta):
+            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         if blocos_relevantes:
             primeiro = blocos_relevantes[0]
