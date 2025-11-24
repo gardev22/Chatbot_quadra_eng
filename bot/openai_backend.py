@@ -8,14 +8,25 @@ import time
 import unicodedata
 import numpy as np
 import requests
-import streamlit as st
+import streamlit as st # LINHA DE IMPORT DO STREAMLIT
 from html import escape
 from docx import Document
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
-# ========= CONFIG BÁSICA =========
-API_KEY = st.secrets["openai"]["api_key"]
+# ========= CONFIG BÁSICA (ATRASANDO A LEITURA DE SECRETS) =========
+
+def get_api_key():
+    """Lê a chave de API do st.secrets, atrasando a chamada."""
+    try:
+        # Acessa st.secrets DENTRO da função, que só será chamada DEPOIS do app.py
+        return st.secrets["openai"]["api_key"].strip()
+    except Exception:
+        # Fallback ou erro, se não conseguir ler
+        # Use a variável de ambiente se estiver disponível, senão uma chave dummy
+        return os.environ.get("OPENAI_API_KEY", "DUMMY_KEY_IF_NOT_FOUND")
+
+# O MODEL_ID pode ser definido como global
 MODEL_ID = "gpt-4o-mini"
 
 # ========= PERFORMANCE & QUALIDADE (MODO TURBO) =========
@@ -60,12 +71,17 @@ FALLBACK_MSG = (
 # mudei de novo pra forçar rebuild de tudo
 CACHE_BUSTER = "2025-11-19-LINK-FIX-02"
 
-# ========= HTTP SESSION =========
+# ========= HTTP SESSION (CHAVE LIDA VIA FUNÇÃO) =========
+def build_session_headers():
+    key = get_api_key()
+    return {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json"
+    }
+
 session = requests.Session()
-session.headers.update({
-    "Authorization": f"Bearer {API_KEY.strip()}",
-    "Content-Type": "application/json"
-})
+session.headers.update(build_session_headers())
+
 
 # ========================= UTILS =========================
 def sanitize_doc_name(name: str) -> str:
@@ -183,7 +199,7 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
 
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
-                                       api_key: str = API_KEY,
+                                       api_key: str = None, # Não usamos mais API_KEY global
                                        model_id: str = MODEL_ID) -> str:
     """
     Gera uma resposta mais conversada quando não há informação nos POPs.
@@ -639,7 +655,7 @@ def montar_prompt_rag(pergunta, blocos):
 
 
 # ========================= PRINCIPAL =========================
-def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
+def responder_pergunta(pergunta, top_k: int = TOP_K, model_id: str = MODEL_ID): # Removi api_key dos argumentos
     t0 = time.perf_counter()
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
@@ -649,7 +665,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
+            # Agora a chave é lida internamente na função
+            return gerar_resposta_fallback_interativa(pergunta, model_id=model_id)
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
         best_ann = candidates[0]["score"]
@@ -663,7 +680,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
 
         if not reranked:
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
+            return gerar_resposta_fallback_interativa(pergunta, model_id=model_id)
 
         best_score = reranked[0]["score"]
         # Usando os novos thresholds
@@ -725,7 +742,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 5) Pós-processamento
         if _looks_like_noinfo(resposta) or _is_fallback_output(resposta):
             # Se o LLM cair no fallback, chamamos a função interativa para dar o toque amigável
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
+            return gerar_resposta_fallback_interativa(pergunta, model_id=model_id)
 
         if blocos_relevantes:
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
