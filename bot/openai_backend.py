@@ -23,22 +23,22 @@ USE_JSONL = True
 USE_CE = False
 SKIP_CE_IF_ANN_BEST = 0.80
 
-# menos candidatos na ANN e menos blocos no contexto
+# menos candidatos na ANN e mais blocos no contexto
 TOP_N_ANN = 12
-TOP_K = 3
+TOP_K = 5  # Mais contexto (de 3 para 5)
 
 # blocos menores e janela menor (contexto mais enxuto)
 MAX_WORDS_PER_BLOCK = 160
 GROUP_WINDOW = 2
 
 CE_SCORE_THRESHOLD = 0.38
-ANN_SCORE_THRESHOLD = 0.18
+ANN_SCORE_THRESHOLD = 0.15  # Limite de score mais baixo (de 0.18 para 0.15)
 
-# resposta mais curta
-MAX_TOKENS = 280
+# resposta com comprimento moderado
+MAX_TOKENS = 380
 
 REQUEST_TIMEOUT = 20
-TEMPERATURE = 0.15
+TEMPERATURE = 0.35
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -55,6 +55,27 @@ FALLBACK_MSG = (
     "⚠️ Este agente é exclusivo para consulta de Procedimento Operacional Padrão - POP Quadra. ⚠️\n"
     "Departamento de Estratégia & Inovação."
 )
+
+# ========= SYSTEM PROMPT CONVERSACIONAL (RAG) =========
+SYSTEM_PROMPT_RAG = """
+Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
+
+Seu papel:
+- Ajudar colaboradores a entender POPs, políticas e procedimentos internos.
+- Falar SEMPRE em português do Brasil.
+- Ser conversacional e acolhedor, como um colega experiente.
+
+Estilo de resposta:
+- Comece com uma saudação curta relacionada à dúvida (ex.: "Oi, tudo bem? Vamos lá:" ou "Olá! Sobre a sua pergunta...").
+- Explique o procedimento em passos claros, usando parágrafos curtos e listas quando fizer sentido.
+- Evite linguagem muito robótica; use "você" e frases naturais.
+- Quando fizer sentido, termine oferecendo ajuda extra (ex.: "Se quiser, posso detalhar algum passo específico.").
+
+Regras de conteúdo:
+- Use APENAS as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
+- Se algo importante não estiver descrito no contexto, diga isso de forma clara e amigável (sem inventar regra interna).
+- Se a pergunta fugir de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
+"""
 
 # ========= CACHE BUSTER =========
 # mudei de novo pra forçar rebuild de tudo
@@ -202,7 +223,8 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "   em conhecimento geral, deixando claro que isso vem de informações públicas e não "
             "   de documentos da Quadra.\n"
             "4. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
-            "   políticas, POPs, rotinas ou documentos da Quadra.\n"
+            "   políticas, POPs, rotinas ou documentos da Quadra, **com uma pergunta de fechamento amigável "
+            "   (Ex: 'Você gostaria de tentar reformular a pergunta com foco em um processo interno?')**.\n"
             "5. Use um tom profissional, mas próximo e amigável, como em uma conversa. "
             "   Evite listas muito longas (no máximo 3 itens) e responda em português do Brasil.\n\n"
             f"Pergunta do usuário:\n\"{pergunta}\""
@@ -235,8 +257,8 @@ def gerar_resposta_fallback_interativa(pergunta: str,
         data = resp.json()
         texto = (
             data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
+            .get("message", {})
+            .get("content", "")
         )
         if not texto or not texto.strip():
             return FALLBACK_MSG
@@ -604,36 +626,37 @@ def crossencoder_rerank(query: str, candidates, top_k: int):
 
 # ========================= PROMPT (MODO ENXUTO) =========================
 def montar_prompt_rag(pergunta, blocos):
+    """
+    Monta o texto que vai na mensagem do usuário:
+    - contexto dos POPs
+    - pergunta do colaborador
+
+    O estilo / tom de voz ficam definidos no SYSTEM_PROMPT_RAG.
+    """
     if not blocos:
         return (
-            "Você é um assistente da Quadra especializado em orientar colaboradores sobre PROCEDIMENTOS INTERNOS.\n"
-            "Responda em prosa, de forma breve e direta.\n"
-            "Só responda se a pergunta estiver claramente relacionada a procedimentos internos corporativos "
-            "(RH, férias, reembolso, compras, suprimentos, financeiro, TI, acesso, segurança do trabalho, obras, qualidade, jurídico).\n"
-            f"Se não estiver relacionado, responda exatamente o texto abaixo, sem acrescentar nada:\n"
-            f"{FALLBACK_MSG}\n\n"
-            f"Pergunta: {pergunta}\n\n"
-            "➡️ Resposta:"
+            "Nenhum trecho de POP relevante foi encontrado para a pergunta abaixo.\n"
+            f"Pergunta do colaborador: {pergunta}"
         )
 
     contexto_parts = []
-    for b in blocos:
-        texto = b["texto"] or ""
+    for i, b in enumerate(blocos, start=1):
+        texto = b.get("texto") or ""
         if len(texto) > 1200:
             texto = texto[:1200]
-        contexto_parts.append(f"[Documento {b.get('pagina', '?')}]:\n{texto}")
+        pagina = b.get("pagina", "?")
+        contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
 
     contexto_str = "\n\n".join(contexto_parts)
 
-    return (
-        "Você é um assistente da Quadra especializado em Procedimentos Operacionais (POPs).\n"
-        "Use apenas as informações abaixo para responder. Seja sucinto e responda somente em parágrafos, sem listas.\n"
-        "Quando fizer referência direta a um trecho, coloque-o entre aspas. "
-        f"Se não houver informação suficiente para responder com segurança, responda exatamente:\n{FALLBACK_MSG}\n\n"
+    prompt_usuario = (
+        "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
+        "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
         f"{contexto_str}\n\n"
-        f"Pergunta: {pergunta}\n\n"
-        "➡️ Resposta:"
+        f"Pergunta do colaborador: {pergunta}"
     )
+
+    return prompt_usuario
 
 
 # ========================= PRINCIPAL =========================
@@ -664,6 +687,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         best_score = reranked[0]["score"]
+        # Usando os novos thresholds
         pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
 
         top_texts = [r["block"]["texto"] for r in reranked]
@@ -679,19 +703,19 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         t_rag = time.perf_counter()
 
-        # 3) Monta prompt
+        # 3) Monta prompt (contexto + pergunta) e define o system prompt conversacional
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
             "model": model_id,
             "messages": [
-                {"role": "system", "content": "Você responde apenas com base no conteúdo fornecido."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": SYSTEM_PROMPT_RAG},
+                {"role": "user", "content": prompt},
             ],
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
-            "stream": False
+            "stream": False,
         }
 
         # 4) Chamada à API da OpenAI
@@ -705,8 +729,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             data = resp.json()
             resposta_final = (
                 data.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
+                .get("message", {})
+                .get("content", "")
             )
         except requests.exceptions.RequestException as e:
             return f"❌ Erro de conexão com a API: {e}"
@@ -721,6 +745,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         # 5) Pós-processamento
         if _looks_like_noinfo(resposta) or _is_fallback_output(resposta):
+            # Se o LLM cair no fallback, chamamos a função interativa para dar o toque amigável
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
         if blocos_relevantes:
@@ -735,7 +760,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         t_end = time.perf_counter()
         print(
-            f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
+            f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | "
+            f"Total responder_pergunta: {t_end - t0:.2f}s"
         )
 
         return resposta
@@ -751,6 +777,6 @@ if __name__ == "__main__":
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
-        print("\nResposta:\n" + "="*20)
+        print("\nResposta:\n" + "=" * 20)
         print(responder_pergunta(q))
-        print("="*20 + "\n")
+        print("=" * 20 + "\n")
