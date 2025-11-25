@@ -1,4 +1,4 @@
-# openai_backend.py — RAG simplificado, sem thresholds agressivos
+# openai_backend.py — RAG focado em resposta rica + link de origem
 
 import os
 import io
@@ -9,26 +9,25 @@ import unicodedata
 import numpy as np
 import requests
 import streamlit as st
-from html import escape
 from docx import Document
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-MODEL_ID = "gpt-4o-mini"
+MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False  # continua desligado
+USE_CE = False  # mantemos desativado para não ficar pesado
 
-TOP_N_ANN = 12   # quantos candidatos buscar na ANN
-TOP_K = 5        # quantos blocos vão para o contexto
+TOP_N_ANN = 12   # candidatos na ANN
+TOP_K = 5        # blocos no contexto
 
-MAX_WORDS_PER_BLOCK = 180  # tamanho dos blocos
-GROUP_WINDOW = 2           # janelas pequenas mas ainda agrupadas
+MAX_WORDS_PER_BLOCK = 180
+GROUP_WINDOW = 2
 
-MAX_TOKENS = 420           # resposta detalhada, mas não gigante
+MAX_TOKENS = 420
 REQUEST_TIMEOUT = 20
 TEMPERATURE = 0.30
 
@@ -48,7 +47,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT (CONVERSACIONAL) =========
+# ========= SYSTEM PROMPT (CONVERSACIONAL, MENOS RÍGIDO) =========
 SYSTEM_PROMPT_RAG = """
 Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 
@@ -60,19 +59,22 @@ Seu papel:
 Estilo de resposta:
 - Comece com uma saudação curta relacionada à dúvida (ex.: "Oi, tudo bem? Vamos lá:" ou "Olá! Sobre a sua pergunta...").
 - Explique o procedimento em passos claros, usando parágrafos curtos e listas quando fizer sentido.
-- Evite linguagem muito robótica; use "você" e frases naturais.
+- Use linguagem natural, com "você", evitando tom robótico.
 - Quando fizer sentido, termine oferecendo ajuda extra (ex.: "Se quiser, posso detalhar algum passo específico.").
 
 Regras de conteúdo:
-- Use APENAS as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
-- Quando o contexto trouxer um procedimento completo (passos, prazos, formulários, diferenças entre sede e obra, etc.),
-  descreva esses detalhes na resposta, sem resumir demais.
-- Se não houver NENHUMA informação relacionada no contexto, diga isso de forma clara e amigável.
-- Se a pergunta fugir de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
+- Use prioritariamente as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
+- Quando o contexto trouxer regras gerais (por exemplo: compras de materiais de expediente),
+  você pode aplicá-las ao caso específico perguntado (por exemplo: toner), mesmo se o termo exato
+  não aparecer, desde que isso seja coerente com o documento.
+- Evite simplesmente dizer que não há informação se existirem regras gerais relacionadas: em vez disso,
+  explique como o procedimento geral se aplica à situação perguntada.
+- Só diga claramente que não há informação se o contexto realmente não trouxer nada relacionado àquele assunto.
+- Se a pergunta fugir totalmente de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
 """
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-11-25-RAG-SIMPLES-01"
+CACHE_BUSTER = "2025-11-25-RAG-TONER-BOOST-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -116,6 +118,10 @@ def _overlap_score(a: str, b: str) -> float:
 
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
+    """
+    Escolhe o bloco mais parecido com a resposta e a pergunta
+    para linkar o documento correto.
+    """
     if not blocos:
         return None
 
@@ -138,9 +144,14 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
 
 
 def _expand_query_for_hr(query: str) -> str:
+    """
+    Expande queries para melhorar match semântico.
+    Aqui a gente aproveita para tratar toner como material de expediente.
+    """
     q_norm = _strip_accents(query.lower())
     extras = []
 
+    # RH (já existia)
     if "contrat" in q_norm:
         extras.append(
             "contratação de funcionários admissão de colaboradores "
@@ -153,6 +164,14 @@ def _expand_query_for_hr(query: str) -> str:
             "processo de admissão recrutamento"
         )
 
+    # COMPRAS / TONER -> material de expediente
+    if "toner" in q_norm:
+        extras.append(
+            "material de expediente suprimentos de escritório cartucho de impressão "
+            "cartucho de impressora toner de impressora compras de materiais de expediente "
+            "procedimento de solicitação de material de expediente F.18 F.45 Departamento de Compras"
+        )
+
     if extras:
         return query + " " + " ".join(extras)
     return query
@@ -162,6 +181,9 @@ def _expand_query_for_hr(query: str) -> str:
 def gerar_resposta_fallback_interativa(pergunta: str,
                                        api_key: str = API_KEY,
                                        model_id: str = MODEL_ID) -> str:
+    """
+    Só usamos esse fallback quando REALMENTE não há nenhum bloco retornado.
+    """
     try:
         prompt_usuario = (
             "O usuário fez a pergunta abaixo, mas não encontramos nenhum conteúdo correspondente "
@@ -172,7 +194,7 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "   (procedimentos, POPs, rotinas, fluxos da Quadra) e que não localizou nada específico "
             "   sobre essa pergunta nos documentos.\n"
             "3. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
-            "   políticas, POPs, rotinas ou documentos da Quadra, com uma pergunta de fechamento amigável.\n"
+            "   políticas, POPs, rotinas ou documentos da Quadra, com uma pergunta final amigável.\n"
             "4. Use um tom profissional, mas próximo e amigável, em português do Brasil.\n\n"
             f"Pergunta do usuário:\n\"{pergunta}\""
         )
@@ -283,13 +305,6 @@ def _list_json_metadata(drive_service, folder_id):
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
 
 
-def _list_pdf_metadata(drive_service, folder_id):
-    return _list_by_mime_query(
-        drive_service, folder_id,
-        "mimeType='application/pdf'"
-    )
-
-
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     query = f"'{folder_id}' in parents and trashed = false"
@@ -306,7 +321,7 @@ def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
 
-# ========================= PARSE DOCX/JSON/PDF =========================
+# ========================= PARSE DOCX/JSON =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
@@ -318,29 +333,6 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
     return [
         {"pagina": file_name, "texto": chunk, "file_id": file_id}
         for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
-    ]
-
-
-def _pdf_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        print("[QD-BOT] PyPDF2 não instalado; PDFs serão ignorados.")
-        return []
-
-    reader = PdfReader(io.BytesIO(file_bytes))
-    pages_text = []
-    for page in reader.pages:
-        txt = page.extract_text() or ""
-        if txt.strip():
-            pages_text.append(txt.strip())
-
-    full_text = "\n".join(pages_text)
-
-    return [
-        {"pagina": file_name, "texto": chunk, "file_id": file_id}
-        for chunk in _split_text_blocks(full_text, max_words=max_words)
-        if chunk.strip()
     ]
 
 
@@ -383,19 +375,17 @@ def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
     files_docx = _list_docx_metadata(drive, folder_id)
-    files_pdf = _list_pdf_metadata(drive, folder_id)
-    return {"json": files_json, "docx": files_docx, "pdf": files_pdf}
+    return {"json": files_json, "docx": files_docx}
 
 
 def _signature_from_files(files):
     return [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])]
 
 
-def _build_signature_sources(files_json, files_docx, files_pdf):
+def _build_signature_sources(files_json, files_docx):
     payload = {
         "json": sorted(_signature_from_files(files_json), key=lambda x: x["id"]) if files_json else [],
         "docx": sorted(_signature_from_files(files_docx), key=lambda x: x["id"]) if files_docx else [],
-        "pdf":  sorted(_signature_from_files(files_pdf),  key=lambda x: x["id"]) if files_pdf else [],
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -404,12 +394,6 @@ def _build_signature_sources(files_json, files_docx, files_pdf):
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
-
-
-@st.cache_data(show_spinner=False)
-def _parse_pdf_cached(file_id: str, md5: str, name: str):
-    drive = get_drive_client()
-    return _pdf_to_blocks(_download_bytes(drive, file_id), name, file_id)
 
 
 @st.cache_data(show_spinner=False)
@@ -424,7 +408,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     sources = _list_sources_cached(folder_id)
     files_json = sources.get("json", []) if USE_JSONL else []
     files_docx = sources.get("docx", []) or []
-    files_pdf = sources.get("pdf", []) or []
 
     blocks = []
 
@@ -442,13 +425,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         except Exception:
             continue
 
-    for f in files_pdf:
-        try:
-            md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
-            blocks.extend(_parse_pdf_cached(f["id"], md5, f["name"]))
-        except Exception:
-            continue
-
     return blocks
 
 
@@ -457,7 +433,6 @@ def load_all_blocks_cached(folder_id: str):
     signature = _build_signature_sources(
         src.get("json", []),
         src.get("docx", []),
-        src.get("pdf", []),
     )
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
@@ -466,7 +441,7 @@ def load_all_blocks_cached(folder_id: str):
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     """
-    Agrupa blocos em janelas curtas, sem misturar documentos diferentes.
+    Agrupa blocos em janelas pequenas, sem misturar documentos diferentes.
     """
     grouped = []
     n = len(blocos)
@@ -601,7 +576,7 @@ def ann_search(query_text: str, top_n: int):
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
-        adj_score = float(s) + 0.25 * lex  # pequeno boost lexical
+        adj_score = float(s) + 0.25 * lex  # boost lexical leve
         results.append({
             "idx": i,
             "score": adj_score,
@@ -632,9 +607,9 @@ def montar_prompt_rag(pergunta, blocos):
 
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
-        "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n"
-        "Quando o contexto trouxer procedimentos detalhados (por exemplo: sede vs. obra, formulários F.18/F.45, prazos),\n"
-        "traga esses detalhes na resposta, organizando em parágrafos e listas quando fizer sentido.\n\n"
+        "Use essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n"
+        "Se o contexto trouxer regras gerais (por exemplo, sobre materiais de expediente ou compras), "
+        "explique como essas regras se aplicam ao caso específico perguntado (por exemplo, toner).\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
@@ -656,7 +631,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             # Nenhum bloco em lugar nenhum: aí sim usamos fallback
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
-        # 2) Pega os TOP_K blocos sem threshold chato
+        # 2) Usa os TOP_K blocos, sem thresholds agressivos
         reranked = candidates[:top_k]
         blocos_relevantes = [r["block"] for r in reranked]
 
@@ -701,7 +676,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = resposta_final.strip()
 
-        # 5) Link para o documento
+        # 5) Link para o documento mais provável
         if blocos_relevantes:
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
