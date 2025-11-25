@@ -1,4 +1,4 @@
-# openai_backend.py — Drive refresh + índice sincronizado + caching por arquivo
+# openai_backend.py — RAG simplificado, sem thresholds agressivos
 
 import os
 import io
@@ -18,25 +18,17 @@ from google.oauth2 import service_account
 API_KEY = st.secrets["openai"]["api_key"]
 MODEL_ID = "gpt-4o-mini"
 
-# ========= PERFORMANCE & QUALIDADE (MODO TURBO) =========
+# ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False
-SKIP_CE_IF_ANN_BEST = 0.80
+USE_CE = False  # continua desligado
 
-# menos candidatos na ANN e mais blocos no contexto
-TOP_N_ANN = 12
-TOP_K = 5  # equilíbrio entre contexto e velocidade
+TOP_N_ANN = 12   # quantos candidatos buscar na ANN
+TOP_K = 5        # quantos blocos vão para o contexto
 
-# blocos um pouco maiores e janela centrada
-MAX_WORDS_PER_BLOCK = 180
-GROUP_WINDOW = 3  # janela centrada: [i-1, i, i+1]
+MAX_WORDS_PER_BLOCK = 180  # tamanho dos blocos
+GROUP_WINDOW = 2           # janelas pequenas mas ainda agrupadas
 
-CE_SCORE_THRESHOLD = 0.38
-ANN_SCORE_THRESHOLD = 0.15  # Limite de score mais baixo (de 0.18 para 0.15)
-
-# resposta detalhada, mas não exagerada
-MAX_TOKENS = 420
-
+MAX_TOKENS = 420           # resposta detalhada, mas não gigante
 REQUEST_TIMEOUT = 20
 TEMPERATURE = 0.30
 
@@ -56,7 +48,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT CONVERSACIONAL (RAG) =========
+# ========= SYSTEM PROMPT (CONVERSACIONAL) =========
 SYSTEM_PROMPT_RAG = """
 Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 
@@ -73,15 +65,14 @@ Estilo de resposta:
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
-- Quando o contexto trouxer um procedimento completo (passos, prazos, formulários, diferenças entre obra/sede etc.),
-  descreva esses detalhes na resposta, sem resumir demais e sem pular etapas importantes.
-- Se algo importante não estiver descrito no contexto, diga isso de forma clara e amigável (sem inventar regra interna).
+- Quando o contexto trouxer um procedimento completo (passos, prazos, formulários, diferenças entre sede e obra, etc.),
+  descreva esses detalhes na resposta, sem resumir demais.
+- Se não houver NENHUMA informação relacionada no contexto, diga isso de forma clara e amigável.
 - Se a pergunta fugir de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
 """
 
 # ========= CACHE BUSTER =========
-# mudei de novo pra forçar rebuild de tudo
-CACHE_BUSTER = "2025-11-25-RAG-PDF-LEXICAL-01"
+CACHE_BUSTER = "2025-11-25-RAG-SIMPLES-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -106,22 +97,7 @@ def _tokenize(s: str):
     return re.findall(r"[a-zA-Z0-9_]{3,}", s)
 
 
-def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
-    q_tokens = set(_tokenize(query))
-    if not q_tokens:
-        return False
-    for t in texts:
-        t_tokens = set(_tokenize(t or ""))
-        if q_tokens & t_tokens:
-            return True
-    return False
-
-
 def _lexical_overlap(query: str, text: str) -> float:
-    """
-    Overlap simples entre tokens da pergunta e do texto.
-    Usado como boost lexical na busca ANN.
-    """
     q_tokens = set(_tokenize(query))
     t_tokens = set(_tokenize(text))
     if not q_tokens or not t_tokens:
@@ -130,31 +106,38 @@ def _lexical_overlap(query: str, text: str) -> float:
     return inter / len(q_tokens)
 
 
-def _is_fallback_output(text: str) -> bool:
-    if not text:
-        return False
-    norm = "\n".join([line.strip() for line in text.strip().splitlines() if line.strip()])
-    norm = _strip_accents(norm.lower())
-    fallback_norm = _strip_accents(FALLBACK_MSG.lower())
-    first_line = _strip_accents(FALLBACK_MSG.splitlines()[0].lower())
-    return (fallback_norm in norm) or norm.startswith(first_line)
+def _overlap_score(a: str, b: str) -> float:
+    ta = set(_tokenize(a))
+    tb = set(_tokenize(b))
+    if not ta or not tb:
+        return 0.0
+    inter = len(ta & tb)
+    return inter / max(1.0, len(ta))
 
 
-_NOINFO_RE = re.compile(
-    r"(não\s+há\s+informa|não\s+encontrei|não\s+foi\s+possível\s+encontrar|sem\s+informações|não\s+consta|não\s+existe)",
-    re.IGNORECASE
-)
+def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
+    if not blocos:
+        return None
 
+    melhor = None
+    melhor_score = 0.0
+    for b in blocos:
+        txt = b.get("texto") or ""
+        if not txt.strip():
+            continue
+        s_resp = _overlap_score(resposta or "", txt)
+        s_perg = _overlap_score(pergunta or "", txt)
+        score = s_resp + 0.5 * s_perg
+        if score > melhor_score:
+            melhor_score = score
+            melhor = b
 
-def _looks_like_noinfo(text: str) -> bool:
-    return bool(text and _NOINFO_RE.search(text))
+    if melhor is None or melhor_score < 0.02:
+        return None
+    return melhor
 
 
 def _expand_query_for_hr(query: str) -> str:
-    """
-    Expande algumas queries curtas de RH para melhorar o match semântico.
-    Ex: 'contratar', 'contratação', 'admissão' etc.
-    """
     q_norm = _strip_accents(query.lower())
     extras = []
 
@@ -175,55 +158,10 @@ def _expand_query_for_hr(query: str) -> str:
     return query
 
 
-# --------- auxílio para escolher o documento certo pro link ----------
-def _overlap_score(a: str, b: str) -> float:
-    """
-    Score simples de sobreposição lexical entre dois textos.
-    """
-    ta = set(_tokenize(a))
-    tb = set(_tokenize(b))
-    if not ta or not tb:
-        return 0.0
-    inter = len(ta & tb)
-    # peso pelo tamanho da resposta para não favorecer textos gigantes
-    return inter / max(1.0, len(ta))
-
-
-def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
-    """
-    Escolhe o bloco cujo texto mais se parece com a RESPOSTA (e, de quebra, com a pergunta).
-    Assim, se a resposta falar de Marketing, tende a escolher o bloco do POP de Marketing,
-    mesmo que o primeiro bloco do contexto seja de Compras.
-    """
-    if not blocos:
-        return None
-
-    melhor = None
-    melhor_score = 0.0
-    for b in blocos:
-        txt = b.get("texto") or ""
-        if not txt.strip():
-            continue
-        s_resp = _overlap_score(resposta or "", txt)
-        s_perg = _overlap_score(pergunta or "", txt)
-        score = s_resp + 0.5 * s_perg  # resposta pesa mais que a pergunta
-        if score > melhor_score:
-            melhor_score = score
-            melhor = b
-
-    # se o score for muito baixo, melhor não linkar nada pra não errar
-    if melhor is None or melhor_score < 0.02:
-        return None
-    return melhor
-
-
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
                                        api_key: str = API_KEY,
                                        model_id: str = MODEL_ID) -> str:
-    """
-    Gera uma resposta mais conversada quando não há informação nos POPs.
-    """
     try:
         prompt_usuario = (
             "O usuário fez a pergunta abaixo, mas não encontramos nenhum conteúdo correspondente "
@@ -233,15 +171,9 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "2. Explique que você é um assistente treinado principalmente com documentos internos "
             "   (procedimentos, POPs, rotinas, fluxos da Quadra) e que não localizou nada específico "
             "   sobre essa pergunta nos documentos.\n"
-            "3. Se a pergunta for claramente de conhecimento geral (por exemplo, eventos públicos, "
-            "   datas comemorativas, conceitos amplos), você pode dar uma resposta curta com base "
-            "   em conhecimento geral, deixando claro que isso vem de informações públicas e não "
-            "   de documentos da Quadra.\n"
-            "4. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
-            "   políticas, POPs, rotinas ou documentos da Quadra, **com uma pergunta de fechamento amigável "
-            "   (Ex: 'Você gostaria de tentar reformular a pergunta com foco em um processo interno?')**.\n"
-            "5. Use um tom profissional, mas próximo e amigável, como em uma conversa. "
-            "   Evite listas muito longas (no máximo 3 itens) e responda em português do Brasil.\n\n"
+            "3. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
+            "   políticas, POPs, rotinas ou documentos da Quadra, com uma pergunta de fechamento amigável.\n"
+            "4. Use um tom profissional, mas próximo e amigável, em português do Brasil.\n\n"
             f"Pergunta do usuário:\n\"{pergunta}\""
         )
 
@@ -257,7 +189,7 @@ def gerar_resposta_fallback_interativa(pergunta: str,
                 },
                 {"role": "user", "content": prompt_usuario},
             ],
-            "max_tokens": max(320, MAX_TOKENS),
+            "max_tokens": 320,
             "temperature": 0.35,
             "n": 1,
             "stream": False,
@@ -279,11 +211,7 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             return FALLBACK_MSG
         return texto.strip()
 
-    except requests.exceptions.RequestException as e:
-        print(f"[DEBUG POP-BOT] Erro na chamada de fallback interativo: {e}")
-        return FALLBACK_MSG
-    except Exception as e:
-        print(f"[DEBUG POP-BOT] Erro inesperado no fallback interativo: {e}")
+    except Exception:
         return FALLBACK_MSG
 
 
@@ -394,14 +322,10 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
 
 
 def _pdf_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
-    """
-    Extrai texto de um PDF em memória e quebra em blocos.
-    Requer PyPDF2 instalado.
-    """
     try:
         from PyPDF2 import PdfReader
     except ImportError:
-        print("[POP-BOT] PyPDF2 não instalado; PDFs serão ignorados.")
+        print("[QD-BOT] PyPDF2 não instalado; PDFs serão ignorados.")
         return []
 
     reader = PdfReader(io.BytesIO(file_bytes))
@@ -453,7 +377,7 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     return out
 
 
-# ========================= CACHE DE FONTE (DOCX/JSON/PDF) =========================
+# ========================= CACHE DE FONTES =========================
 @st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
@@ -542,43 +466,37 @@ def load_all_blocks_cached(folder_id: str):
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     """
-    Agrupa blocos em janelas centradas (ex.: janela=3 => [i-1, i, i+1]),
-    sem misturar documentos diferentes.
-    Isso ajuda a pegar o trecho completo do procedimento (ex.: Sede + Obra + contexto geral).
+    Agrupa blocos em janelas curtas, sem misturar documentos diferentes.
     """
     grouped = []
     n = len(blocos)
     if n == 0:
         return grouped
 
-    radius = max(0, (janela - 1) // 2)
-
     for i in range(n):
         base = blocos[i]
         current_file_id = base.get("file_id")
-        idxs = []
+        group = [base]
 
-        start = max(0, i - radius)
-        end = min(n - 1, i + radius)
+        for offset in range(1, janela):
+            j = i + offset
+            if j >= n:
+                break
+            b_next = blocos[j]
+            if b_next.get("file_id") != current_file_id:
+                break
+            group.append(b_next)
 
-        for j in range(start, end + 1):
-            if blocos[j].get("file_id") == current_file_id:
-                idxs.append(j)
-
-        if not idxs:
-            continue
-
-        texto = " ".join(blocos[j]["texto"] for j in idxs)
         grouped.append({
-            "pagina": blocos[idxs[0]].get("pagina", "?"),
-            "texto": texto,
+            "pagina": group[0].get("pagina", "?"),
+            "texto": " ".join(b["texto"] for b in group),
             "file_id": current_file_id,
         })
 
     return grouped
 
 
-# ========================= ÍNDICE PRÉ-COMPUTADO =========================
+# ========================= ÍNDICE / EMBEDDINGS =========================
 def _list_named_files_map():
     drive = get_drive_client()
     want = {PRECOMP_FAISS_NAME, PRECOMP_VECTORS_NAME, PRECOMP_BLOCKS_NAME}
@@ -609,7 +527,6 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
         return None
 
 
-# ========================= ÍNDICE (GERAR OU USAR PRONTO) =========================
 def try_import_faiss():
     try:
         import faiss
@@ -657,11 +574,6 @@ def get_vector_index():
 
 # ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
-    """
-    Busca ANN + boost lexical. Isso ajuda a puxar o bloco
-    que realmente fala de "toner", "material de expediente" etc.,
-    e não só o processo genérico de compras.
-    """
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
@@ -670,7 +582,6 @@ def ann_search(query_text: str, top_n: int):
     sbert = get_sbert_model()
 
     query_for_embed = _expand_query_for_hr(query_text)
-
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
@@ -690,46 +601,19 @@ def ann_search(query_text: str, top_n: int):
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
-        # pequeno boost lexical; não domina, só desempata
-        adj_score = float(s) + 0.25 * lex
+        adj_score = float(s) + 0.25 * lex  # pequeno boost lexical
         results.append({
             "idx": i,
             "score": adj_score,
             "block": block,
-            "raw_score": float(s),
-            "lexical": float(lex),
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
 
-# ========================= RERANKING (CE OPCIONAL) =========================
-def crossencoder_rerank(query: str, candidates, top_k: int):
-    if not candidates:
-        return []
-    ce = get_cross_encoder()
-    if ce is None:
-        packed = [{"block": c["block"], "score": float(c["score"])} for c in candidates]
-        packed.sort(key=lambda x: x["score"], reverse=True)
-        return packed[:top_k]
-
-    pairs = [(query, c["block"]["texto"]) for c in candidates]
-    scores = ce.predict(pairs, batch_size=96)
-    packed = [{"block": c["block"], "score": float(s)} for c, s in zip(candidates, scores)]
-    packed.sort(key=lambda x: x["score"], reverse=True)
-    return packed[:top_k]
-
-
-# ========================= PROMPT (MODO ENXUTO) =========================
+# ========================= PROMPT RAG =========================
 def montar_prompt_rag(pergunta, blocos):
-    """
-    Monta o texto que vai na mensagem do usuário:
-    - contexto dos POPs
-    - pergunta do colaborador
-
-    O estilo / tom de voz ficam definidos no SYSTEM_PROMPT_RAG.
-    """
     if not blocos:
         return (
             "Nenhum trecho de POP relevante foi encontrado para a pergunta abaixo.\n"
@@ -739,7 +623,6 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
         texto = b.get("texto") or ""
-        # deixa margem boa pra pegar o procedimento inteiro
         if len(texto) > 2500:
             texto = texto[:2500]
         pagina = b.get("pagina", "?")
@@ -750,8 +633,8 @@ def montar_prompt_rag(pergunta, blocos):
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n"
-        "Quando o contexto trouxer um procedimento detalhado (como passos, prazos, formulários, diferenças entre sede e obra),\n"
-        "traga esses detalhes na resposta, organizando em seções e listas quando fizer sentido.\n\n"
+        "Quando o contexto trouxer procedimentos detalhados (por exemplo: sede vs. obra, formulários F.18/F.45, prazos),\n"
+        "traga esses detalhes na resposta, organizando em parágrafos e listas quando fizer sentido.\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
@@ -770,40 +653,16 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         # 1) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN)
         if not candidates:
+            # Nenhum bloco em lugar nenhum: aí sim usamos fallback
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        best_ann = candidates[0]["score"]
-
-        # 2) Decide se usa CrossEncoder (desativado no momento)
-        run_ce = USE_CE and (best_ann < SKIP_CE_IF_ANN_BEST)
-        if run_ce:
-            subset = candidates[:12]
-            reranked = crossencoder_rerank(pergunta, subset, top_k=top_k)
-        else:
-            reranked = [{"block": c["block"], "score": c["score"]} for c in candidates[:top_k]]
-
-        if not reranked:
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
-
-        best_score = reranked[0]["score"]
-        # Usando os novos thresholds
-        pass_threshold = (best_score >= (CE_SCORE_THRESHOLD if run_ce else ANN_SCORE_THRESHOLD))
-
-        top_texts = [r["block"]["texto"] for r in reranked]
-        evidence_ok = _has_lexical_evidence(pergunta, top_texts)
-
-        if not pass_threshold and evidence_ok:
-            pass_threshold = True
-
-        if pass_threshold:
-            blocos_relevantes = [r["block"] for r in reranked]
-        else:
-            blocos_relevantes = [r["block"] for r in (reranked or candidates[:TOP_K])]
+        # 2) Pega os TOP_K blocos sem threshold chato
+        reranked = candidates[:top_k]
+        blocos_relevantes = [r["block"] for r in reranked]
 
         t_rag = time.perf_counter()
 
-        # 3) Monta prompt (contexto + pergunta) e define o system prompt conversacional
+        # 3) Monta prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes)
 
         payload = {
@@ -818,7 +677,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "stream": False,
         }
 
-        # 4) Chamada à API da OpenAI
+        # 4) Chamada à API
         try:
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -841,13 +700,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             return "⚠️ A resposta da API veio vazia ou incompleta."
 
         resposta = resposta_final.strip()
-        t_api = time.perf_counter()
 
-        # 5) Pós-processamento
-        if _looks_like_noinfo(resposta) or _is_fallback_output(resposta):
-            # Se o LLM cair no fallback, chamamos a função interativa para dar o toque amigável
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
-
+        # 5) Link para o documento
         if blocos_relevantes:
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
@@ -860,8 +714,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         t_end = time.perf_counter()
         print(
-            f"[DEBUG POP-BOT] RAG: {t_rag - t0:.2f}s | OpenAI: {t_api - t_rag:.2f}s | "
-            f"Total responder_pergunta: {t_end - t0:.2f}s"
+            f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
         )
 
         return resposta
