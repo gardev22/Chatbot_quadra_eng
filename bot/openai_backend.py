@@ -25,20 +25,20 @@ SKIP_CE_IF_ANN_BEST = 0.80
 
 # menos candidatos na ANN e mais blocos no contexto
 TOP_N_ANN = 12
-TOP_K = 5  # Mais contexto (de 3 para 5)
+TOP_K = 6  # um pouco mais de contexto
 
-# blocos menores e janela menor (contexto mais enxuto)
-MAX_WORDS_PER_BLOCK = 160
-GROUP_WINDOW = 2
+# blocos um pouco maiores e janela maior (para pegar o procedimento inteiro)
+MAX_WORDS_PER_BLOCK = 200
+GROUP_WINDOW = 3
 
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.15  # Limite de score mais baixo (de 0.18 para 0.15)
 
-# resposta com comprimento moderado
-MAX_TOKENS = 380
+# resposta com mais detalhes, ainda rápida
+MAX_TOKENS = 512
 
 REQUEST_TIMEOUT = 20
-TEMPERATURE = 0.35
+TEMPERATURE = 0.30
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -73,13 +73,14 @@ Estilo de resposta:
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
+- Sempre que o contexto trouxer um procedimento completo (passos, prazos, formulários, exceções), descreva esses detalhes na resposta, sem resumir demais.
 - Se algo importante não estiver descrito no contexto, diga isso de forma clara e amigável (sem inventar regra interna).
 - Se a pergunta fugir de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
 """
 
 # ========= CACHE BUSTER =========
 # mudei de novo pra forçar rebuild de tudo
-CACHE_BUSTER = "2025-11-19-LINK-FIX-02"
+CACHE_BUSTER = "2025-11-25-RAG-PDF-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -340,6 +341,13 @@ def _list_json_metadata(drive_service, folder_id):
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
 
 
+def _list_pdf_metadata(drive_service, folder_id):
+    return _list_by_mime_query(
+        drive_service, folder_id,
+        "mimeType='application/pdf'"
+    )
+
+
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     query = f"'{folder_id}' in parents and trashed = false"
@@ -356,7 +364,7 @@ def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
 
-# ========================= PARSE DOCX/JSON =========================
+# ========================= PARSE DOCX/JSON/PDF =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
@@ -368,6 +376,33 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
     return [
         {"pagina": file_name, "texto": chunk, "file_id": file_id}
         for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
+    ]
+
+
+def _pdf_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
+    """
+    Extrai texto de um PDF em memória e quebra em blocos.
+    Requer PyPDF2 instalado.
+    """
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError:
+        print("[POP-BOT] PyPDF2 não instalado; PDFs serão ignorados.")
+        return []
+
+    reader = PdfReader(io.BytesIO(file_bytes))
+    pages_text = []
+    for page in reader.pages:
+        txt = page.extract_text() or ""
+        if txt.strip():
+            pages_text.append(txt.strip())
+
+    full_text = "\n".join(pages_text)
+
+    return [
+        {"pagina": file_name, "texto": chunk, "file_id": file_id}
+        for chunk in _split_text_blocks(full_text, max_words=max_words)
+        if chunk.strip()
     ]
 
 
@@ -404,23 +439,25 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     return out
 
 
-# ========================= CACHE DE FONTE (DOCX/JSON) =========================
+# ========================= CACHE DE FONTE (DOCX/JSON/PDF) =========================
 @st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     drive = get_drive_client()
     files_json = _list_json_metadata(drive, folder_id) if USE_JSONL else []
     files_docx = _list_docx_metadata(drive, folder_id)
-    return {"json": files_json, "docx": files_docx}
+    files_pdf = _list_pdf_metadata(drive, folder_id)
+    return {"json": files_json, "docx": files_docx, "pdf": files_pdf}
 
 
 def _signature_from_files(files):
     return [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])]
 
 
-def _build_signature_json_docx(files_json, files_docx):
+def _build_signature_sources(files_json, files_docx, files_pdf):
     payload = {
         "json": sorted(_signature_from_files(files_json), key=lambda x: x["id"]) if files_json else [],
         "docx": sorted(_signature_from_files(files_docx), key=lambda x: x["id"]) if files_docx else [],
+        "pdf":  sorted(_signature_from_files(files_pdf),  key=lambda x: x["id"]) if files_pdf else [],
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -429,6 +466,12 @@ def _build_signature_json_docx(files_json, files_docx):
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
+
+
+@st.cache_data(show_spinner=False)
+def _parse_pdf_cached(file_id: str, md5: str, name: str):
+    drive = get_drive_client()
+    return _pdf_to_blocks(_download_bytes(drive, file_id), name, file_id)
 
 
 @st.cache_data(show_spinner=False)
@@ -443,6 +486,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     sources = _list_sources_cached(folder_id)
     files_json = sources.get("json", []) if USE_JSONL else []
     files_docx = sources.get("docx", []) or []
+    files_pdf = sources.get("pdf", []) or []
 
     blocks = []
 
@@ -460,12 +504,23 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         except Exception:
             continue
 
+    for f in files_pdf:
+        try:
+            md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
+            blocks.extend(_parse_pdf_cached(f["id"], md5, f["name"]))
+        except Exception:
+            continue
+
     return blocks
 
 
 def load_all_blocks_cached(folder_id: str):
     src = _list_sources_cached(folder_id)
-    signature = _build_signature_json_docx(src.get("json", []), src.get("docx", []))
+    signature = _build_signature_sources(
+        src.get("json", []),
+        src.get("docx", []),
+        src.get("pdf", []),
+    )
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
 
@@ -642,8 +697,8 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
         texto = b.get("texto") or ""
-        if len(texto) > 1200:
-            texto = texto[:1200]
+        if len(texto) > 1500:
+            texto = texto[:1500]
         pagina = b.get("pagina", "?")
         contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
 
@@ -651,7 +706,9 @@ def montar_prompt_rag(pergunta, blocos):
 
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
-        "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
+        "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n"
+        "Se o contexto descrever um procedimento completo (passos, prazos, formulários, exceções), "
+        "traga esses detalhes na resposta, organizando em tópicos quando for útil.\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
