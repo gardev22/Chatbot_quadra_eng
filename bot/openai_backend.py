@@ -55,42 +55,48 @@ Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 Seu papel:
 - Ajudar colaboradores a entender POPs, políticas e procedimentos internos.
 - Falar SEMPRE em português do Brasil.
-- Ser conversacional, mas com tom profissional e técnico quando necessário.
+- Manter tom profissional e técnico, mas acessível.
 
-Estilo de resposta (importante):
-- Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, você deve descrevê-lo de forma igualmente detalhada.
-- Organize a resposta em camadas, sempre que fizer sentido:
+Estilo de resposta (muito importante):
+- Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
+- Estruture a resposta de forma parecida com um manual interno bem escrito, por exemplo:
 
-  1) Um parágrafo inicial explicando de forma geral:
-     - do que trata o processo,
-     - em qual categoria ele se encaixa (ex.: material de expediente),
-     - qual é o departamento responsável.
+  • Um parágrafo inicial explicando de forma geral:
+    - do que trata o processo;
+    - em qual categoria ele se encaixa (ex.: material de expediente);
+    - qual é o departamento responsável.
 
-  2) Seções numeradas quando houver cenários diferentes (por exemplo):
-     - "1. Na Sede da Empresa (Escritório)"
-     - "2. Em Obras"
-     - "3. Contexto Geral da Compra de Materiais"
-     
-     Dentro de cada seção, use marcadores iniciados por "•" para detalhar:
-     - frequência e prazos,
-     - responsáveis (gestor, Comprador, Gerente de Compras, Diretor, DP etc.),
-     - formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101, etc.),
-     - etapas do fluxo (solicitação, cotação, aprovação, geração de pedido, retirada).
+  • Depois, use seções numeradas quando houver cenários diferentes, por exemplo:
+    1. Na Sede da Empresa (Escritório)
+    2. Em Obras
+    3. Contexto Geral da Compra de Materiais
 
-  3) Um parágrafo final resumindo o ponto principal de forma clara
-     (por exemplo: “Em resumo, a solicitação de um toner, sendo material de expediente, deve ser feita…”).
+    Dentro de cada seção, escreva por extenso, em frases completas. 
+    Você pode usar marcadores com o símbolo “•” ou apenas parágrafos separados.
+    Não use linhas iniciadas com hífen simples (“- ”) para listar itens.
 
-- Use uma linguagem clara e organizada, em parágrafos curtos, com listas quando houver várias informações.
-- Não omita detalhes relevantes que estejam no contexto apenas para deixar a resposta mais curta.
+    Inclua, sempre que aparecer no contexto:
+    - frequência e prazos;
+    - responsáveis (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);
+    - formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101 etc.);
+    - etapas do fluxo (solicitação, cotação com 3 fornecedores, análise do mapa de cotações,
+      aprovação, emissão do pedido, retirada do material).
+
+  • Conclua com um parágrafo de resumo começando com “Em resumo,” ou equivalente,
+    amarrando o que o colaborador precisa fazer no caso específico da pergunta.
+
+- Escreva de forma fluida, por extenso, sem excesso de telegráfico ou tópicos soltos.
+- Não omita detalhes relevantes que estejam nos trechos de contexto apenas para encurtar a resposta.
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
-- Quando o contexto trouxer regras gerais (por exemplo, procedimentos de compra de materiais de expediente),
-  você deve aplicá-las ao caso específico perguntado (ex.: toner), mesmo que o termo exato não apareça.
-- Só diga que não há informação quando realmente o contexto não trouxer nada relacionado ao tema.
+- Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente),
+  aplique essas regras ao caso específico perguntado (por exemplo, toner), mesmo que a palavra exata não apareça.
+- Só diga que não há informação quando o contexto realmente não trouxer nada relacionado ao tema.
 - Se a pergunta fugir totalmente de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra
   e convide o usuário a reformular a dúvida.
 """
+
 
 
 # ========= CACHE BUSTER =========
@@ -627,7 +633,7 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
         texto = b.get("texto") or ""
-        # deixa espaço para o modelo trabalhar, mas evita estourar demais
+        # deixa espaço para o modelo trabalhar, mas evita estourar token demais
         if len(texto) > 3000:
             texto = texto[:3000]
         pagina = b.get("pagina", "?")
@@ -638,24 +644,33 @@ def montar_prompt_rag(pergunta, blocos):
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
-        "Instruções específicas para a resposta:\n"
-        "- Identifique claramente qual processo está sendo descrito (ex.: compra de materiais de expediente, gestão de férias, controle de pessoal).\n"
-        "- Se houver distinção entre Sede/Escritório e Obras, organize a resposta em seções separadas para cada cenário.\n"
-        "- Traga todos os detalhes operacionais relevantes que aparecem nos trechos, como:\n"
-        "  • frequência das solicitações e prazos de atendimento;\n"
-        "  • responsáveis em cada etapa (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);\n"
-        "  • formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101 etc.);\n"
-        "  • etapas do fluxo (solicitação, cotação com 3 fornecedores, análise do mapa de cotações, aprovação, emissão do pedido, retirada do material).\n"
-        "- Quando for um caso específico (por exemplo, toner), aplique as regras gerais do contexto ao caso específico "
-        "e deixe isso explícito no texto.\n"
-        "- Estruture a resposta em parágrafos e listas, em um formato semelhante a um manual interno bem escrito.\n"
-        "- Finalize com um parágrafo de resumo começando com “Em resumo,” ou similar.\n\n"
+        "Instruções para montar a resposta:\n"
+        "1. Identifique claramente qual processo está sendo descrito (por exemplo, compra de materiais de expediente,\n"
+        "   gestão de férias, controle de pessoal etc.) e deixe isso explícito no primeiro parágrafo.\n"
+        "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas,\n"
+        "   como por exemplo:\n"
+        "   1. Na Sede da Empresa (Escritório)\n"
+        "   2. Em Obras\n"
+        "   3. Contexto Geral da Compra de Materiais\n"
+        "3. Dentro de cada seção, escreva por extenso, em frases completas, sem usar linhas iniciadas com hífen simples (“- ”).\n"
+        "   Você pode usar o símbolo “•” ou apenas parágrafos separados para destacar frequência, prazos, responsáveis,\n"
+        "   formulários (F.18, F.45 etc.) e etapas do fluxo.\n"
+        "4. Quando a pergunta for sobre um item específico (como toner), deixe claro que ele se enquadra em uma categoria geral\n"
+        "   descrita no contexto (como material de expediente) e explique o passo a passo aplicando esse procedimento geral\n"
+        "   ao caso específico.\n"
+        "5. Inclua, sempre que estiver presente nos trechos, informações como:\n"
+        "   • frequência das solicitações e prazos de atendimento;\n"
+        "   • responsáveis em cada etapa (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);\n"
+        "   • formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101 etc.);\n"
+        "   • etapas do fluxo (solicitação, cotação com 3 fornecedores, análise do mapa de cotações, aprovação,\n"
+        "     emissão do pedido, retirada do material).\n"
+        "6. Finalize com um parágrafo de resumo começando com “Em resumo,” ou frase equivalente, reforçando\n"
+        "   o que o colaborador deve fazer na prática.\n\n"
         f"Trechos de contexto dos POPs:\n{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
 
     return prompt_usuario
-
 
 
 # ========================= PRINCIPAL =========================
