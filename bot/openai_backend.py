@@ -25,17 +25,17 @@ SKIP_CE_IF_ANN_BEST = 0.80
 
 # menos candidatos na ANN e mais blocos no contexto
 TOP_N_ANN = 12
-TOP_K = 6  # um pouco mais de contexto
+TOP_K = 5  # equilíbrio entre contexto e velocidade
 
-# blocos um pouco maiores e janela maior (para pegar o procedimento inteiro)
-MAX_WORDS_PER_BLOCK = 200
-GROUP_WINDOW = 3
+# blocos um pouco maiores e janela centrada
+MAX_WORDS_PER_BLOCK = 180
+GROUP_WINDOW = 3  # janela centrada: [i-1, i, i+1]
 
 CE_SCORE_THRESHOLD = 0.38
 ANN_SCORE_THRESHOLD = 0.15  # Limite de score mais baixo (de 0.18 para 0.15)
 
-# resposta com mais detalhes, ainda rápida
-MAX_TOKENS = 512
+# resposta detalhada, mas não exagerada
+MAX_TOKENS = 420
 
 REQUEST_TIMEOUT = 20
 TEMPERATURE = 0.30
@@ -73,14 +73,15 @@ Estilo de resposta:
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos (POPs, manuais, políticas) fornecidos no contexto.
-- Sempre que o contexto trouxer um procedimento completo (passos, prazos, formulários, exceções), descreva esses detalhes na resposta, sem resumir demais.
+- Quando o contexto trouxer um procedimento completo (passos, prazos, formulários, diferenças entre obra/sede etc.),
+  descreva esses detalhes na resposta, sem resumir demais e sem pular etapas importantes.
 - Se algo importante não estiver descrito no contexto, diga isso de forma clara e amigável (sem inventar regra interna).
 - Se a pergunta fugir de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra e convide o usuário a reformular.
 """
 
 # ========= CACHE BUSTER =========
 # mudei de novo pra forçar rebuild de tudo
-CACHE_BUSTER = "2025-11-25-RAG-PDF-01"
+CACHE_BUSTER = "2025-11-25-RAG-PDF-LEXICAL-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -114,6 +115,19 @@ def _has_lexical_evidence(query: str, texts: list[str]) -> bool:
         if q_tokens & t_tokens:
             return True
     return False
+
+
+def _lexical_overlap(query: str, text: str) -> float:
+    """
+    Overlap simples entre tokens da pergunta e do texto.
+    Usado como boost lexical na busca ANN.
+    """
+    q_tokens = set(_tokenize(query))
+    t_tokens = set(_tokenize(text))
+    if not q_tokens or not t_tokens:
+        return 0.0
+    inter = len(q_tokens & t_tokens)
+    return inter / len(q_tokens)
 
 
 def _is_fallback_output(text: str) -> bool:
@@ -528,31 +542,36 @@ def load_all_blocks_cached(folder_id: str):
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
     """
-    Agrupa blocos em janelas, mas **sem misturar documentos diferentes**.
-    Se o próximo bloco tiver file_id diferente, o grupo é cortado ali.
+    Agrupa blocos em janelas centradas (ex.: janela=3 => [i-1, i, i+1]),
+    sem misturar documentos diferentes.
+    Isso ajuda a pegar o trecho completo do procedimento (ex.: Sede + Obra + contexto geral).
     """
     grouped = []
     n = len(blocos)
     if n == 0:
         return grouped
 
+    radius = max(0, (janela - 1) // 2)
+
     for i in range(n):
         base = blocos[i]
         current_file_id = base.get("file_id")
-        group = [base]
+        idxs = []
 
-        for offset in range(1, janela):
-            j = i + offset
-            if j >= n:
-                break
-            b_next = blocos[j]
-            if b_next.get("file_id") != current_file_id:
-                break
-            group.append(b_next)
+        start = max(0, i - radius)
+        end = min(n - 1, i + radius)
 
+        for j in range(start, end + 1):
+            if blocos[j].get("file_id") == current_file_id:
+                idxs.append(j)
+
+        if not idxs:
+            continue
+
+        texto = " ".join(blocos[j]["texto"] for j in idxs)
         grouped.append({
-            "pagina": group[0].get("pagina", "?"),
-            "texto": " ".join(b["texto"] for b in group),
+            "pagina": blocos[idxs[0]].get("pagina", "?"),
+            "texto": texto,
             "file_id": current_file_id,
         })
 
@@ -638,6 +657,11 @@ def get_vector_index():
 
 # ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int):
+    """
+    Busca ANN + boost lexical. Isso ajuda a puxar o bloco
+    que realmente fala de "toner", "material de expediente" etc.,
+    e não só o processo genérico de compras.
+    """
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
@@ -650,7 +674,8 @@ def ann_search(query_text: str, top_n: int):
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
-        D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
+        import numpy as _np
+        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), top_n)
         idxs = I[0].tolist()
         scores = D[0].tolist()
     else:
@@ -659,7 +684,24 @@ def ann_search(query_text: str, top_n: int):
         idxs = np.argsort(-scores_all)[:top_n].tolist()
         scores = [float(scores_all[i]) for i in idxs]
 
-    return [{"idx": i, "score": float(s), "block": blocks[i]} for i, s in zip(idxs, scores) if i >= 0]
+    results = []
+    for i, s in zip(idxs, scores):
+        if i < 0:
+            continue
+        block = blocks[i]
+        lex = _lexical_overlap(query_text, block.get("texto", ""))
+        # pequeno boost lexical; não domina, só desempata
+        adj_score = float(s) + 0.25 * lex
+        results.append({
+            "idx": i,
+            "score": adj_score,
+            "block": block,
+            "raw_score": float(s),
+            "lexical": float(lex),
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_n]
 
 
 # ========================= RERANKING (CE OPCIONAL) =========================
@@ -697,8 +739,9 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
         texto = b.get("texto") or ""
-        if len(texto) > 1500:
-            texto = texto[:1500]
+        # deixa margem boa pra pegar o procedimento inteiro
+        if len(texto) > 2500:
+            texto = texto[:2500]
         pagina = b.get("pagina", "?")
         contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
 
@@ -707,8 +750,8 @@ def montar_prompt_rag(pergunta, blocos):
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Use APENAS essas informações para responder à pergunta sobre processos, políticas ou rotinas internas.\n"
-        "Se o contexto descrever um procedimento completo (passos, prazos, formulários, exceções), "
-        "traga esses detalhes na resposta, organizando em tópicos quando for útil.\n\n"
+        "Quando o contexto trouxer um procedimento detalhado (como passos, prazos, formulários, diferenças entre sede e obra),\n"
+        "traga esses detalhes na resposta, organizando em seções e listas quando fizer sentido.\n\n"
         f"{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
