@@ -1,4 +1,4 @@
-# openai_backend.py — RAG focado em resposta rica + link de origem
+# openai_backend.py — RAG conversacional detalhado + link do POP correto
 
 import os
 import io
@@ -15,18 +15,20 @@ from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
+# Ajuste aqui se quiser outro modelo (ex.: "gpt-4.1" ou "gpt-4.1-mini")
 MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False  # mantemos desativado para não ficar pesado
+USE_CE = False  # CrossEncoder desativado para manter leve/rápido
 
 TOP_N_ANN = 12   # candidatos na ANN
-TOP_K = 5        # blocos no contexto
+TOP_K = 5        # blocos que vão para o contexto
 
 MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
 
+# espaço para respostas ricas, estilo POP detalhado
 MAX_TOKENS = 750
 REQUEST_TIMEOUT = 20
 TEMPERATURE = 0.30
@@ -47,8 +49,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT (CONVERSACIONAL, MENOS RÍGIDO) =========
-
+# ========= SYSTEM PROMPT (CONVERSACIONAL + MANUAL INTERNO) =========
 SYSTEM_PROMPT_RAG = """
 Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 
@@ -61,9 +62,9 @@ Estilo de resposta (muito importante):
 - Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
 - Estruture a resposta de forma parecida com um manual interno bem escrito, por exemplo:
 
-  • Um parágrafo inicial explicando de forma geral:
+  • Comece com um parágrafo inicial explicando de forma geral:
     - do que trata o processo;
-    - em qual categoria ele se encaixa (ex.: material de expediente);
+    - em qual categoria ele se encaixa (ex.: material de expediente, benefício, controle de pessoal);
     - qual é o departamento responsável.
 
   • Depois, use seções numeradas quando houver cenários diferentes, por exemplo:
@@ -71,7 +72,7 @@ Estilo de resposta (muito importante):
     2. Em Obras
     3. Contexto Geral da Compra de Materiais
 
-    Dentro de cada seção, escreva por extenso, em frases completas. 
+    Dentro de cada seção, escreva por extenso, em frases completas.
     Você pode usar marcadores com o símbolo “•” ou apenas parágrafos separados.
     Não use linhas iniciadas com hífen simples (“- ”) para listar itens.
 
@@ -85,22 +86,25 @@ Estilo de resposta (muito importante):
   • Conclua com um parágrafo de resumo começando com “Em resumo,” ou equivalente,
     amarrando o que o colaborador precisa fazer no caso específico da pergunta.
 
-- Escreva de forma fluida, por extenso, sem excesso de telegráfico ou tópicos soltos.
+- Escreva de forma fluida, por extenso, sem excesso de tópicos telegráficos.
 - Não omita detalhes relevantes que estejam nos trechos de contexto apenas para encurtar a resposta.
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
-- Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente),
-  aplique essas regras ao caso específico perguntado (por exemplo, toner), mesmo que a palavra exata não apareça.
+- Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
+  aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
 - Só diga que não há informação quando o contexto realmente não trouxer nada relacionado ao tema.
-- Se a pergunta fugir totalmente de procedimentos internos, explique que seu foco são os POPs e rotinas da Quadra
-  e convide o usuário a reformular a dúvida.
+- Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre o assunto externo.
+  Nessas situações, responda de forma curta e educada, começando com a frase exata:
+
+  "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
+
+  Depois dessa frase, explique brevemente que não consegue ajudar nesse tema externo e convide o usuário a reformular a dúvida
+  com foco nos processos internos da empresa.
 """
 
-
-
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-11-25-RAG-TONER-BOOST-01"
+CACHE_BUSTER = "2025-11-25-RAG-GERAL-OFFDOMAIN-01"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -172,12 +176,12 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
 def _expand_query_for_hr(query: str) -> str:
     """
     Expande queries para melhorar match semântico.
-    Aqui a gente aproveita para tratar toner como material de expediente.
+    Inclui padrões de RH e de Compras (toner -> material de expediente).
     """
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    # RH (já existia)
+    # RH
     if "contrat" in q_norm:
         extras.append(
             "contratação de funcionários admissão de colaboradores "
@@ -190,7 +194,7 @@ def _expand_query_for_hr(query: str) -> str:
             "processo de admissão recrutamento"
         )
 
-    # COMPRAS / TONER -> material de expediente
+    # Compras / toner como material de expediente
     if "toner" in q_norm:
         extras.append(
             "material de expediente suprimentos de escritório cartucho de impressão "
@@ -202,6 +206,19 @@ def _expand_query_for_hr(query: str) -> str:
         return query + " " + " ".join(extras)
     return query
 
+
+def _is_off_domain_reply(text: str) -> bool:
+    """
+    Detecta se a resposta é do tipo "fora de escopo",
+    usando a frase padrão definida no SYSTEM_PROMPT_RAG.
+    """
+    if not text:
+        return False
+    t = _strip_accents(text.lower())
+    gatilho = _strip_accents(
+        "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
+    ).lower()
+    return gatilho[:60] in t
 
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
@@ -614,7 +631,6 @@ def ann_search(query_text: str, top_n: int):
 
 
 # ========================= PROMPT RAG =========================
-
 def montar_prompt_rag(pergunta, blocos):
     """
     Monta o texto que vai na mensagem do usuário:
@@ -655,9 +671,9 @@ def montar_prompt_rag(pergunta, blocos):
         "3. Dentro de cada seção, escreva por extenso, em frases completas, sem usar linhas iniciadas com hífen simples (“- ”).\n"
         "   Você pode usar o símbolo “•” ou apenas parágrafos separados para destacar frequência, prazos, responsáveis,\n"
         "   formulários (F.18, F.45 etc.) e etapas do fluxo.\n"
-        "4. Quando a pergunta for sobre um item específico (como toner), deixe claro que ele se enquadra em uma categoria geral\n"
-        "   descrita no contexto (como material de expediente) e explique o passo a passo aplicando esse procedimento geral\n"
-        "   ao caso específico.\n"
+        "4. Quando a pergunta for sobre um item específico (como um tipo de material, um benefício ou um documento),\n"
+        "   deixe claro em qual categoria geral ele se enquadra (por exemplo, material de expediente, benefício de alimentação,\n"
+        "   documento de admissão) e explique o passo a passo aplicando o procedimento geral ao caso específico.\n"
         "5. Inclua, sempre que estiver presente nos trechos, informações como:\n"
         "   • frequência das solicitações e prazos de atendimento;\n"
         "   • responsáveis em cada etapa (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);\n"
@@ -733,7 +749,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         resposta = resposta_final.strip()
 
         # 5) Link para o documento mais provável
-        if blocos_relevantes:
+        #    NÃO anexar link se a resposta for fora de escopo (ex.: pergunta sobre futebol, política etc.)
+        if blocos_relevantes and not _is_off_domain_reply(resposta):
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
                 doc_id = bloco_link.get("file_id")
