@@ -687,8 +687,8 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --muted:#9CA3AF;
 
     /* links em azul */
-    --link:#2563EB;
-    --link-hover:#3B82F6;
+    --link:#60A5FA;
+    --link-hover:#93C5FD;
 
     --bubble-user:#343541;
     --bubble-assistant:#444654;
