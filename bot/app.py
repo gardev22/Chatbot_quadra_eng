@@ -1063,7 +1063,9 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
+# >>> AQUI FOI A ÚNICA MUDANÇA IMPORTANTE <<<
+# Em vez de height:1px, usamos um "colchão" de 180px para o scroll parar antes do input.
+msgs_html.append('<div id="chatEnd" style="height:180px;"></div>')
 
 st.markdown(
     f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
