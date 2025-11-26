@@ -670,7 +670,7 @@ img.logo {{ height: 44px !important; width: auto !important }}
 :root{{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
-    --input-zone: 170px;     /* espaço reservado pro input + respiro */
+    --input-zone: 250px;     /* espaço reservado pro input + respiro */
     --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
     --input-max: 900px;
     --input-bottom: 60px;
