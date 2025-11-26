@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase + Histórico por conversa)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase)
 
 import streamlit as st
 import base64
@@ -68,6 +68,7 @@ def carregar_imagem_base64(path):
     except Exception:
         return None
 
+
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # Logo do header com tamanho inline
@@ -116,7 +117,7 @@ def _friendly_auth_error(msg: str) -> str:
 
 # ====== ESTADO ======
 if "historico" not in st.session_state:
-    st.session_state.historico = []  # lista de (pergunta, resposta)
+    st.session_state.historico = []
 
 st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
@@ -125,21 +126,18 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
-
 # Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
-
 # IDs para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-
-# Lista de conversas (cada item: {id, title, created_at})
+# Lista de conversas (títulos) e flags auxiliares
 st.session_state.setdefault("conversations_list", [])
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
-st.session_state.setdefault("_sidebar_loaded", False)
-st.session_state.setdefault("open_conv_menu", None)  # id da conversa com menu de 3 pontos aberto
+st.session_state.setdefault("_conversations_loaded", False)
+st.session_state.setdefault("sidebar_menu_open_for", None)
 
 # ====== HELPERS SUPABASE ======
 def _title_from_first_question(q: str) -> str:
@@ -150,7 +148,7 @@ def _title_from_first_question(q: str) -> str:
 
 
 def load_conversations_from_supabase():
-    """Carrega todas as conversas do usuário para a sidebar (1 linha por conversa)."""
+    """Carrega lista de conversas do usuário para a sidebar."""
     if not sb or not st.session_state.get("user_id"):
         return
     try:
@@ -158,13 +156,76 @@ def load_conversations_from_supabase():
             sb.table("conversations")
             .select("id, title, created_at")
             .eq("user_id", st.session_state.user_id)
-            .order("created_at", desc=True)  # supabase-py aceita apenas desc=True
+            .order("created_at", desc=True)  # Supabase Python usa desc=True
             .limit(50)
             .execute()
         )
-        st.session_state.conversations_list = res.data or []
+        rows = res.data or []
+        st.session_state.conversations_list = rows
+        # Se ainda não há conversa ativa, pega a mais recente
+        if not st.session_state.get("conversation_id") and rows:
+            st.session_state.conversation_id = rows[0]["id"]
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.load: {_extract_err_msg(e)}"
+
+
+def load_conversation_messages(cid):
+    """Carrega todas as mensagens de uma conversa para o historico local."""
+    if not sb or not cid:
+        return
+    try:
+        res = (
+            sb.table("messages")
+            .select("role, content, created_at")
+            .eq("conversation_id", cid)
+            .order("created_at")
+            .execute()
+        )
+        rows = res.data or []
+        historico = []
+        last_user = None
+        for r in rows:
+            role = r.get("role")
+            content = r.get("content") or ""
+            if role == "user":
+                historico.append([content, ""])
+                last_user = len(historico) - 1
+            elif role == "assistant":
+                if last_user is not None and historico[last_user][1] == "":
+                    historico[last_user][1] = content
+                    last_user = None
+                else:
+                    historico.append(["", content])
+                    last_user = None
+        st.session_state.historico = historico
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.load_msgs: {_extract_err_msg(e)}"
+
+
+def delete_conversation(cid):
+    """Exclui conversa e mensagens relacionadas."""
+    if not sb or not cid:
+        return
+    try:
+        # primeiro mensagens (evita problema de FK se não tiver ON DELETE CASCADE)
+        try:
+            sb.table("messages").delete().eq("conversation_id", cid).execute()
+        except Exception:
+            pass
+        sb.table("conversations").delete().eq("id", cid).execute()
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
+        return
+
+    # Atualiza estado local
+    st.session_state.conversations_list = [
+        c for c in st.session_state.conversations_list if c.get("id") != cid
+    ]
+    if st.session_state.get("conversation_id") == cid:
+        st.session_state.conversation_id = None
+        st.session_state.historico = []
+    if st.session_state.get("sidebar_menu_open_for") == cid:
+        st.session_state.sidebar_menu_open_for = None
 
 
 def get_or_create_conversation():
@@ -185,12 +246,7 @@ def get_or_create_conversation():
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # insere no topo da lista local
-        st.session_state.conversations_list.insert(0, {
-            "id": cid,
-            "title": payload["title"],
-            "created_at": r.data[0].get("created_at")
-        })
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
@@ -203,7 +259,6 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        # atualiza lista local
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
@@ -224,59 +279,6 @@ def save_message(cid, role, content):
         }).execute()
     except Exception as e:
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
-
-
-def load_conversation_messages(cid):
-    """Carrega todas as mensagens de uma conversa, monta (pergunta, resposta) em historico."""
-    if not sb or not cid:
-        return
-    try:
-        res = (
-            sb.table("messages")
-            .select("role, content, created_at")
-            .eq("conversation_id", cid)
-            .order("created_at")  # ordem crescente padrão (sem asc=)
-            .execute()
-        )
-        rows = res.data or []
-        historico = []
-        for row in rows:
-            role = row.get("role")
-            content = row.get("content") or ""
-            if role == "user":
-                historico.append((content, ""))
-            elif role == "assistant" and historico:
-                pergunta, _ = historico[-1]
-                historico[-1] = (pergunta, content)
-        st.session_state.historico = historico
-        st.session_state.conversation_id = cid
-        st.session_state.pending_index = None
-        st.session_state.pending_question = None
-        st.session_state.awaiting_answer = False
-        st.session_state.answering_started = False
-    except Exception as e:
-        st.session_state["_sb_last_error"] = f"msgs.load: {_extract_err_msg(e)}"
-
-
-def delete_conversation(cid):
-    """Exclui conversa + mensagens no Supabase e limpa se for a atual."""
-    if not sb or not cid:
-        return
-    try:
-        sb.table("messages").delete().eq("conversation_id", cid).execute()
-        sb.table("conversations").delete().eq("id", cid).execute()
-        # remove da lista local
-        st.session_state.conversations_list = [
-            c for c in st.session_state.conversations_list if c.get("id") != cid
-        ]
-        # se era a conversa atual, limpa chat
-        if st.session_state.get("conversation_id") == cid:
-            st.session_state.conversation_id = None
-            st.session_state.historico = []
-            st.session_state._title_set = False
-    except Exception as e:
-        st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
-
 
 # ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
@@ -319,8 +321,8 @@ if "logout" in qp:
         "_title_set": False,
         "_sb_last_error": None,
         "conversations_list": [],
-        "_sidebar_loaded": False,
-        "open_conv_menu": None,
+        "_conversations_loaded": False,
+        "sidebar_menu_open_for": None,
     })
     _clear_query_params()
     do_rerun()
@@ -402,7 +404,8 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     width:100%; display:flex; justify-content:center; margin-top:28px;
 }
 
-/* ===== Estilo GLOBAL para botões kind="secondary" ===== */
+/* ===== Estilo GLOBAL para botões kind="secondary"
+   (Cadastrar usuário / Voltar para login) ===== */
 button[kind="secondary"],
 button[data-testid="baseButton-secondary"]{
     height:46px !important; padding:0 22px !important;
@@ -482,7 +485,6 @@ def render_login_screen():
                 st.session_state["login_error"] = "Digite a senha."
                 return
 
-            # bypass interno
             if pwd_val == "quadra123":
                 try:
                     if sb:
@@ -498,9 +500,8 @@ def render_login_screen():
                     "conversation_id": None,
                     "_title_set": False,
                     "conversations_list": [],
-                    "_sidebar_loaded": False,
-                    "open_conv_menu": None,
-                    "historico": [],
+                    "_conversations_loaded": False,
+                    "sidebar_menu_open_for": None,
                 })
                 return
 
@@ -543,9 +544,8 @@ def render_login_screen():
                 st.session_state.conversation_id = None
                 st.session_state._title_set = False
                 st.session_state.conversations_list = []
-                st.session_state._sidebar_loaded = False
-                st.session_state.open_conv_menu = None
-                st.session_state.historico = []
+                st.session_state._conversations_loaded = False
+                st.session_state.sidebar_menu_open_for = None
 
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
@@ -698,10 +698,12 @@ if not st.session_state.authenticated:
     else:
         render_login_screen()
 
-# Carrega lista de conversas do usuário (1 por sessão) uma vez
-if sb and st.session_state.get("user_id") and not st.session_state.get("_sidebar_loaded"):
+# Carrega lista de conversas ao entrar
+if sb and st.session_state.get("user_id") and not st.session_state.get("_conversations_loaded"):
     load_conversations_from_supabase()
-    st.session_state["_sidebar_loaded"] = True
+    if st.session_state.get("conversation_id"):
+        load_conversation_messages(st.session_state.conversation_id)
+    st.session_state["_conversations_loaded"] = True
 
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
@@ -721,7 +723,7 @@ def formatar_markdown_basico(text: str) -> str:
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
-# ====== CSS (Chat + Sidebar nova) ======
+# ====== CSS (Chat + Sidebar) ======
 st.markdown(f"""
 <style>
 * {{ box-sizing: border-box }}
@@ -759,6 +761,9 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-border:#565869;
 
     --sidebar-w:270px;
+    --sidebar-items-top-gap: -45px;
+    --sidebar-sub-top-gap: -30px;
+    --sidebar-list-start-gap: 3px;
 }}
 
 body, .stApp {{
@@ -859,27 +864,32 @@ section[data-testid="stSidebar"]{{
     z-index:900 !important;
     transform:none !important;
     visibility:visible !important;
-    overflow-x:hidden !important;
-    overflow-y:auto !important;
+    overflow:hidden !important;
     color:var(--text);
 }}
 section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
+div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
 
+section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-items-top-gap) !important; }}
+.sidebar-bar p, .sidebar-header p{{ margin: 0 !important; line-height: 1.15 !important; }}
+.sidebar-bar{{ margin-top: var(--sidebar-sub-top-gap) !important; }}
+
+/* faz o main andar pro lado do sidebar */
 div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
-/* Cabeçalho sidebar */
+/* textos histórico */
 .sidebar-header{{
     font-size:0.9rem;
     font-weight:600;
     letter-spacing:.02em;
     color:var(--text);
-    margin:8px 10px 0 10px;
+    margin:0 4px -2px 2px;
 }}
 .sidebar-sub{{
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
-    margin:0 10px 6px 10px;
 }}
 .hist-empty{{
     color:var(--muted);
@@ -887,55 +897,68 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     padding:8px 10px;
 }}
 
-/* Linha de conversa + menu */
-.hist-row-wrap{{ margin:4px 8px; }}
-.hist-row-wrap .stButton>button{{
+/* linha de conversa */
+.hist-row-wrapper{{
+    margin-top:4px;
+}}
+.hist-row-inner{{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    padding:2px 4px;
+    border-radius:8px;
+}}
+.hist-row-inner.active{{
+    background:#343541;
+}}
+.hist-row-inner:hover{{
+    background:#2A2B32;
+}}
+
+/* botões dentro da linha (titulo + menu) */
+.hist-row-inner .stButton>button{{
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    color:var(--text-dim) !important;
+    padding:6px 8px !important;
+    font-size:0.85rem !important;
+}}
+.hist-row-inner .stButton:first-child>button{{
     width:100%;
-    justify-content:flex-start;
-    background:#111827;
-    color:#E5E7EB;
-    border-radius:999px;
-    border:1px solid #111827;
-    font-size:0.85rem;
-    padding:6px 10px;
-    box-shadow:none;
+    text-align:left;
 }}
-.hist-row-wrap .stButton>button:hover{{
-    background:#1F2937;
-    border-color:#4B5563;
+.hist-row-inner.active .stButton:first-child>button{{
+    color:var(--text) !important;
 }}
-
-.hist-menu-cell .stButton>button{{
-    width:36px;
-    padding:0;
+.hist-row-inner .stButton:nth-child(2)>button{{
+    width:32px;
+    height:32px;
+    border-radius:8px !important;
     text-align:center;
-    justify-content:center;
-    border-radius:999px;
-    background:#020617;
-    border:1px solid #1F2937;
-    font-size:16px;
+    padding:0 !important;
+    font-size:1.2rem !important;
 }}
 
-.hist-menu-cell .stButton>button:hover{{
-    background:#111827;
-}}
-
+/* menu "Excluir conversa" */
 .hist-menu-row{{
-    margin:-2px 18px 6px 36px;
+    display:flex;
+    justify-content:flex-end;
+    margin:-2px 8px 6px;
 }}
 .hist-menu-row .stButton>button{{
-    width:100%;
-    background:transparent;
-    border:none;
-    color:#FCA5A5;
-    font-size:0.8rem;
-    justify-content:flex-start;
-    padding:0;
-    box-shadow:none;
+    background:#2A2B32 !important;
+    border:none !important;
+    box-shadow:none !important;
+    color:#E5E7EB !important;
+    padding:4px 10px !important;
+    font-size:0.78rem !important;
+    border-radius:8px !important;
+    text-align:left !important;
+    width:auto !important;
 }}
 .hist-menu-row .stButton>button:hover{{
-    background:transparent;
-    color:#F87171;
+    background:#3F3F46 !important;
 }}
 
 /* ÁREA CENTRAL */
@@ -1049,14 +1072,20 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 
 /* bottom container fantasma */
 [data-testid="stBottomBlockContainer"],
-[data-testid="stBottomBlockContainer"] > div{{
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
+[data-testid="stBottomBlockContainer"] [class*="block-container"],
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+}}
+[data-testid="stBottomBlockContainer"]{{
     padding:0 !important;
     margin:0 !important;
     height:0 !important;
     min-height:0 !important;
-    background:transparent !important;
-    box-shadow:none !important;
-    border:none !important;
 }}
 
 /* Scrollbar */
@@ -1113,10 +1142,14 @@ if st.session_state.get("_sb_last_error"):
     st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
     st.session_state["_sb_last_error"] = None
 
-# ====== SIDEBAR (Histórico por conversa) ======
+# ====== SIDEBAR (Histórico de conversas) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Conversas</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
 
@@ -1125,44 +1158,46 @@ with st.sidebar:
     else:
         for conv in conversas:
             cid = conv.get("id")
-            título = (conv.get("title") or "Nova conversa").strip().replace("\n", " ")
-            if len(título) > 60:
-                título = título[:60] + "…"
+            titulo = conv.get("title") or "Nova conversa"
+            ativo = cid == st.session_state.get("conversation_id")
 
-            st.markdown('<div class="hist-row-wrap">', unsafe_allow_html=True)
-            col_txt, col_menu = st.columns([0.78, 0.22])
+            st.markdown('<div class="hist-row-wrapper">', unsafe_allow_html=True)
+            row_cols = st.columns([8, 1])
+            with row_cols[0]:
+                st.markdown(
+                    f'<div class="hist-row-inner {"active" if ativo else ""}">',
+                    unsafe_allow_html=True
+                )
+            st.markdown("", unsafe_allow_html=True)
 
-            # botão principal: abrir conversa completa
-            with col_txt:
-                if st.button(título, key=f"convbtn_{cid}"):
-                    load_conversation_messages(cid)
-                    st.session_state.open_conv_menu = None
-                    do_rerun()
-
-            # botão 3 pontinhos
-            with col_menu:
-                st.markdown('<div class="hist-menu-cell">', unsafe_allow_html=True)
-                if st.button("⋯", key=f"menu_{cid}"):
-                    # toggle do menu
-                    if st.session_state.open_conv_menu == cid:
-                        st.session_state.open_conv_menu = None
-                    else:
-                        st.session_state.open_conv_menu = cid
-                    do_rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # menu "Excluir conversa"
-            if st.session_state.open_conv_menu == cid:
-                st.markdown('<div class="hist-menu-row">', unsafe_allow_html=True)
-                _, col_del = st.columns([0.15, 0.85])
-                with col_del:
-                    if st.button("🗑 Excluir conversa", key=f"del_{cid}"):
-                        delete_conversation(cid)
-                        st.session_state.open_conv_menu = None
+            # Truque para alinhar CSS: abrir container comum
+            with st.container():
+                cols = st.columns([8, 1])
+                with cols[0]:
+                    if st.button(titulo, key=f"conv_{cid}"):
+                        st.session_state.conversation_id = cid
+                        st.session_state.sidebar_menu_open_for = None
+                        load_conversation_messages(cid)
                         do_rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
+                with cols[1]:
+                    if st.button("⋯", key=f"menu_{cid}"):
+                        current = st.session_state.get("sidebar_menu_open_for")
+                        st.session_state.sidebar_menu_open_for = None if current == cid else cid
+                        do_rerun()
+            st.markdown('</div>', unsafe_allow_html=True)  # fecha hist-row-inner
+            st.markdown('</div>', unsafe_allow_html=True)  # fecha wrapper
+
+            if st.session_state.get("sidebar_menu_open_for") == cid:
+                with st.container():
+                    st.markdown('<div class="hist-menu-row">', unsafe_allow_html=True)
+                    col_a, col_b = st.columns([4, 6])
+                    with col_b:
+                        if st.button("🗑 Excluir conversa", key=f"del_{cid}"):
+                            delete_conversation(cid)
+                            load_conversations_from_supabase()
+                            st.session_state.sidebar_menu_open_for = None
+                            do_rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
@@ -1186,7 +1221,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (auto-grow + auto-scroll para o final) ======
+# ====== JS (autoscroll + auto-grow) ======
 st.markdown("""
 <script>
 (function(){
