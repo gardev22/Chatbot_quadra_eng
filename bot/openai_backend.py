@@ -30,7 +30,7 @@ GROUP_WINDOW = 2
 
 # espaço para respostas ricas, estilo POP detalhado
 MAX_TOKENS = 750
-REQUEST_TIMEOUT = 20
+REQUEST_TIMEOUT = 60
 TEMPERATURE = 0.30
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
