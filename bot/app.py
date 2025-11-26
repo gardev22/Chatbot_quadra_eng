@@ -859,8 +859,8 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     height:var(--card-height);
     overflow-y:auto;
     scroll-behavior:smooth;
-    padding-bottom:150px;          /* respiro interno maior antes do fim do card */
-    scroll-padding-bottom:150px;
+    padding-bottom:250px;          /* respiro interno maior antes do fim do card */
+    scroll-padding-bottom:250px;
     color:var(--text);
 }}
 #chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
