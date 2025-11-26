@@ -905,10 +905,10 @@ section[data-testid="stSidebar"] button:active{
 
 /* Linha de conversa (título + reticências) */
 .sidebar-row{
+    position:relative;
     display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:4px;
+    flex-direction:column;
+    gap:2px;
     margin:4px 4px;
     padding:2px 2px;
     border-radius:10px;
@@ -927,16 +927,18 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante (Excluir conversa) dentro da barra, mas com cara de popover */
+/* Menu flutuante (Excluir conversa) lateral, estilo popover */
 .conv-menu{
-    margin-top:4px;
-    margin-left:32px;
-    width:180px;
+    position:absolute;
+    top:4px;
+    right:-210px;                 /* sai para fora da sidebar, tipo ChatGPT */
+    width:190px;
     background:#111827;
     border:1px solid #374151;
     border-radius:12px;
     box-shadow:0 18px 40px rgba(0,0,0,0.70);
     padding:4px;
+    z-index:1200;
 }
 .conv-menu button{
     width:100% !important;
@@ -1165,8 +1167,8 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
                     do_rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
 
+            # menu lateral dentro da mesma row (popover)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 if st.button("🗑 Excluir conversa", key=f"conv_delete_{cid}"):
@@ -1179,6 +1181,8 @@ with st.sidebar:
                     load_conversations_from_supabase()
                     do_rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
+
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
