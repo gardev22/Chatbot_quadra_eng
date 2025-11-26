@@ -41,7 +41,6 @@ st.set_page_config(
 )
 
 # ====== PRE-FLIGHT CSS (estilo ChatGPT, antes de tudo) ======
-# Fundo mais escuro, próximo ao do ChatGPT
 st.markdown("""
 <style>
 html, body, .stApp {
@@ -71,7 +70,7 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
-# Logo do header com tamanho inline (evita “flash” gigante)
+# Logo do header
 if logo_b64:
     logo_img_tag = (
         f'<img alt="Logo Quadra" class="logo" '
@@ -146,42 +145,34 @@ def _title_from_first_question(q: str) -> str:
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
 
-# >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 1: inserir user_id no INSERT <<<<<<<<<<<<<<<<<<<<<<<<<<
+# PATCH 1: inserir user_id no INSERT
 def get_or_create_conversation():
-    """
-    Cria uma conversa no Supabase e memoriza o ID na sessão.
-    IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
-    """
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
 
     payload = {
-        "user_id": st.session_state.user_id,  # <- essencial p/ passar na RLS de INSERT
+        "user_id": st.session_state.user_id,
         "title": f"Sessão de {st.session_state.user_name}",
     }
     try:
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        # cache local (não muda UI)
         st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
         return None
-# >>>>>>>>>>>>>>>>>>>>>>>>> FIM PATCH 1 <<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
 def update_conversation_title_if_first_question(cid, first_question: str):
-    """Atualiza título para a 1ª pergunta (apenas uma vez por sessão)."""
     if not sb or not cid or not first_question or st.session_state.get("_title_set"):
         return
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
-        # atualiza cache local
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
@@ -192,7 +183,6 @@ def update_conversation_title_if_first_question(cid, first_question: str):
 
 
 def save_message(cid, role, content):
-    """Salva uma mensagem no Supabase (ignora se não houver sb/cid)."""
     if not sb or not cid or not content:
         return
     try:
@@ -206,10 +196,6 @@ def save_message(cid, role, content):
 
 
 def load_sidebar_history_from_supabase():
-    """
-    Carrega do Supabase as 20 últimas PERGUNTAS (role = 'user') do usuário logado
-    e guarda em st.session_state.sidebar_history (apenas textos das perguntas).
-    """
     if not sb or not st.session_state.get("user_id"):
         return
     try:
@@ -223,39 +209,34 @@ def load_sidebar_history_from_supabase():
             .execute()
         )
         rows = res.data or []
-
-        # Ordena do mais antigo para o mais recente (visual cronológico na sidebar)
         rows_sorted = sorted(rows, key=lambda r: r.get("created_at") or "")
         st.session_state.sidebar_history = [r["content"] for r in rows_sorted]
     except Exception as e:
         st.session_state["_sb_last_error"] = f"sidebar.load: {_extract_err_msg(e)}"
 
-# ====== LOGOUT VIA QUERY PARAM (compatível com várias versões) ======
+# ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
     try:
-        st.query_params.clear()           # >= 1.33
+        st.query_params.clear()
     except Exception:
-        st.experimental_set_query_params()  # legado
+        st.experimental_set_query_params()
 
 
 def _get_query_params():
     try:
-        return dict(st.query_params)      # >= 1.33
+        return dict(st.query_params)
     except Exception:
-        return dict(st.experimental_get_query_params())  # legado
+        return dict(st.experimental_get_query_params())
 
 
 qp = _get_query_params()
 if "logout" in qp:
-    # Tenta encerrar sessão no Supabase também
     try:
         if sb:
-            # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 4: limpar token do PostgREST no logout <<<<<<<<<<<<<<<<<<<<<<<<<<
             try:
                 sb.postgrest.auth(None)
             except Exception:
                 pass
-            # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 4 <<<<<<<<<<<<<<<<<<<<<<<<<<
             sb.auth.sign_out()
     except Exception:
         pass
@@ -332,25 +313,20 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* ===== Botões na área de login (base) ===== */
+/* ===== Reset dos botões na área de login ===== */
+/* Aqui deixamos os botões neutros/transparente.
+   Os estilos reais vêm de .login-actions e .secondary-actions */
 .login-stack .stButton > button{
     height:44px !important; padding:0 16px !important;
-    border-radius:999px !important;
-    font-weight:600 !important; font-size:0.95rem !important;
-    background:linear-gradient(180deg,#2563EB 0%, #1D4ED8 100%) !important;
-    color:#FFFFFF !important;
-    border:1px solid #1D4ED8 !important;
-    box-shadow:0 8px 20px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.10) !important;
+    border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
+    background:transparent !important;
+    color:#E6EEFF !important;
+    border:none !important;
+    box-shadow:none !important;
     text-decoration:none !important;
-    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease !important;
-}
-.login-stack .stButton > button:hover{
-    filter:brightness(1.05);
-    transform:translateY(-1px);
-    box-shadow:0 12px 24px rgba(15,23,42,.55), inset 0 1px 0 rgba(255,255,255,.12) !important;
 }
 
-/* ===== Botão primário (destaque) - ENTRAR / CADASTRAR (tela de registro) ===== */
+/* ===== Botão primário (destaque) ===== */
 .login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .login-actions .stButton > button{
     height:48px !important; padding:0 20px !important;
@@ -360,6 +336,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 }
 
 /* ===== Botões SECUNDÁRIOS ("Cadastrar usuário" e "Voltar para login") ===== */
+/* Esses são os que você quer SEMPRE nesse estilo azul/transparente */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
 .secondary-actions .stButton > button{
     height:46px !important; padding:0 22px !important;
@@ -394,7 +371,6 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 """
 
 def render_login_screen():
-    """Tela de Login"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
     with col_mid:
@@ -416,12 +392,10 @@ def render_login_screen():
         st.markdown('<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
                     unsafe_allow_html=True)
 
-        # sucesso pós-cadastro
         if st.session_state.get("just_registered"):
             st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
-        # ---- Lógica de login (com mensagens detalhadas) ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
             pwd_val = (st.session_state.get("login_senha") or "")
@@ -435,21 +409,18 @@ def render_login_screen():
                 st.session_state["login_error"] = "Digite a senha."
                 return
 
-            # ---- BYPASS de testes: mantém 'quadra123' funcionando ----
             if pwd_val == "quadra123":
-                # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 2: limpar token do PostgREST no bypass <<<<<<<<<<<<<<<<<<<<<<<<<<
                 try:
                     if sb:
                         sb.postgrest.auth(None)
                 except Exception:
                     pass
-                # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 2 <<<<<<<<<<<<<<<<<<<<<<<<<<
                 st.session_state.update({
                     "login_error": "",
                     "authenticated": True,
                     "user_email": email_val,
                     "user_name": extract_name_from_email(email_val),
-                    "user_id": None,               # sem persistência
+                    "user_id": None,
                     "conversation_id": None,
                     "_title_set": False,
                     "conversations_list": [],
@@ -458,14 +429,12 @@ def render_login_screen():
                 })
                 return
 
-            # ---- Login real via Supabase ----
             if not sb:
                 st.session_state["login_error"] = "Serviço de autenticação indisponível no momento."
                 return
             try:
-                # encerra sessão antiga para evitar conflito de tokens
                 try:
-                    sb.postgrest.auth(None)  # LIMPA token do PostgREST antes
+                    sb.postgrest.auth(None)
                 except Exception:
                     pass
                 try:
@@ -481,7 +450,6 @@ def render_login_screen():
                 if not user or not getattr(user, "id", None):
                     raise Exception("Resposta inválida do Auth.")
 
-                # >>>>>>>>>>>>>>>>>>>>>>>>> PATCH 3: Injeta JWT no PostgREST (RLS enxerga auth.uid()) <<<<<<<<<<<<<<<<<<<<<<<<<<
                 session_obj = getattr(res, "session", None)
                 if session_obj is None and isinstance(res, dict):
                     session_obj = res.get("session")
@@ -491,7 +459,6 @@ def render_login_screen():
                         sb.postgrest.auth(access_token)
                     except Exception:
                         pass
-                # <<<<<<<<<<<<<<<<<<<<<<<<< FIM PATCH 3 <<<<<<<<<<<<<<<<<<<<<<<<<<
 
                 st.session_state["login_error"] = ""
                 st.session_state.authenticated = True
@@ -504,7 +471,6 @@ def render_login_screen():
                 st.session_state.sidebar_history = []
                 st.session_state._sidebar_loaded = False
 
-                # garante profile (ignora erros)
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
                 except Exception:
@@ -514,7 +480,6 @@ def render_login_screen():
                 raw = _extract_err_msg(e)
                 st.session_state["login_error"] = _friendly_auth_error(raw)
 
-        # ---- Campos (rótulos brancos) ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         st.text_input(
             label="", key="login_email",
@@ -527,17 +492,15 @@ def render_login_screen():
             label="", key="login_senha",
             type="password", placeholder="Digite sua senha",
             label_visibility="collapsed",
-            on_change=_try_login  # Enter na senha tenta login
+            on_change=_try_login
         )
 
-        # Botão ENTRAR (primário/destaque)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário centralizado: Cadastrar usuário
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
@@ -555,7 +518,6 @@ def render_login_screen():
 
 
 def render_register_screen():
-    """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
 
     col_esq, col_mid, col_dir = st.columns([1, 1, 1])
@@ -578,7 +540,6 @@ def render_register_screen():
         st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
                     unsafe_allow_html=True)
 
-        # ---- RÓTULOS BRANCOS (inline) + labels nativos ocultos ----
         st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>', unsafe_allow_html=True)
         email = st.text_input(
             label="", key="reg_email",
@@ -600,12 +561,10 @@ def render_register_screen():
             label_visibility="collapsed"
         )
 
-        # Botão principal Cadastrar (primário)
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
@@ -625,7 +584,6 @@ def render_register_screen():
             elif senha != confirma:
                 st.error("As senhas não conferem.")
             else:
-                # Cadastro real via Supabase (se disponível). Se não, só volta pro login como antes.
                 if sb:
                     try:
                         sb.auth.sign_up({
@@ -650,35 +608,29 @@ def render_register_screen():
 #                         FLUXO PRINCIPAL
 # =================================================================
 
-# Se não autenticado, mostra login ou cadastro
 if not st.session_state.authenticated:
     if st.session_state.auth_mode == "register":
         render_register_screen()
     else:
         render_login_screen()
 
-# Usuário autenticado: carrega histórico global da sidebar (uma única vez)
+# Usuário autenticado: histórico global
 if sb and st.session_state.get("user_id") and not st.session_state.get("_sidebar_loaded"):
     load_sidebar_history_from_supabase()
     st.session_state["_sidebar_loaded"] = True
 
 # ====== MARCAÇÃO ======
 def formatar_markdown_basico(text: str) -> str:
-    """Converte um subset simples de markdown para HTML seguro (links, **negrito**, *itálico*, quebras de linha)."""
     if not text:
         return ""
     safe = escape(text)
-
-    # Links
     safe = re.sub(
         r'(https?://[^\s<>"\]]+)',
         lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
         safe
     )
-    # **negrito** e *itálico*
     safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
-
     return safe.replace('\n', '<br>')
 
 
@@ -702,16 +654,9 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --input-max: 900px;
     --input-bottom: 60px;
                     
-    /* Fundo principal da JANELA do chat */
     --bg:#202123;
-
-    /* HISTÓRICO – bem mais escuro pra destacar */
     --panel:#050509;
-
-    /* CABEÇALHO – só um pouco mais claro que o bg */
     --panel-header:#26272F;
-
-    /* Apoio (mantém) */
     --panel-alt:#343541;
 
     --border:#565869;
@@ -720,13 +665,13 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --text-dim:#D1D5DB;
     --muted:#9CA3AF;
 
+    /* Links em azul */
     --link:#3B82F6;
     --link-hover:#60A5FA;
 
     --bubble-user:#343541;
     --bubble-assistant:#444654;
 
-    /* CHAT INPUT – quase igual à janela, só um tiquinho mais claro */
     --input-bg:#26272F;
     --input-border:#565869;
 
@@ -754,7 +699,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
 }}
 .block-container{{ padding:0 !important; min-height:0 !important }}
 
-/* HEADER FIXO NO TOPO */
+/* HEADER */
 .header{{
     position:fixed;
     inset:0 0 auto 0;
@@ -787,7 +732,6 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     color:var(--text);
 }}
 
-/* Botão Sair azul */
 .header a{{
     color:#FFFFFF !important;
     text-decoration:none;
@@ -805,7 +749,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     background:#2563EB;
 }}
 
-/* Avatar azul */
+/* Avatar */
 .user-circle {{
     width: 32px;
     height: 32px;
@@ -819,7 +763,7 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     font-size: 1rem;
 }}
 
-/* SIDEBAR – painel esquerdo */
+/* SIDEBAR */
 section[data-testid="stSidebar"]{{
     position:fixed !important;
     top:var(--header-height) !important;
@@ -848,7 +792,6 @@ section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-ite
 
 div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
-/* Títulos e textos do histórico com tipografia mais parecida ao GPT */
 .sidebar-header{{
     font-size:0.9rem;
     font-weight:600;
@@ -934,7 +877,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 }}
 .chat-card a:hover{{ color:var(--link-hover) }}
 
-/* CHAT INPUT – barra igual à do ChatGPT */
+/* CHAT INPUT */
 [data-testid="stChatInput"]{{
     position:fixed !important;
     left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
@@ -987,7 +930,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 }}
 [data-testid="stChatInput"] svg{{ fill:currentColor !important }}
 
-/* Container “fantasma” embaixo do input */
+/* Bottom container fantasma */
 [data-testid="stBottomBlockContainer"],
 [data-testid="stBottomBlockContainer"] > div,
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
@@ -1005,7 +948,7 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     min-height:0 !important;
 }}
 
-/* Scrollbar escura */
+/* Scrollbar */
 [data-testid="stDecoration"],
 [data-testid="stStatusWidget"]{{ display:none !important }}
 *::-webkit-scrollbar{{ width:10px; height:10px }}
@@ -1068,11 +1011,9 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Se tiver user_id e histórico global carregado, usa ele (20 últimas)
     if st.session_state.get("user_id") and st.session_state.sidebar_history:
         perguntas_sidebar = st.session_state.sidebar_history[-20:]
     else:
-        # fallback: usa somente o histórico local da sessão
         perguntas_sidebar = [p for p, _ in st.session_state.historico][-20:]
 
     if not perguntas_sidebar:
@@ -1085,24 +1026,6 @@ with st.sidebar:
             st.markdown(f'<div class="hist-row">{escape(titulo)}</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
-def formatar_markdown_basico(text: str) -> str:
-    if not text:
-        return ""
-    safe = escape(text)
-    safe = re.sub(
-        r'(https?://[^\s<>"\]]+)',
-        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
-        safe
-    )
-    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
-    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
-    return safe.replace('\n', '<br>')
-
-
-def linkify(text: str) -> str:
-    return formatar_markdown_basico(text or "")
-
-
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
     p_html = linkify(pergunta)
@@ -1178,7 +1101,7 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# ====== INPUT (Componente nativo do Streamlit) ======
+# ====== INPUT ======
 pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
 
 # ====== FLUXO PRINCIPAL DO CHAT ======
@@ -1186,17 +1109,14 @@ if pergunta and pergunta.strip():
     q = pergunta.strip()
     st.session_state.historico.append((q, ""))
 
-    # Atualiza histórico da sidebar em memória (20 últimas perguntas do usuário)
     if st.session_state.get("user_id"):
         st.session_state.sidebar_history.append(q)
         if len(st.session_state.sidebar_history) > 20:
             st.session_state.sidebar_history = st.session_state.sidebar_history[-20:]
 
-    # cria conversa e persiste pergunta
     try:
         cid = get_or_create_conversation()
         save_message(cid, "user", q)
-        # atualiza título com a 1ª pergunta (uma única vez)
         update_conversation_title_if_first_question(cid, q)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
@@ -1218,7 +1138,6 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
         pergunta_fix = st.session_state.historico[idx][0]
         st.session_state.historico[idx] = (pergunta_fix, resposta)
 
-    # persiste resposta (se login real)
     try:
         cid = get_or_create_conversation()
         save_message(cid, "assistant", resposta)
