@@ -332,18 +332,25 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     box-shadow:0 6px 20px rgba(6,16,35,.30);
 }
 
-/* ===== Reset dos botões na área de login ===== */
+/* ===== Botões na área de login (base) ===== */
 .login-stack .stButton > button{
     height:44px !important; padding:0 16px !important;
-    border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
-    background:rgba(255,255,255,.08) !important; color:#E6EEFF !important;
-    border:1px solid rgba(255,255,255,.18) !important;
-    box-shadow:0 6px 16px rgba(7,22,50,.35) !important;
+    border-radius:999px !important;
+    font-weight:600 !important; font-size:0.95rem !important;
+    background:linear-gradient(180deg,#2563EB 0%, #1D4ED8 100%) !important;
+    color:#FFFFFF !important;
+    border:1px solid #1D4ED8 !important;
+    box-shadow:0 8px 20px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.10) !important;
     text-decoration:none !important;
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease !important;
 }
-.login-stack .stButton > button:hover{ filter:brightness(1.06); }
+.login-stack .stButton > button:hover{
+    filter:brightness(1.05);
+    transform:translateY(-1px);
+    box-shadow:0 12px 24px rgba(15,23,42,.55), inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
 
-/* ===== Botão primário (destaque) ===== */
+/* ===== Botão primário (destaque) - ENTRAR / CADASTRAR (tela de registro) ===== */
 .login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .login-actions .stButton > button{
     height:48px !important; padding:0 20px !important;
@@ -354,27 +361,26 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 
 /* ===== Botões SECUNDÁRIOS ("Cadastrar usuário" e "Voltar para login") ===== */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
-.secondary-actions div.stButton > button{
+.secondary-actions .stButton > button{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important; font-weight:600 !important; font-size:0.96rem !important;
-    background:linear-gradient(180deg,#2563EB 0%, #1D4ED8 100%) !important; /* azul constante */
+    background:linear-gradient(180deg,#2563EB 0%, #1D4ED8 100%) !important;
     color:#FFFFFF !important;
     border:1px solid #1D4ED8 !important;
     box-shadow:0 8px 20px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.10) !important;
-    opacity:1 !important;
     transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease !important;
 }
-.secondary-actions div.stButton > button:hover{
+.secondary-actions .stButton > button:hover{
     filter:brightness(1.05);
     transform:translateY(-1px);
     box-shadow:0 12px 24px rgba(15,23,42,.55), inset 0 1px 0 rgba(255,255,255,.12) !important;
     border-color:#1E40AF !important;
 }
-.secondary-actions div.stButton > button:active{
+.secondary-actions .stButton > button:active{
     transform:translateY(0);
     box-shadow:0 6px 16px rgba(15,23,42,.45) !important;
 }
-.secondary-actions div.stButton > button:focus{
+.secondary-actions .stButton > button:focus{
     outline:none !important;
     box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(15,23,42,.5) !important;
     border-color:#2563EB !important;
@@ -714,7 +720,6 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --text-dim:#D1D5DB;
     --muted:#9CA3AF;
 
-    /* LINKS: agora em azul */
     --link:#3B82F6;
     --link-hover:#60A5FA;
 
