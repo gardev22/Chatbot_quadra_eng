@@ -670,8 +670,8 @@ img.logo {{ height: 44px !important; width: auto !important }}
 :root{{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
-    --chat-safe-gap: 300px;
-    --card-height: calc(100dvh - var(--header-height) - 24px);
+    --input-zone: 170px;     /* espaço reservado pro input + respiro */
+    --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
     --input-max: 900px;
     --input-bottom: 60px;
                     
@@ -686,7 +686,6 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --text-dim:#D1D5DB;
     --muted:#9CA3AF;
 
-    /* links em azul */
     --link:#60A5FA;
     --link-hover:#93C5FD;
 
@@ -860,8 +859,8 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     height:var(--card-height);
     overflow-y:auto;
     scroll-behavior:smooth;
-    padding-bottom:var(--chat-safe-gap);
-    scroll-padding-bottom:var(--chat-safe-gap);
+    padding-bottom:24px;          /* só um respiro normal */
+    scroll-padding-bottom:24px;
     color:var(--text);
 }}
 #chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
@@ -869,7 +868,6 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
 .message-row{{
     display:flex !important;
     margin:12px 4px;
-    scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px);
 }}
 .message-row.user{{ justify-content:flex-end }}
 .message-row.assistant{{ justify-content:flex-start }}
@@ -1063,7 +1061,6 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-# âncora mínima, o “colchão” agora é feito via scrollToEnd
 msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
 st.markdown(
@@ -1071,25 +1068,10 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (layout + autoscroll com limiar) ======
+# ====== JS (autoscroll simples, sem passar por baixo do input) ======
 st.markdown("""
 <script>
 (function(){
-    function ajustaEspaco(){
-        const input = document.querySelector('[data-testid="stChatInput"]');
-        const card  = document.getElementById('chatCard');
-        if(!input || !card) return;
-
-        const rect   = input.getBoundingClientRect();
-        const gapVar = getComputedStyle(document.documentElement)
-                        .getPropertyValue('--chat-safe-gap').trim();
-        const gap    = parseInt(gapVar || '300', 10);
-
-        const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-        card.style.paddingBottom       = alturaEfetiva + 'px';
-        card.style.scrollPaddingBottom = alturaEfetiva + 'px';
-    }
-
     function autoGrow(){
         const ta = document.querySelector('[data-testid="stChatInput"] textarea');
         if(!ta) return;
@@ -1100,54 +1082,36 @@ st.markdown("""
         ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
     }
 
-    // Scroll até um pouco antes do final do card,
-    // deixando espaço visível acima do input fixo.
     function scrollToEnd(smooth=true){
         const card = document.getElementById('chatCard');
         if(!card) return;
-
-        const gapVar = getComputedStyle(document.documentElement)
-                        .getPropertyValue('--chat-safe-gap').trim();
-        const gap    = parseInt(gapVar || '300', 10);
-
-        const margin = gap * 0.5;  // quanto queremos de “respiro” antes do input
-        let target   = card.scrollHeight - card.clientHeight - margin;
-        if (target < 0) target = 0;
-
         card.scrollTo({
-            top: target,
+            top: card.scrollHeight,
             behavior: smooth ? 'smooth' : 'auto'
         });
     }
 
-    const ro = new ResizeObserver(()=>{ ajustaEspaco(); });
-    ro.observe(document.body);
-
     window.addEventListener('load', ()=>{
         autoGrow();
-        ajustaEspaco();
         scrollToEnd(false);
     });
 
     window.addEventListener('resize', ()=>{
         autoGrow();
-        ajustaEspaco();
     });
 
     document.addEventListener('input', (e)=>{
         if(e.target && e.target.matches('[data-testid="stChatInput"] textarea')){
             autoGrow();
-            ajustaEspaco();
         }
     });
 
-    setTimeout(()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); }, 0);
-    setTimeout(()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(true); }, 150);
+    setTimeout(()=>{ autoGrow(); scrollToEnd(false); }, 0);
+    setTimeout(()=>{ autoGrow(); scrollToEnd(true); }, 150);
 
     const card = document.getElementById('chatCard');
     if(card){
         const mo = new MutationObserver(()=>{
-            ajustaEspaco();
             scrollToEnd(true);
         });
         mo.observe(card, { childList:true, subtree:false });
@@ -1178,7 +1142,7 @@ if pergunta and pergunta.strip():
 
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
+    st.session_state.awaiting_answer = True    # vai cair no bloco de resposta
     st.session_state.answering_started = False
     do_rerun()
 
