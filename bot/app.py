@@ -708,15 +708,15 @@ def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
 # ====== CSS (Chat + Sidebar estilizada) ======
-st.markdown(f"""
+st.markdown("""
 <style>
-* {{ box-sizing: border-box }}
-html, body {{ margin: 0; padding: 0 }}
-img {{ max-width: 100%; height: auto; display: inline-block }}
-img.logo {{ height: 44px !important; width: auto !important }}
+* { box-sizing: border-box }
+html, body { margin: 0; padding: 0 }
+img { max-width: 100%; height: auto; display: inline-block }
+img.logo { height: 44px !important; width: auto !important }
 
 /* Paleta ChatGPT dark */
-:root{{
+:root{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
     --input-zone: 150px;
@@ -748,28 +748,28 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --sidebar-items-top-gap: -45px;
     --sidebar-sub-top-gap: -30px;
     --sidebar-list-start-gap: 3px;
-}}
+}
 
-body, .stApp {{
+body, .stApp {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     background:var(--bg) !important;
     color:var(--text) !important;
-}}
+}
 
-header[data-testid="stHeader"]{{ display:none !important }}
-div[data-testid="stToolbar"]{{ display:none !important }}
-#MainMenu, footer{{ visibility:hidden; height:0 !important }}
+header[data-testid="stHeader"]{ display:none !important }
+div[data-testid="stToolbar"]{ display:none !important }
+#MainMenu, footer{ visibility:hidden; height:0 !important }
 
-html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{{
+html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{
     height:100dvh !important;
     max-height:100dvh !important;
     overflow:hidden !important;
     overscroll-behavior:none;
-}}
-.block-container{{ padding:0 !important; min-height:0 !important }}
+}
+.block-container{ padding:0 !important; min-height:0 !important }
 
 /* HEADER */
-.header{{
+.header{
     position:fixed;
     inset:0 0 auto 0;
     height:var(--header-height);
@@ -780,29 +780,29 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     background:var(--panel-header);
     z-index:1000;
     border-bottom:1px solid var(--border);
-}}
-.header-left{{
+}
+.header-left{
     display:flex;
     align-items:center;
     gap:10px;
     font-weight:600;
     color:var(--text);
-}}
-.header-left .title-sub{{
+}
+.header-left .title-sub{
     font-weight:500;
     font-size:.85rem;
     color:var(--muted);
     margin-top:-4px;
-}}
-.header-right{{
+}
+.header-right{
     display:flex;
     align-items:center;
     gap:12px;
     color:var(--text);
-}}
+}
 
 /* Botão Sair */
-.header a{{
+.header a{
     color:#FFFFFF !important;
     text-decoration:none;
     border:1px solid #2563EB;
@@ -812,15 +812,15 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     background:#3B82F6;
     font-weight:600;
     cursor:pointer;
-}}
-.header a:hover{{
+}
+.header a:hover{
     color:#FFFFFF !important;
     border-color:#1D4ED8;
     background:#2563EB;
-}}
+}
 
 /* Avatar */
-.user-circle {{
+.user-circle {
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -831,10 +831,10 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     justify-content: center;
     font-weight: 600;
     font-size: 1rem;
-}}
+}
 
 /* SIDEBAR */
-section[data-testid="stSidebar"]{{
+section[data-testid="stSidebar"]{
     position:fixed !important;
     top:var(--header-height) !important;
     left:0 !important;
@@ -850,16 +850,12 @@ section[data-testid="stSidebar"]{{
     visibility:visible !important;
     overflow:hidden !important;
     color:var(--text);
-}}
-section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
-div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
+}
+section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
+div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-items-top-gap) !important; }}
-.sidebar-bar p, .sidebar-header p{{ margin: 0 !important; line-height: 1.15 !important; }}
-.sidebar-bar{{ margin-top: var(--sidebar-sub-top-gap) !important; }}
-
-div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
+div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
 /* Sidebar títulos */
 .sidebar-header{
@@ -964,14 +960,14 @@ section[data-testid="stSidebar"] button:active{
     scroll-padding-bottom:350px;
     color:var(--text);
 }
-#chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
+#chatCard *, .chat-card *{ position:relative; z-index:51 !important }
 
 .message-row{
     display:flex !important;
     margin:12px 4px;
 }
-.message-row.user{{ justify-content:flex-end }}
-.message-row.assistant{{ justify-content:flex-start }}
+.message-row.user{ justify-content:flex-end }
+.message-row.assistant{ justify-content:flex-start }
 
 .bubble{
     max-width:88%;
@@ -997,7 +993,7 @@ section[data-testid="stSidebar"] button:active{
     color:var(--link) !important;
     text-decoration:underline;
 }
-.chat-card a:hover{{ color:var(--link-hover) }}
+.chat-card a:hover{ color:var(--link-hover) }
 
 /* CHAT INPUT */
 [data-testid="stChatInput"]{
@@ -1050,7 +1046,7 @@ section[data-testid="stSidebar"] button:active{
     background:transparent !important;
     color:var(--text-dim) !important;
 }
-[data-testid="stChatInput"] svg{{ fill:currentColor !important }}
+[data-testid="stChatInput"] svg{ fill:currentColor !important }
 
 /* bottom container fantasma */
 [data-testid="stBottomBlockContainer"],
@@ -1072,13 +1068,13 @@ section[data-testid="stSidebar"] button:active{
 
 /* Scrollbar */
 [data-testid="stDecoration"],
-[data-testid="stStatusWidget"]{{ display:none !important }}
-*::-webkit-scrollbar{{ width:10px; height:10px }}
+[data-testid="stStatusWidget"]{ display:none !important }
+*::-webkit-scrollbar{ width:10px; height:10px }
 *::-webkit-scrollbar-thumb{
     background:#565869;
     border-radius:8px;
 }
-*::-webkit-scrollbar-track{{ background:#171717 }}
+*::-webkit-scrollbar-track{ background:#171717 }
 
 /* Spinner */
 .spinner{
@@ -1090,7 +1086,7 @@ section[data-testid="stSidebar"] button:active{
     display:inline-block;
     animation:spin .8s linear infinite;
 }
-@keyframes spin{{ to{{ transform:rotate(360deg) }} }}
+@keyframes spin{ to{ transform:rotate(360deg) } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1155,13 +1151,11 @@ with st.sidebar:
                     do_rerun()
             with col_menu:
                 if st.button("⋯", key=f"conv_menu_{cid}"):
-                    # abre/fecha menu dessa conversa
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
                     do_rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # Menu flutuante lateral (apenas Excluir conversa)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 if st.button("🗑 Excluir conversa", key=f"conv_delete_{cid}"):
