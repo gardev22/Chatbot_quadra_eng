@@ -848,12 +848,19 @@ section[data-testid="stSidebar"]{
     z-index:900 !important;
     transform:none !important;
     visibility:visible !important;
-    overflow:hidden !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
     color:var(--text);
 }
 section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
+
+/* some default separators/lines do sidebar */
+section[data-testid="stSidebar"] hr,
+section[data-testid="stSidebar"] [role="separator"]{
+    display:none !important;
+}
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
@@ -876,7 +883,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* Botões da sidebar (títulos, reticências e menu) sem cara de botão branco */
+/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
 section[data-testid="stSidebar"] button{
     background:transparent !important;
     border:none !important;
@@ -914,16 +921,17 @@ section[data-testid="stSidebar"] button:active{
 }
 .sidebar-row-menu button{
     width:auto;
-    min-width:32px;
+    min-width:26px;
     text-align:center;
-    padding-inline:6px !important;
+    padding-inline:4px !important;
+    font-size:0.9rem !important;
 }
 
-/* Menu flutuante lateral (Excluir conversa) */
+/* Menu flutuante (Excluir conversa) dentro da barra, mas com cara de popover */
 .conv-menu{
     margin-top:4px;
-    margin-left:110px;
-    width:170px;
+    margin-left:32px;
+    width:180px;
     background:#111827;
     border:1px solid #374151;
     border-radius:12px;
@@ -933,6 +941,9 @@ section[data-testid="stSidebar"] button:active{
 .conv-menu button{
     width:100% !important;
     color:#FCA5A5 !important;
+    text-align:left !important;
+    font-size:0.86rem !important;
+    padding:6px 10px !important;
 }
 .conv-menu button:hover{
     background:#7F1D1D !important;
