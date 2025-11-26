@@ -670,7 +670,7 @@ img.logo {{ height: 44px !important; width: auto !important }}
 :root{{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
-    --input-zone: 250px;     /* espaço reservado pro input + respiro */
+    --input-zone: 150px;     /* espaço reservado pro input + respiro (reduzido p/ mais área de chat) */
     --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
     --input-max: 900px;
     --input-bottom: 60px;
@@ -859,8 +859,8 @@ div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important 
     height:var(--card-height);
     overflow-y:auto;
     scroll-behavior:smooth;
-    padding-bottom:24px;          /* só um respiro normal */
-    scroll-padding-bottom:24px;
+    padding-bottom:48px;          /* respiro interno maior antes do fim do card */
+    scroll-padding-bottom:48px;
     color:var(--text);
 }}
 #chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
