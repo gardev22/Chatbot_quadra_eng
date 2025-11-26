@@ -349,7 +349,7 @@ button[data-testid="baseButton-secondary"]{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important;
     font-weight:600 !important; font-size:0.96rem !important;
-    background:rgba(15,23,42,0.45) !important;         /* azul escuro translúcido */
+    background:rgba(15,23,42,0.45) !important;
     color:#E5ECFF !important;
     border:1px solid rgba(148,163,184,0.70) !important;
     box-shadow:0 8px 20px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.10) !important;
@@ -517,7 +517,7 @@ def render_login_screen():
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Cadastrar usuário (global kind="secondary" já cuida do estilo)
+        # Botão secundário: Cadastrar usuário
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
@@ -586,7 +586,7 @@ def render_register_screen():
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Voltar para login (global kind="secondary" aplica o estilo)
+        # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
@@ -1063,64 +1063,94 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
 if not msgs_html:
     msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-# >>> AQUI FOI A ÚNICA MUDANÇA IMPORTANTE <<<
-# Em vez de height:1px, usamos um "colchão" de 180px para o scroll parar antes do input.
-msgs_html.append('<div id="chatEnd" style="height:180px;"></div>')
+# âncora mínima, o “colchão” agora é feito via scrollToEnd
+msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
 
 st.markdown(
     f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
     unsafe_allow_html=True
 )
 
-# ====== JS (layout + autoscroll) ======
+# ====== JS (layout + autoscroll com limiar) ======
 st.markdown("""
 <script>
 (function(){
     function ajustaEspaco(){
         const input = document.querySelector('[data-testid="stChatInput"]');
-        const card = document.getElementById('chatCard');
-        if(!input||!card) return;
-        const rect = input.getBoundingClientRect();
-        const gapVar = getComputedStyle(document.documentElement).getPropertyValue('--chat-safe-gap').trim();
-        const gap = parseInt(gapVar || '24', 10);
+        const card  = document.getElementById('chatCard');
+        if(!input || !card) return;
+
+        const rect   = input.getBoundingClientRect();
+        const gapVar = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--chat-safe-gap').trim();
+        const gap    = parseInt(gapVar || '300', 10);
+
         const alturaEfetiva = (window.innerHeight - rect.top) + gap;
-        card.style.paddingBottom = alturaEfetiva + 'px';
+        card.style.paddingBottom       = alturaEfetiva + 'px';
         card.style.scrollPaddingBottom = alturaEfetiva + 'px';
     }
+
     function autoGrow(){
         const ta = document.querySelector('[data-testid="stChatInput"] textarea');
         if(!ta) return;
         const MAX = 220;
-        ta.style.height='auto';
-        const desired = Math.min(ta.scrollHeight, MAX);
-        ta.style.height = desired+'px';
-        ta.style.overflowY=(ta.scrollHeight>MAX)?'auto':'hidden';
-    }
-    function scrollToEnd(smooth=true){
-        const end = document.getElementById('chatEnd');
-        if(!end) return;
-        end.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block: 'end'});
+        ta.style.height = 'auto';
+        const desired   = Math.min(ta.scrollHeight, MAX);
+        ta.style.height = desired + 'px';
+        ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
     }
 
-    const ro = new ResizeObserver(()=>{ajustaEspaco();});
+    // Scroll até um pouco antes do final do card,
+    // deixando espaço visível acima do input fixo.
+    function scrollToEnd(smooth=true){
+        const card = document.getElementById('chatCard');
+        if(!card) return;
+
+        const gapVar = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--chat-safe-gap').trim();
+        const gap    = parseInt(gapVar || '300', 10);
+
+        const margin = gap * 0.5;  // quanto queremos de “respiro” antes do input
+        let target   = card.scrollHeight - card.clientHeight - margin;
+        if (target < 0) target = 0;
+
+        card.scrollTo({
+            top: target,
+            behavior: smooth ? 'smooth' : 'auto'
+        });
+    }
+
+    const ro = new ResizeObserver(()=>{ ajustaEspaco(); });
     ro.observe(document.body);
 
-    window.addEventListener('load',()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); });
-    window.addEventListener('resize',()=>{autoGrow();ajustaEspaco();});
+    window.addEventListener('load', ()=>{
+        autoGrow();
+        ajustaEspaco();
+        scrollToEnd(false);
+    });
 
-    document.addEventListener('input',(e)=>{
-        if(e.target&&e.target.matches('[data-testid="stChatInput"] textarea')){
-            autoGrow();ajustaEspaco();
+    window.addEventListener('resize', ()=>{
+        autoGrow();
+        ajustaEspaco();
+    });
+
+    document.addEventListener('input', (e)=>{
+        if(e.target && e.target.matches('[data-testid="stChatInput"] textarea')){
+            autoGrow();
+            ajustaEspaco();
         }
     });
 
-    setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(false);},0);
-    setTimeout(()=>{autoGrow();ajustaEspaco();scrollToEnd(true);},150);
+    setTimeout(()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(false); }, 0);
+    setTimeout(()=>{ autoGrow(); ajustaEspaco(); scrollToEnd(true); }, 150);
 
     const card = document.getElementById('chatCard');
     if(card){
-        const mo = new MutationObserver(()=>{ ajustaEspaco(); scrollToEnd(true); });
-        mo.observe(card, {childList:true, subtree:false});
+        const mo = new MutationObserver(()=>{
+            ajustaEspaco();
+            scrollToEnd(true);
+        });
+        mo.observe(card, { childList:true, subtree:false });
     }
 })();
 </script>
