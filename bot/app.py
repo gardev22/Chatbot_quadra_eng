@@ -342,33 +342,33 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
     width:100%; display:flex; justify-content:center; margin-top:28px;
 }
 
-/* ===== Estilo ESPECÍFICO para Cadastrar usuário / Voltar para login =====
-   (são botões kind="secondary" dentro da login-stack) */
-.login-stack button[kind="secondary"],
-.login-stack button[data-testid="baseButton-secondary"]{
+/* ===== Estilo GLOBAL para botões kind="secondary"
+   (Cadastrar usuário / Voltar para login) ===== */
+button[kind="secondary"],
+button[data-testid="baseButton-secondary"]{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important;
     font-weight:600 !important; font-size:0.96rem !important;
-    background:rgba(15,23,42,0.45) !important;
+    background:rgba(15,23,42,0.45) !important;         /* azul escuro translúcido */
     color:#E5ECFF !important;
-    border:1px solid rgba(148,163,184,0.55) !important;
+    border:1px solid rgba(148,163,184,0.70) !important;
     box-shadow:0 8px 20px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.10) !important;
     transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease !important;
 }
-.login-stack button[kind="secondary"]:hover,
-.login-stack button[data-testid="baseButton-secondary"]:hover{
+button[kind="secondary"]:hover,
+button[data-testid="baseButton-secondary"]:hover{
     filter:brightness(1.04);
     transform:translateY(-1px);
     box-shadow:0 12px 24px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.12) !important;
     border-color:rgba(129,140,248,0.9) !important;
 }
-.login-stack button[kind="secondary"]:active,
-.login-stack button[data-testid="baseButton-secondary"]:active{
+button[kind="secondary"]:active,
+button[data-testid="baseButton-secondary"]:active{
     transform:translateY(0);
     box-shadow:0 6px 16px rgba(0,0,0,.26) !important;
 }
-.login-stack button[kind="secondary"]:focus,
-.login-stack button[data-testid="baseButton-secondary"]:focus{
+button[kind="secondary"]:focus,
+button[data-testid="baseButton-secondary"]:focus{
     outline:none !important;
     box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(0,0,0,.26) !important;
 }
@@ -517,7 +517,7 @@ def render_login_screen():
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Cadastrar usuário (agora com estilo fixo azul translúcido)
+        # Botão secundário: Cadastrar usuário (global kind="secondary" já cuida do estilo)
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
@@ -586,7 +586,7 @@ def render_register_screen():
         criar = st.button("Cadastrar", type="primary", key="btn_register")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Botão secundário: Voltar para login (mesmo estilo translúcido)
+        # Botão secundário: Voltar para login (global kind="secondary" aplica o estilo)
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
