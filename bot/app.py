@@ -40,12 +40,18 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ====== PRE-FLIGHT CSS (evita flash branco antes do restante do CSS) ======
+# ====== PRE-FLIGHT CSS (estilo ChatGPT, antes de tudo) ======
+# Fundo mais escuro, próximo ao do ChatGPT
 st.markdown("""
 <style>
-html, body, .stApp { background:#0B1730 !important; }
+html, body, .stApp {
+    background:#202123 !important;
+    color:#ECECF1 !important;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 def do_rerun():
     if hasattr(st, "rerun"):
@@ -75,6 +81,7 @@ if logo_b64:
 else:
     logo_img_tag = '<span style="font-size: 2rem; color: #1C3364; font-weight: 900;">Q</span>'
 
+
 def extract_name_from_email(email):
     if not email or "@" not in email:
         return "Usuário"
@@ -96,6 +103,7 @@ def _extract_err_msg(err) -> str:
     except Exception:
         pass
     return str(err)
+
 
 def _friendly_auth_error(msg: str) -> str:
     low = (msg or "").lower()
@@ -165,6 +173,7 @@ def get_or_create_conversation():
         return None
 # >>>>>>>>>>>>>>>>>>>>>>>>> FIM PATCH 1 <<<<<<<<<<<<<<<<<<<<<<<<<<
 
+
 def update_conversation_title_if_first_question(cid, first_question: str):
     """Atualiza título para a 1ª pergunta (apenas uma vez por sessão)."""
     if not sb or not cid or not first_question or st.session_state.get("_title_set"):
@@ -181,6 +190,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
+
 def save_message(cid, role, content):
     """Salva uma mensagem no Supabase (ignora se não houver sb/cid)."""
     if not sb or not cid or not content:
@@ -193,6 +203,7 @@ def save_message(cid, role, content):
         }).execute()
     except Exception as e:
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
+
 
 def load_sidebar_history_from_supabase():
     """
@@ -226,11 +237,13 @@ def _clear_query_params():
     except Exception:
         st.experimental_set_query_params()  # legado
 
+
 def _get_query_params():
     try:
         return dict(st.query_params)      # >= 1.33
     except Exception:
         return dict(st.experimental_get_query_params())  # legado
+
 
 qp = _get_query_params()
 if "logout" in qp:
@@ -341,28 +354,29 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 
 /* ===== Botões SECUNDÁRIOS ("Cadastrar usuário" e "Voltar para login") ===== */
 .secondary-actions{ width:100%; display:flex; justify-content:center; margin-top:28px; }
-.secondary-actions .stButton > button{
+.secondary-actions div.stButton > button{
     height:46px !important; padding:0 22px !important;
     border-radius:999px !important; font-weight:600 !important; font-size:0.96rem !important;
-    background:linear-gradient(180deg,#6B7280 0%, #4B5563 100%) !important; /* cinza */
+    background:linear-gradient(180deg,#2563EB 0%, #1D4ED8 100%) !important; /* azul constante */
     color:#FFFFFF !important;
-    border:1px solid #374151 !important;
-    box-shadow:0 8px 20px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.08) !important;
+    border:1px solid #1D4ED8 !important;
+    box-shadow:0 8px 20px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.10) !important;
+    opacity:1 !important;
     transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease !important;
 }
-.secondary-actions .stButton > button:hover{
+.secondary-actions div.stButton > button:hover{
     filter:brightness(1.05);
     transform:translateY(-1px);
-    box-shadow:0 12px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.10) !important;
-    border-color:#303645 !important;
+    box-shadow:0 12px 24px rgba(15,23,42,.55), inset 0 1px 0 rgba(255,255,255,.12) !important;
+    border-color:#1E40AF !important;
 }
-.secondary-actions .stButton > button:active{
+.secondary-actions div.stButton > button:active{
     transform:translateY(0);
-    box-shadow:0 6px 16px rgba(0,0,0,.18) !important;
+    box-shadow:0 6px 16px rgba(15,23,42,.45) !important;
 }
-.secondary-actions .stButton > button:focus{
+.secondary-actions div.stButton > button:focus{
     outline:none !important;
-    box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(0,0,0,.18) !important;
+    box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(15,23,42,.5) !important;
     border-color:#2563EB !important;
 }
 
@@ -404,7 +418,7 @@ def render_login_screen():
         # ---- Lógica de login (com mensagens detalhadas) ----
         def _try_login():
             email_val = (st.session_state.get("login_email") or "").strip().lower()
-            pwd_val   = (st.session_state.get("login_senha") or "")
+            pwd_val = (st.session_state.get("login_senha") or "")
             if "@" not in email_val:
                 st.session_state["login_error"] = "Por favor, insira um e-mail válido."
                 return
@@ -477,7 +491,7 @@ def render_login_screen():
                 st.session_state.authenticated = True
                 st.session_state.user_email = email_val
                 st.session_state.user_name = extract_name_from_email(email_val)
-                st.session_state.user_id   = user.id
+                st.session_state.user_id = user.id
                 st.session_state.conversation_id = None
                 st.session_state._title_set = False
                 st.session_state.conversations_list = []
@@ -519,7 +533,7 @@ def render_login_screen():
 
         # Botão secundário centralizado: Cadastrar usuário
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
-        col_a, col_b, col_c = st.columns([1,1,1])
+        col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
             if st.button("Cadastrar usuário", key="btn_go_register"):
                 st.session_state.auth_mode = "register"
@@ -532,6 +546,7 @@ def render_login_screen():
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
+
 
 def render_register_screen():
     """Tela de Cadastro (e-mail + senha)"""
@@ -586,7 +601,7 @@ def render_register_screen():
 
         # Botão secundário: Voltar para login
         st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
-        col_a, col_b, col_c = st.columns([1,1,1])
+        col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_b:
             voltar = st.button("Voltar para login", key="btn_back_login")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -660,6 +675,7 @@ def formatar_markdown_basico(text: str) -> str:
 
     return safe.replace('\n', '<br>')
 
+
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
@@ -671,6 +687,7 @@ html, body {{ margin: 0; padding: 0 }}
 img {{ max-width: 100%; height: auto; display: inline-block }}
 img.logo {{ height: 44px !important; width: auto !important }}
 
+/* Paleta e fontes inspiradas no ChatGPT dark */
 :root{{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
@@ -678,14 +695,46 @@ img.logo {{ height: 44px !important; width: auto !important }}
     --card-height: calc(100dvh - var(--header-height) - 24px);
     --input-max: 900px;
     --input-bottom: 60px;
+                    
+    /* Fundo principal da JANELA do chat */
+    --bg:#202123;
 
-    --bg:#1C1F26; --panel:#0B0D10; --panel-header:#14171C; --panel-alt:#1C1F26; --border:#242833;
-    --text:#E5E7EB; --text-dim:#C9D1D9; --muted:#9AA4B2;
-    --link:#B9C0CA; --link-hover:#FFFFFF;
-    --bubble-user:#222833; --bubble-assistant:#232833;
-    --input-bg:#1E222B; --input-border:#323949;
+    /* HISTÓRICO – bem mais escuro pra destacar */
+    --panel:#050509;
+
+    /* CABEÇALHO – só um pouco mais claro que o bg */
+    --panel-header:#26272F;
+
+    /* Apoio (mantém) */
+    --panel-alt:#343541;
+
+    --border:#565869;
+
+    --text:#ECECF1;
+    --text-dim:#D1D5DB;
+    --muted:#9CA3AF;
+
+    /* LINKS: agora em azul */
+    --link:#3B82F6;
+    --link-hover:#60A5FA;
+
+    --bubble-user:#343541;
+    --bubble-assistant:#444654;
+
+    /* CHAT INPUT – quase igual à janela, só um tiquinho mais claro */
+    --input-bg:#26272F;
+    --input-border:#565869;
+
     --sidebar-w:270px;
-    --sidebar-items-top-gap: -45px; --sidebar-sub-top-gap: -30px; --sidebar-list-start-gap: 3px;
+    --sidebar-items-top-gap: -45px;
+    --sidebar-sub-top-gap: -30px;
+    --sidebar-list-start-gap: 3px;
+}}
+
+body, .stApp {{
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    background:var(--bg) !important;
+    color:var(--text) !important;
 }}
 
 header[data-testid="stHeader"]{{ display:none !important }}
@@ -693,24 +742,96 @@ div[data-testid="stToolbar"]{{ display:none !important }}
 #MainMenu, footer{{ visibility:hidden; height:0 !important }}
 
 html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{{
-    height:100dvh !important; max-height:100dvh !important; overflow:hidden !important; overscroll-behavior:none;
+    height:100dvh !important;
+    max-height:100dvh !important;
+    overflow:hidden !important;
+    overscroll-behavior:none;
 }}
 .block-container{{ padding:0 !important; min-height:0 !important }}
-.stApp{{ background:var(--bg) !important; color:var(--text) !important }}
 
+/* HEADER FIXO NO TOPO */
 .header{{
-    position:fixed; inset:0 0 auto 0; height:var(--header-height);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:10px 16px; background:var(--panel-header); z-index:1000; border-bottom:1px solid var(--border);
+    position:fixed;
+    inset:0 0 auto 0;
+    height:var(--header-height);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 16px;
+    background:var(--panel-header);
+    z-index:1000;
+    border-bottom:1px solid var(--border);
 }}
-.header-left{{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--text) }}
-.header-left .title-sub{{ font-weight:500; font-size:.85rem; color:var(--muted); margin-top:-4px }}
-.header-right{{ display:flex; align-items:center; gap:12px; color:var(--text) }}
-.header a{{ color:var(--link) !important; text-decoration:none; border:1px solid var(--border); padding:8px 12px; border-radius:10px; display:inline-block; }}
-.header a:hover{{ color:var(--link-hover) !important; border-color:#3B4250 }}
-.user-circle {{ width: 32px; height: 32px; border-radius: 50%; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1rem; }}
+.header-left{{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:600;
+    color:var(--text);
+}}
+.header-left .title-sub{{
+    font-weight:500;
+    font-size:.85rem;
+    color:var(--muted);
+    margin-top:-4px;
+}}
+.header-right{{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    color:var(--text);
+}}
 
-section[data-testid="stSidebar"]{{ position:fixed !important; top:var(--header-height) !important; left:0 !important; height:calc(100dvh - var(--header-height)) !important; width:var(--sidebar-w) !important; min-width:var(--sidebar-w) !important; margin:0 !important; padding:0 !important; background:var(--panel) !important; border-right:1px solid var(--border); z-index:900 !important; transform:none !important; visibility:visible !important; overflow:hidden !important; color:var(--text); }}
+/* Botão Sair azul */
+.header a{{
+    color:#FFFFFF !important;
+    text-decoration:none;
+    border:1px solid #2563EB;
+    padding:8px 12px;
+    border-radius:10px;
+    display:inline-block;
+    background:#3B82F6;
+    font-weight:600;
+    cursor:pointer;
+}}
+.header a:hover{{
+    color:#FFFFFF !important;
+    border-color:#1D4ED8;
+    background:#2563EB;
+}}
+
+/* Avatar azul */
+.user-circle {{
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #3B82F6;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1rem;
+}}
+
+/* SIDEBAR – painel esquerdo */
+section[data-testid="stSidebar"]{{
+    position:fixed !important;
+    top:var(--header-height) !important;
+    left:0 !important;
+    height:calc(100dvh - var(--header-height)) !important;
+    width:var(--sidebar-w) !important;
+    min-width:var(--sidebar-w) !important;
+    margin:0 !important;
+    padding:0 !important;
+    background:var(--panel) !important;
+    border-right:1px solid var(--border);
+    z-index:900 !important;
+    transform:none !important;
+    visibility:visible !important;
+    overflow:hidden !important;
+    color:var(--text);
+}}
 section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
 div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
@@ -722,43 +843,183 @@ section[data-testid="stSidebar"] .sidebar-header{{ margin-top: var(--sidebar-ite
 
 div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
-.sidebar-header{{ font-size:1.1rem; font-weight:700; letter-spacing:.02em; color:var(--text); margin:0 4px -2px 2px }}
-.sidebar-sub{{ font-size:.88rem; color:var(--muted) }}
-.hist-empty{{ color:var(--muted); font-size:.9rem; padding:8px 10px }}
-.hist-row{{ padding:6px 6px; font-size:1.1rem; color:var(--text-dim) !important; line-height:1.35; border-radius:8px }}
+/* Títulos e textos do histórico com tipografia mais parecida ao GPT */
+.sidebar-header{{
+    font-size:0.9rem;
+    font-weight:600;
+    letter-spacing:.02em;
+    color:var(--text);
+    margin:0 4px -2px 2px;
+}}
+.sidebar-sub{{
+    font-size:0.78rem;
+    color:var(--muted);
+    font-weight:400;
+}}
+.hist-empty{{
+    color:var(--muted);
+    font-size:.9rem;
+    padding:8px 10px;
+}}
+.hist-row{{
+    padding:6px 6px;
+    font-size:0.9rem;
+    font-weight:400;
+    color:var(--text-dim) !important;
+    line-height:1.35;
+    border-radius:8px;
+}}
 .hist-row + .hist-row{{ margin-top:6px }}
-.hist-row:hover{{ background:#161a20 }}
+.hist-row:hover{{ background:#2A2B32 }}
 
-.content{{ max-width:var(--content-max-width); margin:var(--header-height) auto 0; padding:8px }}
-#chatCard, .chat-card{{ position:relative; z-index:50 !important; background:var(--bg) !important; border:none !important; border-radius:12px 12px 0 0 !important; box-shadow:none !important; padding:20px; height:var(--card-height); overflow-y:auto; scroll-behavior:smooth; padding-bottom:var(--chat-safe-gap); scroll-padding-bottom:var(--chat-safe-gap); color:var(--text); }}
+/* ÁREA CENTRAL / CHAT */
+.content{{
+    max-width:var(--content-max-width);
+    margin:var(--header-height) auto 0;
+    padding:8px;
+}}
+#chatCard, .chat-card{{
+    position:relative;
+    z-index:50 !important;
+    background:var(--bg) !important;
+    border:none !important;
+    border-radius:12px 12px 0 0 !important;
+    box-shadow:none !important;
+    padding:20px;
+    height:var(--card-height);
+    overflow-y:auto;
+    scroll-behavior:smooth;
+    padding-bottom:var(--chat-safe-gap);
+    scroll-padding-bottom:var(--chat-safe-gap);
+    color:var(--text);
+}}
 #chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
 
-.message-row{{ display:flex !important; margin:12px 4px; scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px) }}
+.message-row{{
+    display:flex !important;
+    margin:12px 4px;
+    scroll-margin-bottom:calc(var(--chat-safe-gap) + 16px);
+}}
 .message-row.user{{ justify-content:flex-end }}
 .message-row.assistant{{ justify-content:flex-start }}
-.bubble{{ max-width:88%; padding:14px 16px; border-radius:12px; font-size:15px; line-height:1.45; color:var(--text); word-wrap:break-word; border:1px solid transparent !important; box-shadow:none !important; }}
-.bubble.user{{ background:var(--bubble-user); border-bottom-right-radius:6px }}
-.bubble.assistant{{ background:var(--bubble-assistant); border-bottom-left-radius:6px }}
-.chat-card a{{ color:var(--link) !important; text-decoration:underline }} .chat-card a:hover{{ color:var(--link-hover) }}
 
-[data-testid="stChatInput"]{{ position:fixed !important; left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important; transform:translateX(-50%) !important; bottom:var(--input-bottom) !important; width:min(var(--input-max), 96vw) !important; z-index:5000 !important; background:transparent !important; border:none !important; box-shadow:none !important; padding:0 !important; }}
-[data-testid="stChatInput"] *{{ background:transparent !important; color:var(--text) !important; }}
-[data-testid="stChatInput"] > div{{ background:var(--input-bg) !important; border:1px solid var(--input-border) !important; border-radius:999px !important; box-shadow:0 10px 24px rgba(0,0,0,.35) !important; overflow:hidden; transition:border-color .12s ease, box-shadow .12s ease; }}
-[data-testid="stChatInput"] textarea{{ width:100% !important; border:none !important; border-radius:999px !important; padding:18px 20px !important; font-size:16px !important; outline:none !important; height:auto !important; min-height:44px !important; max-height:220px !important; overflow-y:hidden !important; caret-color:#ffffff !important; }}
-[data-testid="stChatInput"] textarea::placeholder{{ color:var(--muted) !important }}
-[data-testid="stChatInput"] textarea:focus::placeholder{{ color:transparent !important; opacity:0 !important }}
-[data-testid="stChatInput"] button{{ margin-right:8px !important; border:none !important; background:transparent !important; color:var(--text-dim) !important; }}
+.bubble{{
+    max-width:88%;
+    padding:14px 16px;
+    border-radius:12px;
+    font-size:15px;
+    line-height:1.45;
+    color:var(--text);
+    word-wrap:break-word;
+    border:1px solid transparent !important;
+    box-shadow:none !important;
+}}
+.bubble.user{{
+    background:var(--bubble-user);
+    border-bottom-right-radius:6px;
+}}
+.bubble.assistant{{
+    background:var(--bubble-assistant);
+    border-bottom-left-radius:6px;
+}}
+
+.chat-card a{{
+    color:var(--link) !important;
+    text-decoration:underline;
+}}
+.chat-card a:hover{{ color:var(--link-hover) }}
+
+/* CHAT INPUT – barra igual à do ChatGPT */
+[data-testid="stChatInput"]{{
+    position:fixed !important;
+    left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
+    transform:translateX(-50%) !important;
+    bottom:var(--input-bottom) !important;
+    width:min(var(--input-max), 96vw) !important;
+    z-index:5000 !important;
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    padding:0 !important;
+}}
+[data-testid="stChatInput"] *{{
+    background:transparent !important;
+    color:var(--text) !important;
+}}
+[data-testid="stChatInput"] > div{{
+    background:var(--input-bg) !important;
+    border:1px solid var(--input-border) !important;
+    border-radius:999px !important;
+    box-shadow:0 10px 24px rgba(0,0,0,.45) !important;
+    overflow:hidden;
+    transition:border-color .12s ease, box-shadow .12s ease;
+}}
+[data-testid="stChatInput"] textarea{{
+    width:100% !important;
+    border:none !important;
+    border-radius:999px !important;
+    padding:18px 20px !important;
+    font-size:16px !important;
+    outline:none !important;
+    height:auto !important;
+    min-height:44px !important;
+    max-height:220px !important;
+    overflow-y:hidden !important;
+    caret-color:#ffffff !important;
+}}
+[data-testid="stChatInput"] textarea::placeholder{{
+    color:var(--muted) !important;
+}}
+[data-testid="stChatInput"] textarea:focus::placeholder{{
+    color:transparent !important;
+    opacity:0 !important;
+}}
+[data-testid="stChatInput"] button{{
+    margin-right:8px !important;
+    border:none !important;
+    background:transparent !important;
+    color:var(--text-dim) !important;
+}}
 [data-testid="stChatInput"] svg{{ fill:currentColor !important }}
 
-[data-testid="stBottomBlockContainer"], [data-testid="stBottomBlockContainer"] > div, [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"], [data-testid="stBottomBlockContainer"] [class*="block-container"], [data-testid="stBottomBlockContainer"]::before, [data-testid="stBottomBlockContainer"]::after{{ background:transparent !important; box-shadow:none !important; border:none !important; }}
-[data-testid="stBottomBlockContainer"]{{ padding:0 !important; margin:0 !important; height:0 !important; min-height:0 !important; }}
+/* Container “fantasma” embaixo do input */
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
+[data-testid="stBottomBlockContainer"] [class*="block-container"],
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+}}
+[data-testid="stBottomBlockContainer"]{{
+    padding:0 !important;
+    margin:0 !important;
+    height:0 !important;
+    min-height:0 !important;
+}}
 
-[data-testid="stDecoration"], [data-testid="stStatusWidget"]{{ display:none !important }}
+/* Scrollbar escura */
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"]{{ display:none !important }}
 *::-webkit-scrollbar{{ width:10px; height:10px }}
-*::-webkit-scrollbar-thumb{{ background:#2C3340; border-radius:8px }}
-*::-webkit-scrollbar-track{{ background:#0F1115 }}
+*::-webkit-scrollbar-thumb{{
+    background:#565869;
+    border-radius:8px;
+}}
+*::-webkit-scrollbar-track{{ background:#171717 }}
 
-.spinner{{ width:16px; height:16px; border:2px solid rgba(37,99,235,.25); border-top-color:#2563eb; border-radius:50%; display:inline-block; animation:spin .8s linear infinite; }}
+/* Spinner */
+.spinner{{
+    width:16px;
+    height:16px;
+    border:2px solid rgba(37,99,235,.25);
+    border-top-color:#2563eb;
+    border-radius:50%;
+    display:inline-block;
+    animation:spin .8s linear infinite;
+}}
 @keyframes spin{{ to{{ transform:rotate(360deg) }} }}
 </style>
 """, unsafe_allow_html=True)
@@ -775,12 +1036,8 @@ st.markdown(f"""
         </div>
     </div>
     <div class="header-right">
-        <a href="?logout=1" target="_self"
-          style="text-decoration:none;background:transparent;
-          border:1px solid rgba(255,255,255,0.14);
-          color:#e5e7eb;font-weight:600;padding:8px 12px;border-radius:10px;
-          display:inline-block;cursor:pointer;">
-   Sair
+        <a href="?logout=1" target="_self">
+           Sair
         </a>
         <div style="text-align:right;font-size:0.9rem;color:var(--text);">
             <span style="font-weight:600;">{st.session_state.user_name}</span><br>
@@ -793,9 +1050,7 @@ st.markdown(f"""
 
 # Toast se algo falhou ao salvar
 if st.session_state.get("_sb_last_error"):
-    # Toast padrão
     st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
-    # DEBUG visível embaixo do chat (não muda layout geral)
     st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
     st.session_state["_sb_last_error"] = None
 
@@ -838,8 +1093,10 @@ def formatar_markdown_basico(text: str) -> str:
     safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
     return safe.replace('\n', '<br>')
 
+
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
+
 
 msgs_html = []
 for pergunta, resposta in st.session_state.historico:
@@ -939,14 +1196,14 @@ if pergunta and pergunta.strip():
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
 
-    st.session_state.pending_index = len(st.session_state.historico)-1
+    st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer=True
-    st.session_state.answering_started=False
+    st.session_state.awaiting_answer = True
+    st.session_state.answering_started = False
     do_rerun()
 
 if st.session_state.awaiting_answer and not st.session_state.answering_started:
-    st.session_state.answering_started=True
+    st.session_state.answering_started = True
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
