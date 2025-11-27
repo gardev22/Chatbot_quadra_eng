@@ -936,56 +936,53 @@ section[data-testid="stSidebar"] button:active{
 }
 
 /* Menu flutuante – alinhado à direita da linha, sem sombra */
+/* Menu flutuante – alinhado à direita da linha, sem borda/barra */
 .conv-menu{
     position:absolute;
     top:50%;
     right:8px;
     left:auto;
     transform:translateY(-50%);
-    width:190px;
-    background:#020617;
-    border:1px solid #1f2937;
-    border-radius:999px;
+    /* deixa o container transparente, sem borda nem sombra */
+    width:auto;
+    background:transparent !important;
+    border:none !important;
     box-shadow:none !important;
     padding:0;
+    margin:0;
     z-index:3000;
 }
 
-/* Link pill azul bonito (mantido mas não usado diretamente) */
-.conv-menu-link{
-    display:block;
-    width:100%;
-    border-radius:999px;
-    background:#020617;
-    border:1px solid #1D4ED8;
-    padding:6px 16px;
-    font-size:0.86rem;
-    color:#BFDBFE !important;
-    text-align:center;
-    text-decoration:none !important;
-}
-.conv-menu-link:hover{
-    background:#1D4ED8;
-    color:#EFF6FF !important;
-}
-
-/* Botão Excluir conversa dentro do menu (mesmo visual do link) */
+/* Botão Excluir conversa – pill azul igual ao link bonito */
 .conv-menu button{
-    width:100%;
+    display:inline-flex !important;
+    align-items:center;
+    justify-content:center;
+
     border-radius:999px !important;
     background:#020617 !important;
     border:1px solid #1D4ED8 !important;
-    padding:6px 16px !important;
+
+    padding:6px 18px !important;
     font-size:0.86rem !important;
+    font-weight:500 !important;
     color:#BFDBFE !important;
     text-align:center !important;
     text-decoration:none !important;
-    box-shadow:none !important;
+
+    box-shadow:0 10px 24px rgba(15,23,42,0.55) !important; /* glow leve */
+    cursor:pointer !important;
 }
 .conv-menu button:hover{
     background:#1D4ED8 !important;
     color:#EFF6FF !important;
+    box-shadow:0 14px 32px rgba(15,23,42,0.70) !important;
 }
+.conv-menu button:active{
+    transform:translateY(1px);
+    box-shadow:0 6px 16px rgba(15,23,42,0.60) !important;
+}
+
 
 /* ÁREA CENTRAL */
 .content{
