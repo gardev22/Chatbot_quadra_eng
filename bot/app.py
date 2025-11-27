@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT / DELETE VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -309,7 +309,7 @@ if "logout" in qp:
     })
     _clear_query_params()
     do_rerun()
-    
+
 elif "delete_conv" in qp:
     delete_cid = qp["delete_conv"]
     if isinstance(delete_cid, list):
@@ -369,7 +369,7 @@ div[data-testid="column"]:has(#login_card_anchor) > div{
 
 /* Inputs */
 .login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
-.login-stack [data-testid="stTextInput"] > label{ display:none !important; }
+login-stack [data-testid="stTextInput"] > label{ display:none !important; }
 .login-stack [data-testid="stTextInput"] input,
 .login-stack [data-testid="stPassword"] input{
     width:100%; height:48px; font-size:1rem;
@@ -943,16 +943,16 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante (Excluir conversa) – card colado à direita da linha */
+/* Menu flutuante (Excluir conversa) – popover colado à direita dos 3 pontinhos */
 .conv-menu{
     position:absolute;
-    top:4px;
-    right:4px;               /* encostado na borda direita da sidebar */
+    top:-4px;
+    left:calc(100% + 10px);   /* flutua logo à direita da linha, tipo ChatGPT */
     width:190px;
-    background:#111827;
-    border:1px solid #374151;
+    background:#020617;
+    border:1px solid #1f2937;
     border-radius:12px;
-    box-shadow:0 18px 40px rgba(0,0,0,0.70);
+    box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
     z-index:1200;
 }
@@ -961,18 +961,18 @@ section[data-testid="stSidebar"] button:active{
 .conv-menu-item{
     cursor:pointer;
     width:100%;
-    color:#FCA5A5;
+    color:#BFDBFE;            /* azul claro suave */
     text-align:left;
     font-size:0.86rem;
     padding:6px 10px;
     border-radius:8px;
+    background:transparent;
+    transition:background .12s ease, color .12s ease;
 }
 .conv-menu-item:hover{
-    background:#7F1D1D;
-    color:#FEE2E2;
+    background:#1E293B;       /* azul bem escuro no hover */
+    color:#E0F2FE;            /* azul clarinho no hover */
 }
-
-
 
 /* ÁREA CENTRAL */
 .content{
@@ -1178,6 +1178,7 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1188,7 +1189,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-                        # menu flutuante lateral (popover fake estilo ChatGPT)
+            # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown(
                     f"""
