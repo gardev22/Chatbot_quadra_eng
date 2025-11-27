@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT / DELETE VIA QUERY PARAM ======
+# ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -307,22 +307,6 @@ if "logout" in qp:
         "selected_conversation_id": None,
         "open_menu_conv": None,
     })
-    _clear_query_params()
-    do_rerun()
-
-elif "delete_conv" in qp:
-    delete_cid = qp["delete_conv"]
-    if isinstance(delete_cid, list):
-        delete_cid = delete_cid[0]
-
-    delete_conversation(delete_cid)
-    if st.session_state.get("conversation_id") == delete_cid:
-        st.session_state.historico = []
-        st.session_state.conversation_id = None
-        st.session_state.selected_conversation_id = None
-
-    st.session_state.open_menu_conv = None
-    load_conversations_from_supabase()
     _clear_query_params()
     do_rerun()
 
@@ -893,7 +877,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     color:var(--muted);
     font-weight:400;
 }
-/* remove a barrinha sob 'Conversas' */
 .sidebar-bar{
     border-bottom:none !important;
     box-shadow:none !important;
@@ -951,7 +934,7 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – alinhado à direita da linha, sem sombra */
+/* Menu flutuante – alinhado à direita da linha, pill azul liso */
 .conv-menu{
     position:absolute;
     top:50%;
@@ -962,26 +945,25 @@ section[data-testid="stSidebar"] button:active{
     background:#020617;
     border:1px solid #1f2937;
     border-radius:999px;
-    box-shadow:none !important;       /* sem glow */
+    box-shadow:none !important;
     padding:0;
     z-index:3000;
 }
 
-/* Link pill azul bonito, sem sublinhado */
-.conv-menu-link{
-    display:block;
+/* Botão de excluir dentro do menu – pill azul bonito */
+.conv-menu button{
     width:100%;
-    border-radius:999px;
-    background:#020617;
-    border:1px solid #1D4ED8;
-    padding:6px 16px;
-    font-size:0.86rem;
+    border-radius:999px !important;
+    background:#020617 !important;
+    border:1px solid #1D4ED8 !important;
     color:#BFDBFE !important;
-    text-align:center;
-    text-decoration:none !important;
+    box-shadow:none !important;
+    padding:6px 16px !important;
+    text-align:center !important;
+    font-size:0.86rem !important;
 }
-.conv-menu-link:hover{
-    background:#1D4ED8;
+.conv-menu button:hover{
+    background:#1D4ED8 !important;
     color:#EFF6FF !important;
 }
 
@@ -1199,18 +1181,21 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral (popover fake estilo ChatGPT) – agora link azul liso
+            # menu flutuante lateral – agora com st.button estilizado (sem navegação por URL)
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown(
-                    f"""
-                    <div class="conv-menu">
-                        <a class="conv-menu-link" href="?delete_conv={cid}">
-                            🗑 Excluir conversa
-                        </a>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_{cid}")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                if delete_clicked:
+                    delete_conversation(cid)
+                    if st.session_state.get("conversation_id") == cid:
+                        st.session_state.historico = []
+                        st.session_state.conversation_id = None
+                        st.session_state.selected_conversation_id = None
+                    st.session_state.open_menu_conv = None
+                    load_conversations_from_supabase()
+                    do_rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
