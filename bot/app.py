@@ -218,7 +218,6 @@ def get_or_create_conversation(first_question: str | None = None):
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
 
-    # se já temos a primeira pergunta, usa como título
     if first_question:
         title = _title_from_first_question(first_question)
         st.session_state["_title_set"] = True
@@ -234,7 +233,6 @@ def get_or_create_conversation(first_question: str | None = None):
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
         st.session_state["selected_conversation_id"] = cid
-        # atualiza lista local (conversa mais recente no topo) com o título já correto
         st.session_state.conversations_list.insert(0, {"id": cid, "title": title})
         return cid
     except Exception as e:
@@ -250,7 +248,6 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     if not cid or not first_question:
         return
     title = _title_from_first_question(first_question)
-    # atualiza lista local sempre
     for it in st.session_state.conversations_list:
         if it.get("id") == cid:
             it["title"] = title
@@ -878,15 +875,6 @@ section[data-testid="stSidebar"] [role="separator"]{
     display:none !important;
 }
 
-/* CAÇA-GERAL: elimina barras/bordinhas finas que sobram logo abaixo de "Conversas" */
-section[data-testid="stSidebar"] div[style*="1px solid"],
-section[data-testid="stSidebar"] div[style*="border-bottom"],
-section[data-testid="stSidebar"] div[style*="border-top"]{
-    border-bottom:none !important;
-    border-top:none !important;
-    box-shadow:none !important;
-}
-
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
 /* Sidebar títulos */
@@ -901,6 +889,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
+    margin:0 4px 6px 2px;
 }
 
 .hist-empty{
@@ -909,7 +898,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
+/* Botões da sidebar (títulos + reticências) */
 section[data-testid="stSidebar"] button{
     background:transparent !important;
     border:none !important;
@@ -929,7 +918,7 @@ section[data-testid="stSidebar"] button:active{
     background:#1F2937 !important;
 }
 
-/* Linha de conversa (título + reticências) */
+/* Linha de conversa */
 .sidebar-row{
     position:relative;
     display:flex;
@@ -953,18 +942,21 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu de excluir (usa st.button lá dentro, estilizado aqui) */
+/* Menu de excluir – azul, em pill */
 .conv-menu{
     margin-top:4px;
 }
 .conv-menu button{
     width:100% !important;
     border-radius:999px !important;
-    background:#0B1120 !important;
+    background:#020617 !important;
     border:1px solid #1D4ED8 !important;
-    color:#BFDBFE !important;
+    padding:6px 16px !important;
     font-size:0.86rem !important;
+    color:#BFDBFE !important;
+    text-align:center !important;
     box-shadow:none !important;
+    text-decoration:none !important;
 }
 .conv-menu button:hover{
     background:#1D4ED8 !important;
@@ -1182,28 +1174,27 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # Botão "Excluir conversa" (menu azul)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 if delete_clicked:
-                    # Apaga no Supabase
+                    # Exclui do Supabase
                     delete_conversation(cid)
 
-                    # Se era a conversa aberta, limpa histórico
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
+                    # Limpa histórico SEMPRE (como você pediu)
+                    st.session_state.historico = []
+                    st.session_state.conversation_id = None
+                    st.session_state.selected_conversation_id = None
 
-                    # Atualiza lista local sem novo select (mais rápido)
+                    # Remove da lista local
                     st.session_state.conversations_list = [
                         c for c in st.session_state.conversations_list
                         if c.get("id") != cid
                     ]
 
+                    # Fecha o menu
                     st.session_state.open_menu_conv = None
 
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1291,7 +1282,6 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
 
     try:
-        # agora a conversa já nasce com título = primeira pergunta
         cid = get_or_create_conversation(first_question=q)
         save_message(cid, "user", q)
     except Exception as e:
