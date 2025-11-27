@@ -308,7 +308,7 @@ if "logout" in qp:
         "open_menu_conv": None,
     })
     _clear_query_params()
-    do_rerun()
+    st.stop()
 
 elif "delete_conv" in qp:
     delete_cid = qp["delete_conv"]
@@ -324,7 +324,7 @@ elif "delete_conv" in qp:
     st.session_state.open_menu_conv = None
     load_conversations_from_supabase()
     _clear_query_params()
-    do_rerun()
+    st.stop()
 
 # ====== TELAS DE AUTENTICAÇÃO ======
 BASE_LOGIN_CSS = """
@@ -861,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
+    z-index:2000 !important;
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -893,6 +893,18 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     color:var(--muted);
     font-weight:400;
 }
+
+/* matando qualquer barra estranha na faixa "Conversas" */
+.sidebar-bar{
+    border:none !important;
+    box-shadow:none !important;
+    background:transparent !important;
+}
+.sidebar-bar::before,
+.sidebar-bar::after{
+    display:none !important;
+}
+
 .hist-empty{
     color:var(--muted);
     font-size:.9rem;
@@ -943,38 +955,39 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – alinhado à direita da linha, sem barra estranha */
+/* Menu flutuante – container invisível, sem barra nem borda */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
+    right:8px;
     left:auto;
     transform:translateY(-50%);
-    width:190px;
-    background:#020617;
-    border:1px solid #1f2937;
-    border-radius:12px;
-    box-shadow:0 18px 40px rgba(0,0,0,0.75);
-    padding:4px;
-    z-index:3000;       /* acima de tudo na sidebar */
+    width:auto;
+    padding:0;
+    background:transparent;
+    border:none;
+    box-shadow:none;
+    z-index:3000;
 }
 
-/* Item clicável dentro do menu – agora é <a>, com cara de botão azul bonito */
+/* Botão azul pill bonitão */
 .conv-menu-item{
     cursor:pointer;
     display:block;
-    width:100%;
-    color:#BFDBFE;          /* azul claro suave */
-    text-align:left;
+    white-space:nowrap;
+    color:#E5ECFF;
+    text-align:center;
     font-size:0.86rem;
-    padding:8px 14px;
+    padding:10px 22px;
     border-radius:999px;
     text-decoration:none;
     background:#020617;
+    border:1px solid #1f2937;
     box-shadow:0 10px 24px rgba(15,23,42,0.85);
 }
 .conv-menu-item:hover{
-    background:#1D4ED8;      /* azul mais forte no hover */
+    background:#1D4ED8;
+    border-color:#1D4ED8;
     color:#EFF6FF;
 }
 
@@ -1192,7 +1205,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral (popover fake estilo ChatGPT) – AGORA COM LINK REAL
+            # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown(
                     f"""
