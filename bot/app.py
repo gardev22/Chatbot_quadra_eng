@@ -861,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:900 !important;
+    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -943,11 +943,12 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – colado ao lado dos 3 pontinhos, sem barra esquisita */
+/* Menu flutuante – alinhado à direita da linha, sem barra estranha */
 .conv-menu{
     position:absolute;
     top:50%;
-    left:calc(100% + 8px);   /* logo à direita da linha */
+    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
+    left:auto;
     transform:translateY(-50%);
     width:190px;
     background:#020617;
@@ -955,28 +956,22 @@ section[data-testid="stSidebar"] button:active{
     border-radius:12px;
     box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
-    z-index:1200;
+    z-index:3000;       /* acima de tudo na sidebar */
 }
 
-/* Item clicável dentro do menu */
+/* Item clicável dentro do menu (sem cara de botão Streamlit) */
 .conv-menu-item{
-    display:block;
     cursor:pointer;
     width:100%;
-    color:#BFDBFE;            /* azul claro suave */
+    color:#BFDBFE;          /* azul claro suave */
     text-align:left;
     font-size:0.86rem;
     padding:6px 10px;
     border-radius:8px;
-    background:transparent;
-    text-decoration:none;
-    border:none;
-    outline:none;
-    transition:background .12s ease, color .12s ease;
 }
 .conv-menu-item:hover{
-    background:#1E293B;       /* azul bem escuro no hover */
-    color:#E0F2FE;            /* azul clarinho no hover */
+    background:#1D4ED8;      /* azul mais forte no hover */
+    color:#EFF6FF;
 }
 
 /* ÁREA CENTRAL */
@@ -1183,7 +1178,6 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
-
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1194,14 +1188,15 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral (HTML puro, sem st.button)
+            # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown(
                     f"""
                     <div class="conv-menu">
-                        <a class="conv-menu-item" href="?delete_conv={cid}">
+                        <div class="conv-menu-item"
+                             onclick="window.location.search='?delete_conv={cid}'">
                             🗑 Excluir conversa
-                        </a>
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
