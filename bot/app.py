@@ -959,20 +959,21 @@ section[data-testid="stSidebar"] button:active{
     z-index:3000;       /* acima de tudo na sidebar */
 }
 
-/* Botão real do Streamlit dentro do menu (mantém visual) */
-.conv-menu .stButton > button{
+/* Item clicável dentro do menu – agora é <a>, com cara de botão azul bonito */
+.conv-menu-item{
     cursor:pointer;
+    display:block;
     width:100%;
+    color:#BFDBFE;          /* azul claro suave */
     text-align:left;
     font-size:0.86rem;
-    padding:6px 10px;
-    border-radius:8px;
-    background:transparent;
-    border:none;
-    box-shadow:none;
-    color:#BFDBFE;          /* azul claro suave */
+    padding:8px 14px;
+    border-radius:999px;
+    text-decoration:none;
+    background:#020617;
+    box-shadow:0 10px 24px rgba(15,23,42,0.85);
 }
-.conv-menu .stButton > button:hover{
+.conv-menu-item:hover{
     background:#1D4ED8;      /* azul mais forte no hover */
     color:#EFF6FF;
 }
@@ -1181,7 +1182,6 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
-
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1192,22 +1192,18 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # Menu flutuante com botão funcional de excluir
+            # menu flutuante lateral (popover fake estilo ChatGPT) – AGORA COM LINK REAL
             if st.session_state.get("open_menu_conv") == cid:
-                with st.container():
-                    st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                    if st.button("🗑 Excluir conversa", key=f"btn_del_{cid}"):
-                        delete_conversation(cid)
-
-                        if st.session_state.get("conversation_id") == cid:
-                            st.session_state.historico = []
-                            st.session_state.conversation_id = None
-                            st.session_state.selected_conversation_id = None
-
-                        st.session_state.open_menu_conv = None
-                        load_conversations_from_supabase()
-                        do_rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div class="conv-menu">
+                        <a class="conv-menu-item" href="?delete_conv={cid}" target="_self">
+                            🗑 Excluir conversa
+                        </a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown('</div>', unsafe_allow_html=True)
 
