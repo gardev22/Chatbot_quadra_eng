@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão Visual Corrigida + Menu Flutuante)
+# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase + Histórico estilo ChatGPT)
 
 import streamlit as st
 import base64
@@ -16,20 +16,20 @@ except ImportError:
 
 warnings.filterwarnings("ignore", message=".*torch.classes.*")
 
-# ====== SUPABASE (Tolerante a falhas) ======
+# ====== SUPABASE (tolerante a falhas) ======
 SB_URL = None
 SB_KEY = None
 SITE_URL = None
 sb = None
 try:
-    from supabase import create_client, Client
+    from supabase import create_client, Client  # pip install supabase
     SB_URL = st.secrets.get("supabase", {}).get("url")
     SB_KEY = st.secrets.get("supabase", {}).get("anon_key")
     SITE_URL = st.secrets.get("supabase", {}).get("site_url", "http://localhost:8501")
     if SB_URL and SB_KEY:
         sb = create_client(SB_URL, SB_KEY)
 except Exception:
-    sb = None
+    sb = None  # segue sem Supabase
 
 # ====== CONFIG DA PÁGINA ======
 LOGO_PATH = "data/logo_quadra.png"
@@ -40,7 +40,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ====== ESTILO BASE (Pre-load) ======
+# ====== PRE-FLIGHT CSS (estilo ChatGPT, antes de tudo) ======
 st.markdown("""
 <style>
 html, body, .stApp {
@@ -70,6 +70,7 @@ def carregar_imagem_base64(path):
 
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
+# Logo do header com tamanho inline
 if logo_b64:
     logo_img_tag = (
         f'<img alt="Logo Quadra" class="logo" '
@@ -87,6 +88,7 @@ def extract_name_from_email(email):
     name_parts = re.sub(r'[\._]', ' ', local_part).split()
     return " ".join(p.capitalize() for p in name_parts)
 
+# === Helpers de erro ===
 def _extract_err_msg(err) -> str:
     try:
         msg = getattr(err, "message", None) or getattr(err, "error", None)
@@ -101,19 +103,20 @@ def _extract_err_msg(err) -> str:
         pass
     return str(err)
 
+
 def _friendly_auth_error(msg: str) -> str:
     low = (msg or "").lower()
     if "email not confirmed" in low or "not confirmed" in low or "confirm" in low:
-        return "E-mail não confirmado. Abra o link de confirmação enviado."
+        return "E-mail não confirmado. Abra o link de confirmação que foi enviado para o seu e-mail."
     if "invalid login credentials" in low or "invalid" in low:
-        return "Credenciais inválidas."
+        return "Credenciais inválidas. Verifique e-mail e senha."
     if "rate limit" in low:
-        return "Muitas tentativas. Aguarde."
+        return "Muitas tentativas. Aguarde um pouco e tente novamente."
     return msg or "Falha na autenticação."
 
-# ====== ESTADO DA SESSÃO ======
+# ====== ESTADO ======
 if "historico" not in st.session_state:
-    st.session_state.historico = []
+    st.session_state.historico = []  # lista de (pergunta, resposta)
 
 st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
@@ -122,25 +125,30 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
+# Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
+# IDs para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-st.session_state.setdefault("conversations_list", [])
+# Lista de conversas e estados do histórico
+st.session_state.setdefault("conversations_list", [])   # [{id,title,created_at}]
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
 st.session_state.setdefault("_sidebar_loaded", False)
 st.session_state.setdefault("selected_conversation_id", None)
 st.session_state.setdefault("open_menu_conv", None)
 
-# ====== FUNÇÕES SUPABASE ======
+# ====== HELPERS SUPABASE ======
 def _title_from_first_question(q: str) -> str:
     if not q:
         return "Nova conversa"
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
 
+
 def load_conversations_from_supabase():
+    """Carrega a lista de conversas do usuário para a sidebar (apenas título)."""
     if not sb or not st.session_state.get("user_id"):
         return
     try:
@@ -156,7 +164,9 @@ def load_conversations_from_supabase():
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.load: {_extract_err_msg(e)}"
 
+
 def load_conversation_messages(cid):
+    """Carrega as mensagens de uma conversa específica para o histórico local."""
     if not sb or not cid:
         return
     try:
@@ -185,7 +195,9 @@ def load_conversation_messages(cid):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.load_msgs: {_extract_err_msg(e)}"
 
+
 def delete_conversation(cid):
+    """Exclui conversa + mensagens no Supabase."""
     if not sb or not cid:
         return
     try:
@@ -194,7 +206,12 @@ def delete_conversation(cid):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
 
+
 def get_or_create_conversation():
+    """
+    Cria uma conversa no Supabase e memoriza o ID na sessão.
+    IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
+    """
     if not sb or not st.session_state.get("user_id"):
         return None
     if st.session_state.get("conversation_id"):
@@ -209,11 +226,13 @@ def get_or_create_conversation():
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
         st.session_state["selected_conversation_id"] = cid
+        # atualiza lista local (conversa mais recente no topo)
         st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
         return None
+
 
 def update_conversation_title_if_first_question(cid, first_question: str):
     if not sb or not cid or not first_question or st.session_state.get("_title_set"):
@@ -229,6 +248,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
+
 def save_message(cid, role, content):
     if not sb or not cid or not content:
         return
@@ -241,12 +261,14 @@ def save_message(cid, role, content):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
-# ====== LOGOUT ======
+
+# ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
     except Exception:
         st.experimental_set_query_params()
+
 
 def _get_query_params():
     try:
@@ -254,25 +276,41 @@ def _get_query_params():
     except Exception:
         return dict(st.experimental_get_query_params())
 
+
 qp = _get_query_params()
 if "logout" in qp:
     try:
         if sb:
+            try:
+                sb.postgrest.auth(None)
+            except Exception:
+                pass
             sb.auth.sign_out()
-    except: pass
+    except Exception:
+        pass
 
     st.session_state.update({
         "authenticated": False,
         "user_name": "Usuário",
+        "user_email": "nao_autenticado@quadra.com.vc",
+        "awaiting_answer": False,
+        "answering_started": False,
+        "pending_index": None,
+        "pending_question": None,
         "historico": [],
         "user_id": None,
         "conversation_id": None,
+        "_title_set": False,
+        "_sb_last_error": None,
         "conversations_list": [],
+        "_sidebar_loaded": False,
+        "selected_conversation_id": None,
+        "open_menu_conv": None,
     })
     _clear_query_params()
     do_rerun()
 
-# ====== TELAS DE LOGIN/REGISTRO ======
+# ====== TELAS DE AUTENTICAÇÃO ======
 BASE_LOGIN_CSS = """
 <style>
 :root{ --login-max: 520px; --lift: 90px; }
@@ -281,109 +319,364 @@ BASE_LOGIN_CSS = """
     min-height:100vh !important; overflow:hidden !important;
 }
 header[data-testid="stHeader"], div[data-testid="stToolbar"], #MainMenu, footer{ display:none !important; }
+
 [data-testid="stAppViewContainer"] > .main{ height:100vh !important; }
-.block-container{ padding:0 !important; margin:0 !important; display:flex; align-items:center; justify-content:center; }
-.login-stack{ width:min(92vw, var(--login-max)); margin:0 auto; text-align:center; transform: translateY(calc(var(--lift) * -1)); }
-.login-title{ font-size:1.5rem; font-weight:800; color:#F5F7FF; margin:6px 0 6px; }
-.login-sub{ font-size:1rem; color:#C9D7FF; margin:0 0 16px; }
-.login-stack [data-testid="stTextInput"] input {
-    width:100%; height:48px; border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
-    background:#ffffff !important; color:#111827 !important;
+.block-container{
+    height:100%;
+    display:flex; align-items:center; justify-content:center;
+    padding:0 !important; margin:0 !important;
 }
-.login-stack .stButton > button { height:44px; border-radius:10px; background:rgba(255,255,255,.08); color:#E6EEFF; border:1px solid rgba(255,255,255,.18); }
-.login-actions .stButton > button { background:#2E5CB5 !important; color:#ffffff !important; font-weight:700 !important; }
+
+div[data-testid="column"]:has(#login_card_anchor) > div{
+    background:transparent !important; box-shadow:none !important; border-radius:0; padding:0;
+    text-align:center;
+}
+
+.login-stack{
+    width:min(92vw, var(--login-max));
+    margin:0 auto;
+    text-align:center;
+    transform: translateY(calc(var(--lift) * -1));
+}
+
+.login-title{
+    display:block;
+    text-align:center;
+    font-size:1.5rem; font-weight:800; letter-spacing:.2px;
+    color:#F5F7FF; margin:6px 0 6px;
+    text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+
+.login-sub{
+    display:block; width:100%; text-align:center; font-size:1rem; color:#C9D7FF; margin:0 0 16px;
+}
+
+/* Inputs */
+.login-stack [data-testid="stTextInput"]{ width:100%; margin:0 auto; }
+.login-stack [data-testid="stTextInput"] > label{ display:none !important; }
+.login-stack [data-testid="stTextInput"] input,
+.login-stack [data-testid="stPassword"] input{
+    width:100%; height:48px; font-size:1rem;
+    border-radius:10px; border:1px solid rgba(255,255,255,.2) !important;
+    background:#ffffff !important; color:#111827 !important;
+    box-shadow:0 6px 20px rgba(6,16,35,.30);
+}
+
+/* ===== Reset geral de botões na área de login ===== */
+.login-stack .stButton > button{
+    height:44px !important; padding:0 16px !important;
+    border-radius:10px !important; font-weight:600 !important; font-size:0.95rem !important;
+    background:rgba(255,255,255,.08) !important; color:#E6EEFF !important;
+    border:1px solid rgba(255,255,255,.18) !important;
+    box-shadow:0 6px 16px rgba(7,22,50,.35) !important;
+    text-decoration:none !important;
+}
+.login-stack .stButton > button:hover{ filter:brightness(1.06); }
+
+/* ===== Botão primário (destaque) - ENTRAR / CADASTRAR ===== */
+.login-actions{ display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
+.login-actions .stButton > button{
+    height:48px !important; padding:0 20px !important;
+    border-radius:10px !important; font-weight:700 !important; font-size:1rem !important;
+    background:#2E5CB5 !important; color:#ffffff !important; border:1px solid rgba(255,255,255,.20) !important;
+    box-shadow:0 10px 24px rgba(11,45,110,.45) !important;
+}
+
+/* ===== Contêiner dos botões SECUNDÁRIOS ===== */
+.secondary-actions{
+    width:100%; display:flex; justify-content:center; margin-top:28px;
+}
+
+/* ===== Estilo GLOBAL para botões kind="secondary" ===== */
+button[kind="secondary"],
+button[data-testid="baseButton-secondary"]{
+    height:46px !important; padding:0 22px !important;
+    border-radius:999px !important;
+    font-weight:600 !important; font-size:0.96rem !important;
+    background:rgba(15,23,42,0.45) !important;
+    color:#E5ECFF !important;
+    border:1px solid rgba(148,163,184,0.70) !important;
+    box-shadow:0 8px 20px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.10) !important;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease !important;
+}
+button[kind="secondary"]:hover,
+button[data-testid="baseButton-secondary"]:hover{
+    filter:brightness(1.04);
+    transform:translateY(-1px);
+    box-shadow:0 12px 24px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.12) !important;
+    border-color:rgba(129,140,248,0.9) !important;
+}
+button[kind="secondary"]:active,
+button[data-testid="baseButton-secondary"]:active{
+    transform:translateY(0);
+    box-shadow:0 6px 16px rgba(0,0,0,.26) !important;
+}
+button[kind="secondary"]:focus,
+button[data-testid="baseButton-secondary"]:focus{
+    outline:none !important;
+    box-shadow:0 0 0 3px rgba(59,130,246,.35), 0 8px 20px rgba(0,0,0,.26) !important;
+}
+
+/* ===== Responsivo ===== */
+@media (max-width: 480px){
+    :root{ --lift: 28px; }
+    .login-title{ font-size:1.4rem; }
+}
 </style>
 """
 
 def render_login_screen():
+    """Tela de Login"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
+    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
+    with col_mid:
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
         st.markdown('<div class="login-stack">', unsafe_allow_html=True)
+
         if logo_b64:
-            st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="height:88px;margin:0 auto 14px;display:block;" />', unsafe_allow_html=True)
+            st.markdown(
+                f'''
+                <img alt="Logo Quadra"
+                     src="data:image/png;base64,{logo_b64}"
+                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
+                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
+                ''',
+                unsafe_allow_html=True
+            )
+
         st.markdown('<span class="login-title">Quadra Engenharia</span>', unsafe_allow_html=True)
-        st.markdown('<div class="login-sub">Entre com seu e-mail</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-sub">Entre com seu e-mail para começar a conversar com nosso assistente</div>',
+            unsafe_allow_html=True
+        )
 
         if st.session_state.get("just_registered"):
-            st.success("Cadastrado! Faça login.")
+            st.success("Usuário cadastrado com sucesso. Faça login para entrar.")
             st.session_state.just_registered = False
 
         def _try_login():
-            email = (st.session_state.get("login_email") or "").strip().lower()
-            pwd = (st.session_state.get("login_senha") or "")
-            if not email.endswith("@quadra.com.vc"):
-                st.session_state["login_error"] = "Use e-mail @quadra.com.vc"
+            email_val = (st.session_state.get("login_email") or "").strip().lower()
+            pwd_val = (st.session_state.get("login_senha") or "")
+            if "@" not in email_val:
+                st.session_state["login_error"] = "Por favor, insira um e-mail válido."
                 return
-            if pwd == "quadra123": # Bypass
+            if not email_val.endswith("@quadra.com.vc"):
+                st.session_state["login_error"] = "Acesso restrito. Use seu e-mail **@quadra.com.vc**."
+                return
+            if not pwd_val:
+                st.session_state["login_error"] = "Digite a senha."
+                return
+
+            if pwd_val == "quadra123":
+                try:
+                    if sb:
+                        sb.postgrest.auth(None)
+                except Exception:
+                    pass
                 st.session_state.update({
-                    "authenticated": True, "user_email": email, "user_name": extract_name_from_email(email),
-                    "login_error": "", "user_id": None, "conversation_id": None, "conversations_list": [], "historico": []
+                    "login_error": "",
+                    "authenticated": True,
+                    "user_email": email_val,
+                    "user_name": extract_name_from_email(email_val),
+                    "user_id": None,
+                    "conversation_id": None,
+                    "_title_set": False,
+                    "conversations_list": [],
+                    "_sidebar_loaded": False,
+                    "selected_conversation_id": None,
+                    "open_menu_conv": None,
+                    "historico": [],
                 })
                 return
+
             if not sb:
-                st.session_state["login_error"] = "Sem Supabase."
+                st.session_state["login_error"] = "Serviço de autenticação indisponível no momento."
                 return
             try:
-                res = sb.auth.sign_in_with_password({"email": email, "password": pwd})
-                user = res.user if hasattr(res, "user") else res.get("user")
-                if user:
-                    st.session_state.update({
-                        "authenticated": True, "user_email": email, "user_name": extract_name_from_email(email),
-                        "user_id": user.id, "login_error": "", "conversation_id": None, "conversations_list": [], "historico": []
-                    })
-            except Exception as e:
-                st.session_state["login_error"] = _friendly_auth_error(_extract_err_msg(e))
+                try:
+                    sb.postgrest.auth(None)
+                except Exception:
+                    pass
+                try:
+                    sb.auth.sign_out()
+                except Exception:
+                    pass
 
-        st.text_input("Email", key="login_email", placeholder="email@quadra.com.vc")
-        st.text_input("Senha", key="login_senha", type="password", placeholder="Senha", on_change=_try_login)
-        
+                res = sb.auth.sign_in_with_password({"email": email_val, "password": pwd_val})
+                user = getattr(res, "user", None)
+                if user is None and isinstance(res, dict):
+                    user = res.get("user")
+
+                if not user or not getattr(user, "id", None):
+                    raise Exception("Resposta inválida do Auth.")
+
+                session_obj = getattr(res, "session", None)
+                if session_obj is None and isinstance(res, dict):
+                    session_obj = res.get("session")
+                access_token = getattr(session_obj, "access_token", None) if session_obj else None
+                if access_token:
+                    try:
+                        sb.postgrest.auth(access_token)
+                    except Exception:
+                        pass
+
+                st.session_state["login_error"] = ""
+                st.session_state.authenticated = True
+                st.session_state.user_email = email_val
+                st.session_state.user_name = extract_name_from_email(email_val)
+                st.session_state.user_id = user.id
+                st.session_state.conversation_id = None
+                st.session_state._title_set = False
+                st.session_state.conversations_list = []
+                st.session_state._sidebar_loaded = False
+                st.session_state.selected_conversation_id = None
+                st.session_state.open_menu_conv = None
+                st.session_state.historico = []
+
+                try:
+                    sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
+                except Exception:
+                    pass
+
+            except Exception as e:
+                raw = _extract_err_msg(e)
+                st.session_state["login_error"] = _friendly_auth_error(raw)
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>',
+                    unsafe_allow_html=True)
+        st.text_input(
+            label="", key="login_email",
+            placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:10px 2px 6px;">Senha</div>',
+                    unsafe_allow_html=True)
+        st.text_input(
+            label="", key="login_senha",
+            type="password", placeholder="Digite sua senha",
+            label_visibility="collapsed",
+            on_change=_try_login
+        )
+
         st.markdown('<div class="login-actions">', unsafe_allow_html=True)
-        if st.button("Entrar", type="primary"):
+        if st.button("Entrar", type="primary", key="btn_login"):
             _try_login()
             do_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        if st.button("Criar conta"):
-            st.session_state.auth_mode = "register"
-            do_rerun()
+
+        # Botão secundário: Cadastrar usuário
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1, 1, 1])
+        with col_b:
+            if st.button("Cadastrar usuário", key="btn_go_register"):
+                st.session_state.auth_mode = "register"
+                do_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.get("login_error"):
             st.error(st.session_state["login_error"])
+
         st.markdown('</div>', unsafe_allow_html=True)
+
     st.stop()
+
 
 def render_register_screen():
+    """Tela de Cadastro (e-mail + senha)"""
     st.markdown(BASE_LOGIN_CSS, unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
-        st.markdown('<div class="login-stack">', unsafe_allow_html=True)
-        st.markdown('<span class="login-title">Criar conta</span>', unsafe_allow_html=True)
-        
-        st.text_input("Email", key="reg_email", placeholder="@quadra.com.vc")
-        st.text_input("Senha", key="reg_senha", type="password")
-        st.text_input("Confirmar", key="reg_confirma", type="password")
-        
-        if st.button("Cadastrar", type="primary"):
-            email = st.session_state.reg_email
-            pwd = st.session_state.reg_senha
-            if "@" in email and pwd == st.session_state.reg_confirma:
-                if sb:
-                    try:
-                        sb.auth.sign_up({"email": email, "password": pwd, "options": {"email_redirect_to": SITE_URL}})
-                        st.success("Verifique seu e-mail.")
-                    except Exception as e:
-                        st.error(_friendly_auth_error(_extract_err_msg(e)))
-                else:
-                    st.session_state.auth_mode = "login"
-                    st.session_state.just_registered = True
-                    do_rerun()
 
-        if st.button("Voltar"):
+    col_esq, col_mid, col_dir = st.columns([1, 1, 1])
+    with col_mid:
+        st.markdown('<div id="login_card_anchor"></div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-stack reg">', unsafe_allow_html=True)
+
+        if logo_b64:
+            st.markdown(
+                f'''
+                <img alt="Logo Quadra"
+                     src="data:image/png;base64,{logo_b64}"
+                     style="height:88px;width:auto;display:block;margin:0 auto 14px;
+                            filter:drop-shadow(0 6px 16px rgba(0,0,0,.35));" />
+                ''',
+                unsafe_allow_html=True
+            )
+
+        st.markdown('<span class="login-title">Criar conta</span>', unsafe_allow_html=True)
+        st.markdown('<div class="login-sub">Preencha os campos para cadastrar seu acesso</div>',
+                    unsafe_allow_html=True)
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Email</div>',
+                    unsafe_allow_html=True)
+        email = st.text_input(
+            label="", key="reg_email",
+            placeholder="seu.nome@quadra.com.vc",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Senha</div>',
+                    unsafe_allow_html=True)
+        senha = st.text_input(
+            label="", key="reg_senha",
+            type="password", placeholder="Crie uma senha",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<div style="color:#FFFFFF;font-weight:600;margin:6px 2px 6px;">Confirmar Senha</div>',
+                    unsafe_allow_html=True)
+        confirma = st.text_input(
+            label="", key="reg_confirma",
+            type="password", placeholder="Repita a senha",
+            label_visibility="collapsed"
+        )
+
+        st.markdown('<div class="login-actions">', unsafe_allow_html=True)
+        criar = st.button("Cadastrar", type="primary", key="btn_register")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Botão secundário: Voltar para login
+        st.markdown('<div class="secondary-actions">', unsafe_allow_html=True)
+        col_a, col_b, col_c = st.columns([1, 1, 1])
+        with col_b:
+            voltar = st.button("Voltar para login", key="btn_back_login")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if voltar:
             st.session_state.auth_mode = "login"
             do_rerun()
+
+        if criar:
+            email_ok = email and "@" in email and email.strip().lower().endswith("@quadra.com.vc")
+            if not email_ok:
+                st.error("Use um e-mail válido **@quadra.com.vc**.")
+            elif not senha or len(senha) < 6:
+                st.error("A senha deve ter pelo menos 6 caracteres.")
+            elif senha != confirma:
+                st.error("As senhas não conferem.")
+            else:
+                if sb:
+                    try:
+                        sb.auth.sign_up({
+                            "email": email.strip().lower(),
+                            "password": senha,
+                            "options": {"email_redirect_to": SITE_URL or "http://localhost:8501"}
+                        })
+                        st.success("Cadastro realizado. Verifique seu e-mail (ou faça login se a confirmação estiver desativada).")
+                    except Exception as e:
+                        st.error(f"Erro ao cadastrar: {_friendly_auth_error(_extract_err_msg(e))}")
+                        st.stop()
+                st.session_state.login_email = email.strip().lower()
+                st.session_state.auth_mode = "login"
+                st.session_state.just_registered = True
+                do_rerun()
+
         st.markdown('</div>', unsafe_allow_html=True)
+
     st.stop()
+
+# =================================================================
+#                         FLUXO PRINCIPAL
+# =================================================================
 
 if not st.session_state.authenticated:
     if st.session_state.auth_mode == "register":
@@ -391,194 +684,605 @@ if not st.session_state.authenticated:
     else:
         render_login_screen()
 
+# carrega lista de conversas quando logado
 if sb and st.session_state.get("user_id") and not st.session_state.get("_sidebar_loaded"):
     load_conversations_from_supabase()
     st.session_state["_sidebar_loaded"] = True
 
-# ====== CSS PRINCIPAL & SIDEBAR VISUAL FIX ======
+# ====== MARCAÇÃO ======
+def formatar_markdown_basico(text: str) -> str:
+    if not text:
+        return ""
+    safe = escape(text)
+    safe = re.sub(
+        r'(https?://[^\s<>"\]]+)',
+        lambda m: f'<a href="{m.group(1)}" target="_blank" rel="noopener noreferrer">{m.group(1)}</a>',
+        safe
+    )
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', safe)
+    safe = re.sub(r'\*(.+?)\*', r'<i>\1</i>', safe)
+    return safe.replace('\n', '<br>')
+
+
+def linkify(text: str) -> str:
+    return formatar_markdown_basico(text or "")
+
+# ====== CSS (Chat + Sidebar estilizada) ======
 st.markdown("""
 <style>
-/* Reset básico */
 * { box-sizing: border-box }
-html, body { margin:0; padding:0; background: #202123; }
+html, body { margin: 0; padding: 0 }
+img { max-width: 100%; height: auto; display: inline-block }
+img.logo { height: 44px !important; width: auto !important }
 
-/* VARIÁVEIS VISUAIS */
+/* Paleta ChatGPT dark */
 :root{
-    --bg:#202123; --panel:#050509; --panel-header:#26272F;
-    --text:#ECECF1; --text-dim:#D1D5DB;
+    --content-max-width: min(96vw, 1400px);
+    --header-height: 68px;
+    --input-zone: 150px;
+    --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
+    --input-max: 900px;
+    --input-bottom: 60px;
+                    
+    --bg:#202123;
+    --panel:#050509;
+    --panel-header:#26272F;
+    --panel-alt:#343541;
+
+    --border:#565869;
+
+    --text:#ECECF1;
+    --text-dim:#D1D5DB;
+    --muted:#9CA3AF;
+
+    --link:#60A5FA;
+    --link-hover:#93C5FD;
+
+    --bubble-user:#343541;
+    --bubble-assistant:#444654;
+
+    --input-bg:#26272F;
+    --input-border:#565869;
+
     --sidebar-w:270px;
-    --header-height:68px;
 }
 
-/* HEADER FIXO */
-.header {
-    position:fixed; top:0; left:0; width:100%; height:var(--header-height);
-    display:flex; align-items:center; justify-content:space-between;
-    padding:10px 16px; background:var(--panel-header); border-bottom:1px solid #565869;
+body, .stApp {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    background:var(--bg) !important;
+    color:var(--text) !important;
+}
+
+header[data-testid="stHeader"]{ display:none !important }
+div[data-testid="stToolbar"]{ display:none !important }
+#MainMenu, footer{ visibility:hidden; height:0 !important }
+
+html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{
+    height:100dvh !important;
+    max-height:100dvh !important;
+    overflow:hidden !important;
+    overscroll-behavior:none;
+}
+.block-container{ padding:0 !important; min-height:0 !important }
+
+/* HEADER */
+.header{
+    position:fixed;
+    inset:0 0 auto 0;
+    height:var(--header-height);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 16px;
+    background:var(--panel-header);
     z-index:1000;
+    border-bottom:1px solid var(--border);
 }
-.header-left { display:flex; gap:10px; align-items:center; color:var(--text); font-weight:600; }
-.header-right { display:flex; gap:12px; align-items:center; color:var(--text); }
-.user-circle { width:32px; height:32px; border-radius:50%; background:#3B82F6; display:flex; align-items:center; justify-content:center; }
-.header a { color:#FFF; padding:8px 12px; background:#3B82F6; border-radius:8px; text-decoration:none; font-size:0.9rem; }
+.header-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:600;
+    color:var(--text);
+}
+.header-left .title-sub{
+    font-weight:500;
+    font-size:.85rem;
+    color:var(--muted);
+    margin-top:-4px;
+}
+.header-right{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    color:var(--text);
+}
 
-/* SIDEBAR FIXA E LIMPA */
-section[data-testid="stSidebar"] {
+/* Botão Sair */
+.header a{
+    color:#FFFFFF !important;
+    text-decoration:none;
+    border:1px solid #2563EB;
+    padding:8px 12px;
+    border-radius:10px;
+    display:inline-block;
+    background:#3B82F6;
+    font-weight:600;
+    cursor:pointer;
+}
+.header a:hover{
+    color:#FFFFFF !important;
+    border-color:#1D4ED8;
+    background:#2563EB;
+}
+
+/* Avatar */
+.user-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #3B82F6;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+/* SIDEBAR */
+section[data-testid="stSidebar"]{
+    position:fixed !important;
     top:var(--header-height) !important;
-    height:calc(100vh - var(--header-height)) !important;
-    background:var(--panel) !important;
-    border-right:1px solid #565869;
+    left:0 !important;
+    height:calc(100dvh - var(--header-height)) !important;
     width:var(--sidebar-w) !important;
     min-width:var(--sidebar-w) !important;
-    overflow:visible !important; /* Importante para o menu flutuar pra fora */
-    z-index:2000;
+    margin:0 !important;
+    padding:0 !important;
+    background:var(--panel) !important;
+    border-right:1px solid var(--border);
+    z-index:2000 !important;
+    transform:none !important;
+    visibility:visible !important;
+    overflow-y:auto !important;
+    overflow-x:visible !important;
+    color:var(--text);
 }
-/* Remove paddings excessivos do Streamlit */
-section[data-testid="stSidebar"] .block-container { padding: 1rem 0.5rem !important; }
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0 !important; }
+section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
+div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* ESTILO DA LINHA DE CONVERSA (Removedor de barras estranhas) */
-.sidebar-row {
-    position: relative;
-    border-radius: 6px;
-    margin: 2px 0 !important;
-    padding: 2px 4px !important;
-    background: transparent; /* Fundo transparente por padrão */
-    transition: background 0.1s;
-}
-.sidebar-row-active { background: #343541 !important; }
-.sidebar-row:hover { background: #2A2B32; }
-
-/* Botões invisíveis dentro da sidebar */
-.sidebar-row button {
-    border:none !important; background:transparent !important; color:#ECECF1 !important;
-    text-align:left; box-shadow:none !important; padding: 4px !important;
+/* some default separators/lines do sidebar */
+section[data-testid="stSidebar"] hr,
+section[data-testid="stSidebar"] [role="separator"]{
+    display:none !important;
 }
 
-/* --- O HACK DO MENU FLUTUANTE (POSIÇÃO CORRETA) --- */
-/* Isso força o container seguinte ao marcador a flutuar para a direita */
-div[data-testid="stSidebar"] div.stMarkdown:has(.floating-delete-marker) + div.element-container {
-    position: absolute !important;
-    right: -170px !important; /* Joga pra fora da sidebar (direita) */
-    top: -42px !important;    /* Ajuste vertical para alinhar com a linha */
-    width: 160px !important;
-    z-index: 99999 !important;
+div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
+
+/* Sidebar títulos */
+.sidebar-header{
+    font-size:0.9rem;
+    font-weight:600;
+    letter-spacing:.02em;
+    color:var(--text);
+    margin:0 4px -2px 2px;
+}
+.sidebar-sub{
+    font-size:0.78rem;
+    color:var(--muted);
+    font-weight:400;
 }
 
-/* Estilo do botão de deletar flutuante */
-div[data-testid="stSidebar"] div.stMarkdown:has(.floating-delete-marker) + div.element-container button {
-    background-color: #202123 !important;
-    border: 1px solid #565869 !important;
-    color: #ef4444 !important;
-    border-radius: 6px !important;
-    text-align: center !important;
-    font-size: 0.9rem !important;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
-    padding: 8px !important;
-    width: 100% !important;
+/* barra sob "Conversas": neutra, sem efeito */
+.sidebar-bar{
+    border:0 !important;
+    box-shadow:none !important;
+    padding:0 !important;
+    margin:0 !important;
+    background:transparent !important;
 }
-div[data-testid="stSidebar"] div.stMarkdown:has(.floating-delete-marker) + div.element-container button:hover {
-    background-color: #343541 !important;
+.sidebar-bar *{
+    border:0 !important;
+    box-shadow:none !important;
 }
 
-/* ÁREA DE CHAT */
-.content { max-width:900px; margin:calc(var(--header-height) + 20px) auto 160px; padding:0 16px; }
-.message-row { display:flex; margin-bottom:24px; }
-.message-row.user { justify-content:flex-end; }
-.bubble { padding:16px; border-radius:8px; max-width:85%; line-height:1.5; }
-.bubble.user { background:#343541; }
-.bubble.assistant { background:transparent; }
+.hist-empty{
+    color:var(--muted);
+    font-size:.9rem;
+    padding:8px 10px;
+}
 
-/* INPUT */
-[data-testid="stChatInput"] { bottom:30px !important; }
-[data-testid="stChatInput"] textarea { background:#40414F !important; color:#FFF !important; border:1px solid #565869 !important; }
+/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
+section[data-testid="stSidebar"] button{
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    color:var(--text-dim) !important;
+    font-size:0.9rem !important;
+    padding:4px 8px !important;
+    border-radius:999px !important;
+    text-align:left !important;
+    width:100%;
+}
+section[data-testid="stSidebar"] button:hover{
+    background:#111827 !important;
+    color:#E5E7EB !important;
+}
+section[data-testid="stSidebar"] button:active{
+    background:#1F2937 !important;
+}
+
+/* Linha de conversa (título + reticências) */
+.sidebar-row{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    margin:4px 4px;
+    padding:2px 2px;
+    border-radius:10px;
+}
+.sidebar-row-active{
+    background:#111827;
+}
+.sidebar-row-title button{
+    width:100%;
+}
+.sidebar-row-menu button{
+    width:auto;
+    min-width:26px;
+    text-align:center;
+    padding-inline:4px !important;
+    font-size:0.9rem !important;
+}
+
+/* Menu flutuante – botão azul pill, ao lado dos 3 pontos (pra fora) */
+.conv-menu{
+    position:absolute;
+    top:50%;
+    left:calc(100% + 8px);
+    transform:translateY(-50%);
+    z-index:3000;
+}
+
+/* estiliza especificamente o botão de excluir dentro do menu */
+.conv-menu button{
+    background:#1D4ED8 !important;
+    color:#E5F0FF !important;
+    border-radius:999px !important;
+    border:1px solid #1D4ED8 !important;
+    padding:6px 18px !important;
+    font-size:0.86rem !important;
+    font-weight:500 !important;
+    box-shadow:0 0 0 0 rgba(0,0,0,0) !important;
+    text-align:center !important;
+    width:auto !important;
+}
+.conv-menu button:hover{
+    background:#2563EB !important;
+    border-color:#2563EB !important;
+    color:#EFF6FF !important;
+}
+
+/* ÁREA CENTRAL */
+.content{
+    max-width:var(--content-max-width);
+    margin:var(--header-height) auto 0;
+    padding:8px;
+}
+#chatCard, .chat-card{
+    position:relative;
+    z-index:50 !important;
+    background:var(--bg) !important;
+    border:none !important;
+    border-radius:12px 12px 0 0 !important;
+    box-shadow:none !important;
+    padding:20px;
+    height:var(--card-height);
+    overflow-y:auto;
+    scroll-behavior:smooth;
+    padding-bottom:350px;
+    scroll-padding-bottom:350px;
+    color:var(--text);
+}
+#chatCard *, .chat-card *{ position:relative; z-index:51 !important }
+
+.message-row{
+    display:flex !important;
+    margin:12px 4px;
+}
+.message-row.user{ justify-content:flex-end }
+.message-row.assistant{ justify-content:flex-start }
+
+.bubble{
+    max-width:88%;
+    padding:14px 16px;
+    border-radius:12px;
+    font-size:15px;
+    line-height:1.45;
+    color:var(--text);
+    word-wrap:break-word;
+    border:1px solid transparent !important;
+    box-shadow:none !important;
+}
+.bubble.user{
+    background:var(--bubble-user);
+    border-bottom-right-radius:6px;
+}
+.bubble.assistant{
+    background:var(--bubble-assistant);
+    border-bottom-left-radius:6px;
+}
+
+.chat-card a{
+    color:var(--link) !important;
+    text-decoration:underline;
+}
+.chat-card a:hover{ color:var(--link-hover) }
+
+/* CHAT INPUT */
+[data-testid="stChatInput"]{
+    position:fixed !important;
+    left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
+    transform:translateX(-50%) !important;
+    bottom:var(--input-bottom) !important;
+    width:min(var(--input-max), 96vw) !important;
+    z-index:5000 !important;
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    padding:0 !important;
+}
+[data-testid="stChatInput"] *{
+    background:transparent !important;
+    color:var(--text) !important;
+}
+[data-testid="stChatInput"] > div{
+    background:var(--input-bg) !important;
+    border:1px solid var(--input-border) !important;
+    border-radius:999px !important;
+    box-shadow:0 10px 24px rgba(0,0,0,.45) !important;
+    overflow:hidden;
+    transition:border-color .12s ease, box-shadow .12s ease;
+}
+[data-testid="stChatInput"] textarea{
+    width:100% !important;
+    border:none !important;
+    border-radius:999px !important;
+    padding:18px 20px !important;
+    font-size:16px !important;
+    outline:none !important;
+    height:auto !important;
+    min-height:44px !important;
+    max-height:220px !important;
+    overflow-y:hidden !important;
+    caret-color:#ffffff !important;
+}
+[data-testid="stChatInput"] textarea::placeholder{
+    color:var(--muted) !important;
+}
+[data-testid="stChatInput"] textarea:focus::placeholder{
+    color:transparent !important;
+    opacity:0 !important;
+}
+[data-testid="stChatInput"] button{
+    margin-right:8px !important;
+    border:none !important;
+    background:transparent !important;
+    color:var(--text-dim) !important;
+}
+[data-testid="stChatInput"] svg{ fill:currentColor !important }
+
+/* bottom container fantasma */
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottomBlockContainer"] > div,
+[data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
+[data-testid="stBottomBlockContainer"] [class*="block-container"],
+[data-testid="stBottomBlockContainer"]::before,
+[data-testid="stBottomBlockContainer"]::after{
+    background:transparent !important;
+    box-shadow:none !important;
+    border:none !important;
+}
+[data-testid="stBottomBlockContainer"]{
+    padding:0 !important;
+    margin:0 !important;
+    height:0 !important;
+    min-height:0 !important;
+}
+
+/* Scrollbar */
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"]{ display:none !important }
+*::-webkit-scrollbar{ width:10px; height:10px }
+*::-webkit-scrollbar-thumb{
+    background:#565869;
+    border-radius:8px;
+}
+*::-webkit-scrollbar-track{ background:#171717 }
+
+/* Spinner */
+.spinner{
+    width:16px;
+    height:16px;
+    border:2px solid rgba(37,99,235,.25);
+    border-top-color:#2563eb;
+    border-radius:50%;
+    display:inline-block;
+    animation:spin .8s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg) } }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== RENDER HEADER ======
-primeira = st.session_state.user_name[0].upper()
+# ====== HEADER ======
+primeira_letra = st.session_state.user_name[0].upper() if st.session_state.user_name else 'U'
 st.markdown(f"""
 <div class="header">
-    <div class="header-left">{logo_img_tag}<span>Chatbot Quadra</span></div>
+    <div class="header-left">
+        {logo_img_tag}
+        <div>
+            Chatbot Quadra
+            <div class="title-sub">Assistente Inteligente</div>
+        </div>
+    </div>
     <div class="header-right">
-        <a href="?logout=1">Sair</a>
-        <div class="user-circle">{primeira}</div>
+        <a href="?logout=1" target="_self">
+           Sair
+        </a>
+        <div style="text-align:right;font-size:0.9rem;color:var(--text);">
+            <span style="font-weight:600;">{st.session_state.user_name}</span><br>
+            <span style="font-weight:400;color:var(--muted);font-size:0.8rem;">{st.session_state.user_email}</span>
+        </div>
+        <div class="user-circle">{primeira_letra}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ====== SIDEBAR LOOP ======
+# Toast Supabase
+if st.session_state.get("_sb_last_error"):
+    st.toast("Falha ao salvar no Supabase (ver RLS/defaults).", icon="⚠️")
+    st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
+    st.session_state["_sb_last_error"] = None
+
+# ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
-    st.markdown('<div style="font-weight:600;margin-bottom:8px;color:#ECECF1;">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div style="font-size:0.8rem;color:#9CA3AF;margin-bottom:10px;">Conversas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+    # Cabeçalho simples, sem wrapper que vira barra
+    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
-    conversas = st.session_state.conversations_list
+    conversas = st.session_state.conversations_list or []
+
     if not conversas:
-        st.markdown('<span style="color:#666;font-size:0.9rem;padding:0 10px;">Sem conversas.</span>', unsafe_allow_html=True)
-    
-    for conv in conversas:
-        cid = conv.get("id")
-        title = conv.get("title", "Nova conversa").strip().replace("\n", " ")
-        if len(title) > 30: title = title[:30] + "..."
-        
-        isActive = (st.session_state.get("selected_conversation_id") == cid)
-        activeClass = " sidebar-row-active" if isActive else ""
-        
-        # Container da linha
-        st.markdown(f'<div class="sidebar-row{activeClass}">', unsafe_allow_html=True)
-        
-        c1, c2 = st.columns([0.85, 0.15])
-        with c1:
-            if st.button(title, key=f"t_{cid}", help=conv.get("title")):
-                load_conversation_messages(cid)
-                st.session_state.open_menu_conv = None
-                do_rerun()
-        with c2:
-            if st.button("⋯", key=f"m_{cid}"):
-                cur = st.session_state.get("open_menu_conv")
-                st.session_state.open_menu_conv = None if cur == cid else cid
-                do_rerun()
-        
-        # --- LÓGICA DO MENU FLUTUANTE (MARKER HACK) ---
-        if st.session_state.get("open_menu_conv") == cid:
-            # 1. Este span invisível ativa o CSS 'has(.floating-delete-marker)'
-            st.markdown('<span class="floating-delete-marker"></span>', unsafe_allow_html=True)
-            # 2. O botão abaixo será capturado pelo CSS e jogado para fora da sidebar
-            if st.button("🗑 Excluir conversa", key=f"del_{cid}"):
-                delete_conversation(cid)
-                if st.session_state.conversation_id == cid:
-                    st.session_state.historico = []
-                    st.session_state.conversation_id = None
-                    st.session_state.selected_conversation_id = None
-                st.session_state.open_menu_conv = None
-                load_conversations_from_supabase()
-                do_rerun()
+        st.markdown('<div class="hist-empty">Sem conversas ainda.</div>', unsafe_allow_html=True)
+    else:
+        for conv in conversas:
+            cid = conv.get("id")
+            titulo = conv.get("title") or "Nova conversa"
+            titulo = titulo.strip().replace("\n", " ")
+            if len(titulo) > 80:
+                titulo = titulo[:80] + "…"
 
-        st.markdown('</div>', unsafe_allow_html=True)
+            active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
+            st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+            col_t, col_menu = st.columns([0.78, 0.22])
+            with col_t:
+                if st.button(titulo, key=f"conv_title_{cid}"):
+                    load_conversation_messages(cid)
+                    st.session_state.open_menu_conv = None
+            with col_menu:
+                if st.button("⋯", key=f"conv_menu_{cid}"):
+                    current = st.session_state.get("open_menu_conv")
+                    st.session_state.open_menu_conv = None if current == cid else cid
 
-# ====== ÁREA DE CHAT ======
-def linkify(text):
-    return escape(text or "").replace("\n", "<br>")
+            # menu flutuante lateral: botão azul pill, usando a mesma lógica de deleção já ok
+            if st.session_state.get("open_menu_conv") == cid:
+                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
-html_msgs = []
-for p, r in st.session_state.historico:
-    html_msgs.append(f'<div class="message-row user"><div class="bubble user">{linkify(p)}</div></div>')
-    if r:
-        html_msgs.append(f'<div class="message-row assistant"><div class="bubble assistant">{linkify(r)}</div></div>')
+                if delete_clicked:
+                    delete_conversation(cid)
+                    if st.session_state.get("conversation_id") == cid:
+                        st.session_state.historico = []
+                        st.session_state.conversation_id = None
+                        st.session_state.selected_conversation_id = None
+                    st.session_state.open_menu_conv = None
+                    load_conversations_from_supabase()
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+# ====== RENDER MENSAGENS ======
+msgs_html = []
+for pergunta, resposta in st.session_state.historico:
+    p_html = linkify(pergunta)
+    msgs_html.append(f'<div class="message-row user"><div class="bubble user">{p_html}</div></div>')
+    if resposta:
+        r_html = linkify(resposta)
+        msgs_html.append(f'<div class="message-row assistant"><div class="bubble assistant">{r_html}</div></div>')
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
-    html_msgs.append('<div class="message-row assistant"><div class="bubble assistant">Digitando...</div></div>')
+    msgs_html.append('<div class="message-row assistant"><div class="bubble assistant"><span class="spinner"></span></div></div>')
 
-st.markdown(f'<div class="content">{"".join(html_msgs)}</div>', unsafe_allow_html=True)
+if not msgs_html:
+    msgs_html.append('<div style="color:#9ca3af; text-align:center; margin-top:20px;">.</div>')
 
-# ====== INPUT ======
-q = st.chat_input("Mensagem para o assistente...")
-if q:
+msgs_html.append('<div id="chatEnd" style="height:1px;"></div>')
+
+st.markdown(
+    f'<div class="content"><div id="chatCard" class="chat-card">{"".join(msgs_html)}</div></div>',
+    unsafe_allow_html=True
+)
+
+# ====== JS (autoscroll simples) ======
+st.markdown("""
+<script>
+(function(){
+    function autoGrow(){
+        const ta = document.querySelector('[data-testid="stChatInput"] textarea');
+        if(!ta) return;
+        const MAX = 220;
+        ta.style.height = 'auto';
+        const desired   = Math.min(ta.scrollHeight, MAX);
+        ta.style.height = desired + 'px';
+        ta.style.overflowY = (ta.scrollHeight > MAX) ? 'auto' : 'hidden';
+    }
+
+    function scrollToEnd(smooth=true){
+        const card = document.getElementById('chatCard');
+        if(!card) return;
+        card.scrollTo({
+            top: card.scrollHeight,
+            behavior: smooth ? 'smooth' : 'auto'
+        });
+    }
+
+    window.addEventListener('load', ()=>{
+        autoGrow();
+        scrollToEnd(false);
+    });
+
+    window.addEventListener('resize', ()=>{
+        autoGrow();
+    });
+
+    document.addEventListener('input', (e)=>{
+        if(e.target && e.target.matches('[data-testid="stChatInput"] textarea')){
+            autoGrow();
+        }
+    });
+
+    setTimeout(()=>{ autoGrow(); scrollToEnd(false); }, 0);
+    setTimeout(()=>{ autoGrow(); scrollToEnd(true); }, 150);
+
+    const card = document.getElementById('chatCard');
+    if(card){
+        const mo = new MutationObserver(()=>{
+            scrollToEnd(true);
+        });
+        mo.observe(card, { childList:true, subtree:false });
+    }
+})();
+</script>
+""", unsafe_allow_html=True)
+
+# ====== INPUT CHAT ======
+pergunta = st.chat_input("Comece perguntando algo, o assistente está pronto.")
+
+# ====== FLUXO PRINCIPAL DO CHAT ======
+if pergunta and pergunta.strip():
+    q = pergunta.strip()
     st.session_state.historico.append((q, ""))
-    cid = get_or_create_conversation()
-    save_message(cid, "user", q)
-    update_conversation_title_if_first_question(cid, q)
-    
+
+    try:
+        cid = get_or_create_conversation()
+        save_message(cid, "user", q)
+        update_conversation_title_if_first_question(cid, q)
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
+
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
     st.session_state.awaiting_answer = True
@@ -590,16 +1294,20 @@ if st.session_state.awaiting_answer and not st.session_state.answering_started:
     do_rerun()
 
 if st.session_state.awaiting_answer and st.session_state.answering_started:
-    resp = responder_pergunta(st.session_state.pending_question)
+    resposta = responder_pergunta(st.session_state.pending_question)
     idx = st.session_state.pending_index
-    if idx is not None:
-        orig = st.session_state.historico[idx][0]
-        st.session_state.historico[idx] = (orig, resp)
-    
-    cid = get_or_create_conversation()
-    save_message(cid, "assistant", resp)
-    
+    if idx is not None and 0 <= idx < len(st.session_state.historico):
+        pergunta_fix = st.session_state.historico[idx][0]
+        st.session_state.historico[idx] = (pergunta_fix, resposta)
+
+    try:
+        cid = get_or_create_conversation()
+        save_message(cid, "assistant", resposta)
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"save.assistant: {_extract_err_msg(e)}"
+
     st.session_state.awaiting_answer = False
     st.session_state.answering_started = False
     st.session_state.pending_index = None
+    st.session_state.pending_question = None
     do_rerun()
