@@ -207,33 +207,27 @@ def delete_conversation(cid):
         st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
 
 
-def get_or_create_conversation(first_question: str | None = None):
+def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-    Se receber a primeira pergunta, já cria a conversa com o título = primeira pergunta.
+    IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
     """
     if not sb or not st.session_state.get("user_id"):
         return None
-
     if st.session_state.get("conversation_id"):
         return st.session_state["conversation_id"]
 
-    if first_question:
-        title = _title_from_first_question(first_question)
-        st.session_state["_title_set"] = True
-    else:
-        title = f"Sessão de {st.session_state.user_name}"
-
     payload = {
         "user_id": st.session_state.user_id,
-        "title": title,
+        "title": f"Sessão de {st.session_state.user_name}",
     }
     try:
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
         st.session_state["selected_conversation_id"] = cid
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": title})
+        # atualiza lista local (conversa mais recente no topo)
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
@@ -241,23 +235,16 @@ def get_or_create_conversation(first_question: str | None = None):
 
 
 def update_conversation_title_if_first_question(cid, first_question: str):
-    """
-    Mantida por compatibilidade, mas agora o título já nasce certo em get_or_create_conversation.
-    Se for chamada, garante pelo menos o título correto na lista local.
-    """
-    if not cid or not first_question:
+    if not sb or not cid or not first_question or st.session_state.get("_title_set"):
         return
     title = _title_from_first_question(first_question)
-    for it in st.session_state.conversations_list:
-        if it.get("id") == cid:
-            it["title"] = title
-            break
-    st.session_state["_title_set"] = True
-
-    if not sb:
-        return
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
+        for it in st.session_state.conversations_list:
+            if it.get("id") == cid:
+                it["title"] = title
+                break
+        st.session_state["_title_set"] = True
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.update_title: {_extract_err_msg(e)}"
 
@@ -275,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM (apenas logout, SEM delete_conv aqui) ======
+# ====== LOGOUT / DELETE VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -736,7 +723,7 @@ img.logo { height: 44px !important; width: auto !important }
     --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
     --input-max: 900px;
     --input-bottom: 60px;
-
+                    
     --bg:#202123;
     --panel:#050509;
     --panel-header:#26272F;
@@ -758,9 +745,6 @@ img.logo { height: 44px !important; width: auto !important }
     --input-border:#565869;
 
     --sidebar-w:270px;
-    --sidebar-items-top-gap: -45px;
-    --sidebar-sub-top-gap: -30px;
-    --sidebar-list-start-gap: 3px;
 }
 
 body, .stApp {
@@ -889,15 +873,19 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
-    margin:0 4px 6px 2px;
-    border:none !important;
-    border-bottom:none !important;
-    box-shadow:none !important;
 }
-.sidebar-sub::before,
-.sidebar-sub::after{
-    content:none !important;
-    border:none !important;
+
+/* barra sob "Conversas": remove completamente */
+.sidebar-bar{
+    border:0 !important;
+    box-shadow:none !important;
+    padding:0 !important;
+    margin:2px 0 4px 0 !important;
+}
+
+/* tentativa extra de matar bordas que o Streamlit possa injetar */
+.sidebar-bar *{
+    border:0 !important;
     box-shadow:none !important;
 }
 
@@ -907,7 +895,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* Botões da sidebar (títulos + reticências) */
+/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
 section[data-testid="stSidebar"] button{
     background:transparent !important;
     border:none !important;
@@ -927,7 +915,7 @@ section[data-testid="stSidebar"] button:active{
     background:#1F2937 !important;
 }
 
-/* Linha de conversa */
+/* Linha de conversa (título + reticências) */
 .sidebar-row{
     position:relative;
     display:flex;
@@ -951,24 +939,31 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu de excluir – azul em pill */
+/* Menu flutuante – botão azul pill, ao lado dos 3 pontos */
 .conv-menu{
-    margin-top:4px;
+    position:absolute;
+    top:50%;
+    right:4px;
+    transform:translateY(-50%);
+    z-index:3000;
 }
-.conv-menu .stButton > button{
-    width:100% !important;
-    border-radius:999px !important;
-    background:#020617 !important;
-    border:1px solid #1D4ED8 !important;
-    padding:6px 16px !important;
-    font-size:0.86rem !important;
-    color:#BFDBFE !important;
-    text-align:center !important;
-    box-shadow:none !important;
-    text-decoration:none !important;
-}
-.conv-menu .stButton > button:hover{
+
+/* estiliza especificamente o botão de excluir dentro do menu */
+.conv-menu button{
     background:#1D4ED8 !important;
+    color:#E5F0FF !important;
+    border-radius:999px !important;
+    border:1px solid #1D4ED8 !important;
+    padding:6px 18px !important;
+    font-size:0.86rem !important;
+    font-weight:500 !important;
+    box-shadow:0 0 0 0 rgba(0,0,0,0) !important;
+    text-align:center !important;
+    width:auto !important;
+}
+.conv-menu button:hover{
+    background:#2563EB !important;
+    border-color:#2563EB !important;
     color:#EFF6FF !important;
 }
 
@@ -1156,7 +1151,11 @@ if st.session_state.get("_sb_last_error"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Conversas</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
 
@@ -1172,7 +1171,6 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
-
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1183,34 +1181,20 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante, agora com botão azul pill
+            # menu flutuante lateral: botão azul pill, usando a mesma lógica de deleção já ok
             if st.session_state.get("open_menu_conv") == cid:
-                with st.container():
-                    st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                    delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
                 if delete_clicked:
-                    # Exclui no Supabase
                     delete_conversation(cid)
-
-                    # Limpa histórico e seleção SEMPRE
                     if st.session_state.get("conversation_id") == cid:
                         st.session_state.historico = []
                         st.session_state.conversation_id = None
                         st.session_state.selected_conversation_id = None
-
-                    # Remove da lista local de conversas
-                    st.session_state.conversations_list = [
-                        c for c in st.session_state.conversations_list
-                        if c.get("id") != cid
-                    ]
-
-                    # Fecha menu
                     st.session_state.open_menu_conv = None
-
-                    # Rerun rápido para refletir visualmente
-                    do_rerun()
+                    load_conversations_from_supabase()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1297,8 +1281,9 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
 
     try:
-        cid = get_or_create_conversation(first_question=q)
+        cid = get_or_create_conversation()
         save_message(cid, "user", q)
+        update_conversation_title_if_first_question(cid, q)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
 
