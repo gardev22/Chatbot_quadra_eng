@@ -883,8 +883,15 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
-section[data-testid="stSidebar"] button{
+/* ==== Botões da sidebar (títulos + reticências) sem cara de botão branco ==== */
+section[data-testid="stSidebar"] .stButton{
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    padding:0 !important;
+    margin:0 !important;
+}
+section[data-testid="stSidebar"] .stButton > button{
     background:transparent !important;
     border:none !important;
     box-shadow:none !important;
@@ -895,11 +902,11 @@ section[data-testid="stSidebar"] button{
     text-align:left !important;
     width:100%;
 }
-section[data-testid="stSidebar"] button:hover{
+section[data-testid="stSidebar"] .stButton > button:hover{
     background:#111827 !important;
     color:#E5E7EB !important;
 }
-section[data-testid="stSidebar"] button:active{
+section[data-testid="stSidebar"] .stButton > button:active{
     background:#1F2937 !important;
 }
 
