@@ -862,6 +862,12 @@ section[data-testid="stSidebar"] [role="separator"]{
     display:none !important;
 }
 
+/* remove QUALQUER borda/linha horizontal automática na sidebar */
+section[data-testid="stSidebar"] div[style*="border-bottom"]{
+    border-bottom:none !important;
+    box-shadow:none !important;
+}
+
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
 /* Sidebar títulos */
@@ -876,13 +882,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
-}
-/* remove a barrinha sob 'Conversas' */
-.sidebar-bar{
-    border-bottom:none !important;
-    box-shadow:none !important;
-    padding-bottom:0 !important;
-    margin-bottom:4px !important;
 }
 
 .hist-empty{
@@ -933,50 +932,6 @@ section[data-testid="stSidebar"] button:active{
     text-align:center;
     padding-inline:4px !important;
     font-size:0.9rem !important;
-}
-
-/* Container do botão Excluir (sem barra/linha) */
-.sidebar-row .delete-container{
-    margin-top:6px;
-    padding-top:0;
-    border:none !important;
-    box-shadow:none !important;
-}
-
-/* Botão Excluir – pill azul bonito */
-.sidebar-row .delete-container .stButton{
-    text-align:center;
-    padding:0 !important;
-    margin:0 !important;
-    border:none !important;
-    box-shadow:none !important;
-}
-.sidebar-row .delete-container .stButton > button{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-
-    border-radius:999px !important;
-    background:#020617 !important;
-    border:1px solid #1D4ED8 !important;
-
-    padding:6px 18px !important;
-    font-size:0.86rem !important;
-    font-weight:500 !important;
-    color:#BFDBFE !important;
-    text-align:center !important;
-
-    box-shadow:0 10px 24px rgba(15,23,42,0.55) !important;
-    cursor:pointer !important;
-}
-.sidebar-row .delete-container .stButton > button:hover{
-    background:#1D4ED8 !important;
-    color:#EFF6FF !important;
-    box-shadow:0 14px 32px rgba(15,23,42,0.70) !important;
-}
-.sidebar-row .delete-container .stButton > button:active{
-    transform:translateY(1px);
-    box-shadow:0 6px 16px rgba(15,23,42,0.60) !important;
 }
 
 /* ÁREA CENTRAL */
@@ -1163,11 +1118,7 @@ if st.session_state.get("_sb_last_error"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
-        <div class="sidebar-sub">Conversas</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
 
@@ -1194,22 +1145,26 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # Botão "Excluir conversa" – aparece logo abaixo, azul, sem barra
+            # Botão "Excluir conversa"
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="delete-container">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
-                st.markdown('</div>', unsafe_allow_html=True)
-
                 if delete_clicked:
+                    # Apaga no Supabase
                     delete_conversation(cid)
+
+                    # Se era a conversa aberta, limpa histórico
                     if st.session_state.get("conversation_id") == cid:
                         st.session_state.historico = []
                         st.session_state.conversation_id = None
                         st.session_state.selected_conversation_id = None
 
+                    # Atualiza lista local sem novo select (mais rápido)
+                    st.session_state.conversations_list = [
+                        c for c in st.session_state.conversations_list
+                        if c.get("id") != cid
+                    ]
+
                     st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
-                    # não precisa chamar do_rerun(): o próprio clique no botão já reroda o script
 
             st.markdown('</div>', unsafe_allow_html=True)
 
