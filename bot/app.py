@@ -275,7 +275,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT VIA QUERY PARAM (apenas logout, SEM delete_conv aqui) ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -890,6 +890,15 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     color:var(--muted);
     font-weight:400;
     margin:0 4px 6px 2px;
+    border:none !important;
+    border-bottom:none !important;
+    box-shadow:none !important;
+}
+.sidebar-sub::before,
+.sidebar-sub::after{
+    content:none !important;
+    border:none !important;
+    box-shadow:none !important;
 }
 
 .hist-empty{
@@ -942,11 +951,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu de excluir – azul, em pill */
+/* Menu de excluir – azul em pill */
 .conv-menu{
     margin-top:4px;
 }
-.conv-menu button{
+.conv-menu .stButton > button{
     width:100% !important;
     border-radius:999px !important;
     background:#020617 !important;
@@ -958,7 +967,7 @@ section[data-testid="stSidebar"] button:active{
     box-shadow:none !important;
     text-decoration:none !important;
 }
-.conv-menu button:hover{
+.conv-menu .stButton > button:hover{
     background:#1D4ED8 !important;
     color:#EFF6FF !important;
 }
@@ -1174,28 +1183,34 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
+            # menu flutuante, agora com botão azul pill
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
-                st.markdown('</div>', unsafe_allow_html=True)
+                with st.container():
+                    st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                    delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                 if delete_clicked:
-                    # Exclui do Supabase
+                    # Exclui no Supabase
                     delete_conversation(cid)
 
-                    # Limpa histórico SEMPRE (como você pediu)
-                    st.session_state.historico = []
-                    st.session_state.conversation_id = None
-                    st.session_state.selected_conversation_id = None
+                    # Limpa histórico e seleção SEMPRE
+                    if st.session_state.get("conversation_id") == cid:
+                        st.session_state.historico = []
+                        st.session_state.conversation_id = None
+                        st.session_state.selected_conversation_id = None
 
-                    # Remove da lista local
+                    # Remove da lista local de conversas
                     st.session_state.conversations_list = [
                         c for c in st.session_state.conversations_list
                         if c.get("id") != cid
                     ]
 
-                    # Fecha o menu
+                    # Fecha menu
                     st.session_state.open_menu_conv = None
+
+                    # Rerun rápido para refletir visualmente
+                    do_rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
