@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT / DELETE VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -309,7 +309,7 @@ if "logout" in qp:
     })
     _clear_query_params()
     do_rerun()
-    
+
 elif "delete_conv" in qp:
     delete_cid = qp["delete_conv"]
     if isinstance(delete_cid, list):
@@ -943,36 +943,41 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante (Excluir conversa) – card colado à direita da linha */
+/* Menu flutuante – colado ao lado dos 3 pontinhos, sem barra esquisita */
 .conv-menu{
     position:absolute;
-    top:4px;
-    right:4px;               /* encostado na borda direita da sidebar */
+    top:50%;
+    left:calc(100% + 8px);   /* logo à direita da linha */
+    transform:translateY(-50%);
     width:190px;
-    background:#111827;
-    border:1px solid #374151;
+    background:#020617;
+    border:1px solid #1f2937;
     border-radius:12px;
-    box-shadow:0 18px 40px rgba(0,0,0,0.70);
+    box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
     z-index:1200;
 }
 
-/* Item clicável dentro do menu (sem cara de botão Streamlit) */
+/* Item clicável dentro do menu */
 .conv-menu-item{
+    display:block;
     cursor:pointer;
     width:100%;
-    color:#FCA5A5;
+    color:#BFDBFE;            /* azul claro suave */
     text-align:left;
     font-size:0.86rem;
     padding:6px 10px;
     border-radius:8px;
+    background:transparent;
+    text-decoration:none;
+    border:none;
+    outline:none;
+    transition:background .12s ease, color .12s ease;
 }
 .conv-menu-item:hover{
-    background:#7F1D1D;
-    color:#FEE2E2;
+    background:#1E293B;       /* azul bem escuro no hover */
+    color:#E0F2FE;            /* azul clarinho no hover */
 }
-
-
 
 /* ÁREA CENTRAL */
 .content{
@@ -1178,6 +1183,7 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1188,15 +1194,14 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-                        # menu flutuante lateral (popover fake estilo ChatGPT)
+            # menu flutuante lateral (HTML puro, sem st.button)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown(
                     f"""
                     <div class="conv-menu">
-                        <div class="conv-menu-item"
-                             onclick="window.location.search='?delete_conv={cid}'">
+                        <a class="conv-menu-item" href="?delete_conv={cid}">
                             🗑 Excluir conversa
-                        </div>
+                        </a>
                     </div>
                     """,
                     unsafe_allow_html=True,
