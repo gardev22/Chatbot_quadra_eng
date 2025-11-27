@@ -877,6 +877,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     color:var(--muted);
     font-weight:400;
 }
+/* remove a barrinha sob 'Conversas' */
 .sidebar-bar{
     border-bottom:none !important;
     box-shadow:none !important;
@@ -934,7 +935,7 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – alinhado à direita da linha, pill azul liso */
+/* Menu flutuante – alinhado à direita da linha, sem sombra */
 .conv-menu{
     position:absolute;
     top:50%;
@@ -950,17 +951,36 @@ section[data-testid="stSidebar"] button:active{
     z-index:3000;
 }
 
-/* Botão de excluir dentro do menu – pill azul bonito */
+/* Link pill azul bonito (mantido mas não usado diretamente) */
+.conv-menu-link{
+    display:block;
+    width:100%;
+    border-radius:999px;
+    background:#020617;
+    border:1px solid #1D4ED8;
+    padding:6px 16px;
+    font-size:0.86rem;
+    color:#BFDBFE !important;
+    text-align:center;
+    text-decoration:none !important;
+}
+.conv-menu-link:hover{
+    background:#1D4ED8;
+    color:#EFF6FF !important;
+}
+
+/* Botão Excluir conversa dentro do menu (mesmo visual do link) */
 .conv-menu button{
     width:100%;
     border-radius:999px !important;
     background:#020617 !important;
     border:1px solid #1D4ED8 !important;
-    color:#BFDBFE !important;
-    box-shadow:none !important;
     padding:6px 16px !important;
-    text-align:center !important;
     font-size:0.86rem !important;
+    color:#BFDBFE !important;
+    text-align:center !important;
+    text-decoration:none !important;
+    box-shadow:none !important;
 }
 .conv-menu button:hover{
     background:#1D4ED8 !important;
@@ -1181,10 +1201,10 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral – agora com st.button estilizado (sem navegação por URL)
+            # menu flutuante lateral – agora com botão (mesmo visual do link)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_{cid}")
+                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 if delete_clicked:
