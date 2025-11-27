@@ -309,6 +309,22 @@ if "logout" in qp:
     })
     _clear_query_params()
     do_rerun()
+    
+elif "delete_conv" in qp:
+    delete_cid = qp["delete_conv"]
+    if isinstance(delete_cid, list):
+        delete_cid = delete_cid[0]
+
+    delete_conversation(delete_cid)
+    if st.session_state.get("conversation_id") == delete_cid:
+        st.session_state.historico = []
+        st.session_state.conversation_id = None
+        st.session_state.selected_conversation_id = None
+
+    st.session_state.open_menu_conv = None
+    load_conversations_from_supabase()
+    _clear_query_params()
+    do_rerun()
 
 # ====== TELAS DE AUTENTICAÇÃO ======
 BASE_LOGIN_CSS = """
@@ -1172,18 +1188,19 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu lateral dentro da mesma row (popover)
+                        # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                if st.button("🗑 Excluir conversa", key=f"conv_delete_{cid}"):
-                    delete_conversation(cid)
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
-                    st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div class="conv-menu">
+                        <div class="conv-menu-item"
+                             onclick="window.location.search='?delete_conv={cid}'">
+                            🗑 Excluir conversa
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown('</div>', unsafe_allow_html=True)
 
