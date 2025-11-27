@@ -927,12 +927,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante (Excluir conversa) – card colado à direita da linha, sem sair da sidebar */
+/* Menu flutuante (Excluir conversa) – card colado à direita da linha */
 .conv-menu{
     position:absolute;
-    top:50%;                 /* centraliza verticalmente em relação à linha */
+    top:4px;
     right:4px;               /* encostado na borda direita da sidebar */
-    transform:translateY(-50%);
     width:190px;
     background:#111827;
     border:1px solid #374151;
@@ -941,17 +940,22 @@ section[data-testid="stSidebar"] button:active{
     padding:4px;
     z-index:1200;
 }
-.conv-menu button{
-    width:100% !important;
-    color:#FCA5A5 !important;
-    text-align:left !important;
-    font-size:0.86rem !important;
-    padding:6px 10px !important;
+
+/* Item clicável dentro do menu (sem cara de botão Streamlit) */
+.conv-menu-item{
+    cursor:pointer;
+    width:100%;
+    color:#FCA5A5;
+    text-align:left;
+    font-size:0.86rem;
+    padding:6px 10px;
+    border-radius:8px;
 }
-.conv-menu button:hover{
-    background:#7F1D1D !important;
-    color:#FEE2E2 !important;
+.conv-menu-item:hover{
+    background:#7F1D1D;
+    color:#FEE2E2;
 }
+
 
 
 /* ÁREA CENTRAL */
