@@ -861,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;
+    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -947,7 +947,7 @@ section[data-testid="stSidebar"] button:active{
 .conv-menu{
     position:absolute;
     top:50%;
-    right:8px;
+    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
     left:auto;
     transform:translateY(-50%);
     width:190px;
@@ -956,21 +956,24 @@ section[data-testid="stSidebar"] button:active{
     border-radius:12px;
     box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
-    z-index:3000;
+    z-index:3000;       /* acima de tudo na sidebar */
 }
 
-/* Item clicável dentro do menu (sem cara de botão Streamlit) */
-.conv-menu-item{
+/* Botão real do Streamlit dentro do menu (mantém visual) */
+.conv-menu .stButton > button{
     cursor:pointer;
     width:100%;
-    color:#BFDBFE;
     text-align:left;
     font-size:0.86rem;
     padding:6px 10px;
     border-radius:8px;
+    background:transparent;
+    border:none;
+    box-shadow:none;
+    color:#BFDBFE;          /* azul claro suave */
 }
-.conv-menu-item:hover{
-    background:#1D4ED8;
+.conv-menu .stButton > button:hover{
+    background:#1D4ED8;      /* azul mais forte no hover */
     color:#EFF6FF;
 }
 
@@ -1178,6 +1181,7 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1188,19 +1192,22 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral
+            # Menu flutuante com botão funcional de excluir
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown(
-                    f"""
-                    <div class="conv-menu">
-                        <div class="conv-menu-item conv-del"
-                             data-cid="{cid}">
-                            🗑 Excluir conversa
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                with st.container():
+                    st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                    if st.button("🗑 Excluir conversa", key=f"btn_del_{cid}"):
+                        delete_conversation(cid)
+
+                        if st.session_state.get("conversation_id") == cid:
+                            st.session_state.historico = []
+                            st.session_state.conversation_id = None
+                            st.session_state.selected_conversation_id = None
+
+                        st.session_state.open_menu_conv = None
+                        load_conversations_from_supabase()
+                        do_rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1226,7 +1233,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (autoscroll + delete) ======
+# ====== JS (autoscroll simples) ======
 st.markdown("""
 <script>
 (function(){
@@ -1252,17 +1259,6 @@ st.markdown("""
     window.addEventListener('load', ()=>{
         autoGrow();
         scrollToEnd(false);
-
-        // BIND dos botões "Excluir conversa"
-        document.querySelectorAll('.conv-del').forEach(function(el){
-            el.addEventListener('click', function(){
-                const cid = this.dataset.cid;
-                if(!cid) return;
-                const url = new URL(window.location.href);
-                url.searchParams.set('delete_conv', cid);
-                window.location.href = url.toString();
-            });
-        });
     });
 
     window.addEventListener('resize', ()=>{
