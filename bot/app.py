@@ -723,7 +723,7 @@ img.logo { height: 44px !important; width: auto !important }
     --card-height: calc(100dvh - var(--header-height) - var(--input-zone));
     --input-max: 900px;
     --input-bottom: 60px;
-                    
+
     --bg:#202123;
     --panel:#050509;
     --panel-header:#26272F;
@@ -935,27 +935,24 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – alinhado à direita da linha, sem sombra */
-/* Menu flutuante – alinhado à direita da linha, sem borda/barra */
-.conv-menu{
-    position:absolute;
-    top:50%;
-    right:8px;
-    left:auto;
-    transform:translateY(-50%);
-    /* deixa o container transparente, sem borda nem sombra */
-    width:auto;
-    background:transparent !important;
+/* Container do botão Excluir (sem barra/linha) */
+.sidebar-row .delete-container{
+    margin-top:6px;
+    padding-top:0;
     border:none !important;
     box-shadow:none !important;
-    padding:0;
-    margin:0;
-    z-index:3000;
 }
 
-/* Botão Excluir conversa – pill azul igual ao link bonito */
-.conv-menu button{
-    display:inline-flex !important;
+/* Botão Excluir – pill azul bonito */
+.sidebar-row .delete-container .stButton{
+    text-align:center;
+    padding:0 !important;
+    margin:0 !important;
+    border:none !important;
+    box-shadow:none !important;
+}
+.sidebar-row .delete-container .stButton > button{
+    display:inline-flex;
     align-items:center;
     justify-content:center;
 
@@ -968,21 +965,19 @@ section[data-testid="stSidebar"] button:active{
     font-weight:500 !important;
     color:#BFDBFE !important;
     text-align:center !important;
-    text-decoration:none !important;
 
-    box-shadow:0 10px 24px rgba(15,23,42,0.55) !important; /* glow leve */
+    box-shadow:0 10px 24px rgba(15,23,42,0.55) !important;
     cursor:pointer !important;
 }
-.conv-menu button:hover{
+.sidebar-row .delete-container .stButton > button:hover{
     background:#1D4ED8 !important;
     color:#EFF6FF !important;
     box-shadow:0 14px 32px rgba(15,23,42,0.70) !important;
 }
-.conv-menu button:active{
+.sidebar-row .delete-container .stButton > button:active{
     transform:translateY(1px);
     box-shadow:0 6px 16px rgba(15,23,42,0.60) !important;
 }
-
 
 /* ÁREA CENTRAL */
 .content{
@@ -1188,6 +1183,7 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
@@ -1198,9 +1194,9 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral – agora com botão (mesmo visual do link)
+            # Botão "Excluir conversa" – aparece logo abaixo, azul, sem barra
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                st.markdown('<div class="delete-container">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_conv_btn_{cid}")
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1210,9 +1206,10 @@ with st.sidebar:
                         st.session_state.historico = []
                         st.session_state.conversation_id = None
                         st.session_state.selected_conversation_id = None
+
                     st.session_state.open_menu_conv = None
                     load_conversations_from_supabase()
-                    do_rerun()
+                    # não precisa chamar do_rerun(): o próprio clique no botão já reroda o script
 
             st.markdown('</div>', unsafe_allow_html=True)
 
