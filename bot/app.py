@@ -848,11 +848,8 @@ section[data-testid="stSidebar"]{
     z-index:900 !important;
     transform:none !important;
     visibility:visible !important;
-
-    /* IMPORTANTE: permite o menu flutuar para fora sem aparecer barra estranha */
     overflow-y:auto !important;
-    overflow-x:visible !important;
-
+    overflow-x:hidden !important;
     color:var(--text);
 }
 section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
@@ -930,11 +927,12 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante (Excluir conversa) lateral, estilo popover */
+/* Menu flutuante (Excluir conversa) – card colado à direita da linha, sem sair da sidebar */
 .conv-menu{
     position:absolute;
-    top:2px;
-    left:calc(100% + 8px);   /* flutua para a direita da linha, fora da barra */
+    top:50%;                 /* centraliza verticalmente em relação à linha */
+    right:4px;               /* encostado na borda direita da sidebar */
+    transform:translateY(-50%);
     width:190px;
     background:#111827;
     border:1px solid #374151;
@@ -954,6 +952,7 @@ section[data-testid="stSidebar"] button:active{
     background:#7F1D1D !important;
     color:#FEE2E2 !important;
 }
+
 
 /* ÁREA CENTRAL */
 .content{
@@ -1169,6 +1168,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
+            # menu lateral dentro da mesma row (popover)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 if st.button("🗑 Excluir conversa", key=f"conv_delete_{cid}"):
