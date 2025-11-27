@@ -861,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
+    z-index:2000 !important;
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -947,7 +947,7 @@ section[data-testid="stSidebar"] button:active{
 .conv-menu{
     position:absolute;
     top:50%;
-    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
+    right:8px;
     left:auto;
     transform:translateY(-50%);
     width:190px;
@@ -956,21 +956,21 @@ section[data-testid="stSidebar"] button:active{
     border-radius:12px;
     box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
-    z-index:3000;       /* acima de tudo na sidebar */
+    z-index:3000;
 }
 
 /* Item clicável dentro do menu (sem cara de botão Streamlit) */
 .conv-menu-item{
     cursor:pointer;
     width:100%;
-    color:#BFDBFE;          /* azul claro suave */
+    color:#BFDBFE;
     text-align:left;
     font-size:0.86rem;
     padding:6px 10px;
     border-radius:8px;
 }
 .conv-menu-item:hover{
-    background:#1D4ED8;      /* azul mais forte no hover */
+    background:#1D4ED8;
     color:#EFF6FF;
 }
 
@@ -1188,13 +1188,13 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral (popover fake estilo ChatGPT)
+            # menu flutuante lateral
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown(
                     f"""
                     <div class="conv-menu">
-                        <div class="conv-menu-item"
-                             onclick="window.location.search='?delete_conv={cid}'">
+                        <div class="conv-menu-item conv-del"
+                             data-cid="{cid}">
                             🗑 Excluir conversa
                         </div>
                     </div>
@@ -1226,7 +1226,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (autoscroll simples) ======
+# ====== JS (autoscroll + delete) ======
 st.markdown("""
 <script>
 (function(){
@@ -1252,6 +1252,17 @@ st.markdown("""
     window.addEventListener('load', ()=>{
         autoGrow();
         scrollToEnd(false);
+
+        // BIND dos botões "Excluir conversa"
+        document.querySelectorAll('.conv-del').forEach(function(el){
+            el.addEventListener('click', function(){
+                const cid = this.dataset.cid;
+                if(!cid) return;
+                const url = new URL(window.location.href);
+                url.searchParams.set('delete_conv', cid);
+                window.location.href = url.toString();
+            });
+        });
     });
 
     window.addEventListener('resize', ()=>{
