@@ -883,15 +883,8 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* ==== Botões da sidebar (títulos + reticências) sem cara de botão branco ==== */
-section[data-testid="stSidebar"] .stButton{
-    background:transparent !important;
-    border:none !important;
-    box-shadow:none !important;
-    padding:0 !important;
-    margin:0 !important;
-}
-section[data-testid="stSidebar"] .stButton > button{
+/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
+section[data-testid="stSidebar"] button{
     background:transparent !important;
     border:none !important;
     box-shadow:none !important;
@@ -902,11 +895,11 @@ section[data-testid="stSidebar"] .stButton > button{
     text-align:left !important;
     width:100%;
 }
-section[data-testid="stSidebar"] .stButton > button:hover{
+section[data-testid="stSidebar"] button:hover{
     background:#111827 !important;
     color:#E5E7EB !important;
 }
-section[data-testid="stSidebar"] .stButton > button:active{
+section[data-testid="stSidebar"] button:active{
     background:#1F2937 !important;
 }
 
@@ -937,8 +930,8 @@ section[data-testid="stSidebar"] .stButton > button:active{
 /* Menu flutuante (Excluir conversa) lateral, estilo popover */
 .conv-menu{
     position:absolute;
-    top:4px;
-    right:-210px;                 /* sai para fora da sidebar, tipo ChatGPT */
+    top:0;
+    left:calc(100% + 8px);   /* flutua para a direita da linha, saindo da sidebar */
     width:190px;
     background:#111827;
     border:1px solid #374151;
@@ -1168,12 +1161,10 @@ with st.sidebar:
                 if st.button(titulo, key=f"conv_title_{cid}"):
                     load_conversation_messages(cid)
                     st.session_state.open_menu_conv = None
-                    do_rerun()
             with col_menu:
                 if st.button("⋯", key=f"conv_menu_{cid}"):
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
-                    do_rerun()
 
             # menu lateral dentro da mesma row (popover)
             if st.session_state.get("open_menu_conv") == cid:
@@ -1186,7 +1177,6 @@ with st.sidebar:
                         st.session_state.selected_conversation_id = None
                     st.session_state.open_menu_conv = None
                     load_conversations_from_supabase()
-                    do_rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('</div>', unsafe_allow_html=True)
