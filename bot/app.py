@@ -1,4 +1,4 @@
-# app.py - Frontend do Chatbot Quadra (Versão FINAL Corrigida + Supabase + Histórico estilo ChatGPT)
+# app.py - Frontend do Chatbot Quadra (Histórico por Conversa + Menu Excluir estilo ChatGPT)
 
 import streamlit as st
 import base64
@@ -68,6 +68,7 @@ def carregar_imagem_base64(path):
     except Exception:
         return None
 
+
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # Logo do header com tamanho inline
@@ -116,7 +117,7 @@ def _friendly_auth_error(msg: str) -> str:
 
 # ====== ESTADO ======
 if "historico" not in st.session_state:
-    st.session_state.historico = []  # lista de (pergunta, resposta)
+    st.session_state.historico = []
 
 st.session_state.setdefault("authenticated", False)
 st.session_state.setdefault("user_name", "Usuário")
@@ -125,86 +126,34 @@ st.session_state.setdefault("awaiting_answer", False)
 st.session_state.setdefault("answering_started", False)
 st.session_state.setdefault("pending_index", None)
 st.session_state.setdefault("pending_question", None)
+
 # Modo: 'login' ou 'register'
 st.session_state.setdefault("auth_mode", "login")
 st.session_state.setdefault("just_registered", False)
+
 # IDs para Supabase
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("conversation_id", None)
-# Lista de conversas e estados do histórico
-st.session_state.setdefault("conversations_list", [])   # [{id,title,created_at}]
+
+# Suporte a título da conversa (1ª pergunta) e lista local
+st.session_state.setdefault("conversations_list", [])  # [{id, title, created_at}, ...]
 st.session_state.setdefault("_title_set", False)
 st.session_state.setdefault("_sb_last_error", None)
-st.session_state.setdefault("_sidebar_loaded", False)
-st.session_state.setdefault("selected_conversation_id", None)
-st.session_state.setdefault("open_menu_conv", None)
 
-# ====== HELPERS SUPABASE ======
+# Controle de carregamento de conversas (sidebar)
+st.session_state.setdefault("_sidebar_loaded", False)
+
+# Controle de qual conversa está ativa e do menu de 3 pontos
+st.session_state.setdefault("active_conversation_id", None)
+st.session_state.setdefault("conv_menu_open_for", None)   # id da conversa com menu aberto
+st.session_state.setdefault("conv_menu_open_index", 0)    # índice da conversa no sidebar
+
+# ====== HELPERS SUPABASE / CONVERSAS ======
 def _title_from_first_question(q: str) -> str:
     if not q:
         return "Nova conversa"
     t = re.sub(r"\s+", " ", q.strip())
     return (t[:60] + "…") if len(t) > 60 else t
-
-
-def load_conversations_from_supabase():
-    """Carrega a lista de conversas do usuário para a sidebar (apenas título)."""
-    if not sb or not st.session_state.get("user_id"):
-        return
-    try:
-        res = (
-            sb.table("conversations")
-            .select("id,title,created_at")
-            .eq("user_id", st.session_state.user_id)
-            .order("created_at", desc=True)
-            .limit(50)
-            .execute()
-        )
-        st.session_state.conversations_list = res.data or []
-    except Exception as e:
-        st.session_state["_sb_last_error"] = f"conv.load: {_extract_err_msg(e)}"
-
-
-def load_conversation_messages(cid):
-    """Carrega as mensagens de uma conversa específica para o histórico local."""
-    if not sb or not cid:
-        return
-    try:
-        res = (
-            sb.table("messages")
-            .select("role,content,created_at")
-            .eq("conversation_id", cid)
-            .order("created_at", desc=False)
-            .execute()
-        )
-        rows = res.data or []
-        historico = []
-        for row in rows:
-            role = row.get("role")
-            content = row.get("content") or ""
-            if role == "user":
-                historico.append((content, ""))
-            elif role == "assistant":
-                if historico and historico[-1][1] == "":
-                    historico[-1] = (historico[-1][0], content)
-                else:
-                    historico.append(("[sistema]", content))
-        st.session_state.historico = historico
-        st.session_state.conversation_id = cid
-        st.session_state.selected_conversation_id = cid
-    except Exception as e:
-        st.session_state["_sb_last_error"] = f"conv.load_msgs: {_extract_err_msg(e)}"
-
-
-def delete_conversation(cid):
-    """Exclui conversa + mensagens no Supabase."""
-    if not sb or not cid:
-        return
-    try:
-        sb.table("messages").delete().eq("conversation_id", cid).execute()
-        sb.table("conversations").delete().eq("id", cid).execute()
-    except Exception as e:
-        st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
 
 
 def get_or_create_conversation():
@@ -225,9 +174,11 @@ def get_or_create_conversation():
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
-        st.session_state["selected_conversation_id"] = cid
-        # atualiza lista local (conversa mais recente no topo)
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
+        st.session_state["active_conversation_id"] = cid
+
+        # atualiza lista local (coloca no topo)
+        conv_item = {"id": cid, "title": payload["title"], "created_at": r.data[0].get("created_at")}
+        st.session_state.conversations_list.insert(0, conv_item)
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
@@ -240,6 +191,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
+        # Atualiza lista local
         for it in st.session_state.conversations_list:
             if it.get("id") == cid:
                 it["title"] = title
@@ -261,6 +213,87 @@ def save_message(cid, role, content):
     except Exception as e:
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
+
+def load_conversations_for_sidebar():
+    """Carrega a lista de conversas (1 item por sessão) para a barra lateral."""
+    if not sb or not st.session_state.get("user_id"):
+        return
+    try:
+        res = (
+            sb.table("conversations")
+            .select("id, title, created_at")
+            .eq("user_id", st.session_state.user_id)
+            .order("created_at", desc=True)  # desc=True é o parâmetro correto
+            .limit(50)
+            .execute()
+        )
+        st.session_state.conversations_list = res.data or []
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.load: {_extract_err_msg(e)}"
+
+
+def load_conversation_history(cid):
+    """Carrega todas as mensagens de uma conversa e monta o histórico local."""
+    if not sb or not cid:
+        return
+    try:
+        res = (
+            sb.table("messages")
+            .select("role, content, created_at")
+            .eq("conversation_id", cid)
+            .order("created_at", desc=False)  # ordem cronológica
+            .execute()
+        )
+        rows = res.data or []
+        pares = []
+        for msg in rows:
+            role = msg.get("role")
+            content = msg.get("content") or ""
+            if role == "user":
+                pares.append([content, ""])
+            elif role == "assistant":
+                if pares and not pares[-1][1]:
+                    pares[-1][1] = content
+                else:
+                    pares.append(["", content])
+
+        st.session_state.historico = [(p[0], p[1]) for p in pares]
+        st.session_state["conversation_id"] = cid
+        st.session_state["active_conversation_id"] = cid
+        st.session_state["awaiting_answer"] = False
+        st.session_state["answering_started"] = False
+        st.session_state["pending_index"] = None
+        st.session_state["pending_question"] = None
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.load_hist: {_extract_err_msg(e)}"
+
+
+def delete_conversation(cid):
+    """Exclui conversa + mensagens no Supabase e limpa do estado."""
+    if not sb or not cid:
+        return
+    try:
+        sb.table("messages").delete().eq("conversation_id", cid).execute()
+        sb.table("conversations").delete().eq("id", cid).execute()
+    except Exception as e:
+        st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
+        return
+
+    # Remove da lista local
+    st.session_state.conversations_list = [
+        c for c in st.session_state.conversations_list if c.get("id") != cid
+    ]
+
+    # Se era a conversa ativa, limpa histórico
+    if st.session_state.get("conversation_id") == cid:
+        st.session_state.conversation_id = None
+        st.session_state.active_conversation_id = None
+        st.session_state.historico = []
+        st.session_state._title_set = False
+
+    # fecha menu
+    st.session_state.conv_menu_open_for = None
+    st.session_state.conv_menu_open_index = 0
 
 # ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
@@ -304,8 +337,9 @@ if "logout" in qp:
         "_sb_last_error": None,
         "conversations_list": [],
         "_sidebar_loaded": False,
-        "selected_conversation_id": None,
-        "open_menu_conv": None,
+        "active_conversation_id": None,
+        "conv_menu_open_for": None,
+        "conv_menu_open_index": 0,
     })
     _clear_query_params()
     do_rerun()
@@ -467,6 +501,7 @@ def render_login_screen():
                 st.session_state["login_error"] = "Digite a senha."
                 return
 
+            # Backdoor simples
             if pwd_val == "quadra123":
                 try:
                     if sb:
@@ -483,9 +518,7 @@ def render_login_screen():
                     "_title_set": False,
                     "conversations_list": [],
                     "_sidebar_loaded": False,
-                    "selected_conversation_id": None,
-                    "open_menu_conv": None,
-                    "historico": [],
+                    "active_conversation_id": None,
                 })
                 return
 
@@ -529,9 +562,7 @@ def render_login_screen():
                 st.session_state._title_set = False
                 st.session_state.conversations_list = []
                 st.session_state._sidebar_loaded = False
-                st.session_state.selected_conversation_id = None
-                st.session_state.open_menu_conv = None
-                st.session_state.historico = []
+                st.session_state.active_conversation_id = None
 
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
@@ -684,9 +715,9 @@ if not st.session_state.authenticated:
     else:
         render_login_screen()
 
-# carrega lista de conversas quando logado
+# Carrega lista de conversas (títulos) uma vez após login
 if sb and st.session_state.get("user_id") and not st.session_state.get("_sidebar_loaded"):
-    load_conversations_from_supabase()
+    load_conversations_for_sidebar()
     st.session_state["_sidebar_loaded"] = True
 
 # ====== MARCAÇÃO ======
@@ -707,16 +738,16 @@ def formatar_markdown_basico(text: str) -> str:
 def linkify(text: str) -> str:
     return formatar_markdown_basico(text or "")
 
-# ====== CSS (Chat + Sidebar estilizada) ======
-st.markdown("""
+# ====== CSS (Chat + Sidebar + Menu 3 pontos) ======
+st.markdown(f"""
 <style>
-* { box-sizing: border-box }
-html, body { margin: 0; padding: 0 }
-img { max-width: 100%; height: auto; display: inline-block }
-img.logo { height: 44px !important; width: auto !important }
+* {{ box-sizing: border-box }}
+html, body {{ margin: 0; padding: 0 }}
+img {{ max-width: 100%; height: auto; display: inline-block }}
+img.logo {{ height: 44px !important; width: auto !important }}
 
 /* Paleta ChatGPT dark */
-:root{
+:root{{
     --content-max-width: min(96vw, 1400px);
     --header-height: 68px;
     --input-zone: 150px;
@@ -745,31 +776,28 @@ img.logo { height: 44px !important; width: auto !important }
     --input-border:#565869;
 
     --sidebar-w:270px;
-    --sidebar-items-top-gap: -45px;
-    --sidebar-sub-top-gap: -30px;
-    --sidebar-list-start-gap: 3px;
-}
+}}
 
-body, .stApp {
+body, .stApp {{
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     background:var(--bg) !important;
     color:var(--text) !important;
-}
+}}
 
-header[data-testid="stHeader"]{ display:none !important }
-div[data-testid="stToolbar"]{ display:none !important }
-#MainMenu, footer{ visibility:hidden; height:0 !important }
+header[data-testid="stHeader"]{{ display:none !important }}
+div[data-testid="stToolbar"]{{ display:none !important }}
+#MainMenu, footer{{ visibility:hidden; height:0 !important }}
 
-html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{
+html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewContainer"]{{
     height:100dvh !important;
     max-height:100dvh !important;
     overflow:hidden !important;
     overscroll-behavior:none;
-}
-.block-container{ padding:0 !important; min-height:0 !important }
+}}
+.block-container{{ padding:0 !important; min-height:0 !important }}
 
 /* HEADER */
-.header{
+.header{{
     position:fixed;
     inset:0 0 auto 0;
     height:var(--header-height);
@@ -780,29 +808,29 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     background:var(--panel-header);
     z-index:1000;
     border-bottom:1px solid var(--border);
-}
-.header-left{
+}}
+.header-left{{
     display:flex;
     align-items:center;
     gap:10px;
     font-weight:600;
     color:var(--text);
-}
-.header-left .title-sub{
+}}
+.header-left .title-sub{{
     font-weight:500;
     font-size:.85rem;
     color:var(--muted);
     margin-top:-4px;
-}
-.header-right{
+}}
+.header-right{{
     display:flex;
     align-items:center;
     gap:12px;
     color:var(--text);
-}
+}}
 
 /* Botão Sair */
-.header a{
+.header a{{
     color:#FFFFFF !important;
     text-decoration:none;
     border:1px solid #2563EB;
@@ -812,15 +840,15 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     background:#3B82F6;
     font-weight:600;
     cursor:pointer;
-}
-.header a:hover{
+}}
+.header a:hover{{
     color:#FFFFFF !important;
     border-color:#1D4ED8;
     background:#2563EB;
-}
+}}
 
 /* Avatar */
-.user-circle {
+.user-circle {{
     width: 32px;
     height: 32px;
     border-radius: 50%;
@@ -831,10 +859,10 @@ html, body, .stApp, main, .stMain, .block-container, [data-testid="stAppViewCont
     justify-content: center;
     font-weight: 600;
     font-size: 1rem;
-}
+}}
 
 /* SIDEBAR */
-section[data-testid="stSidebar"]{
+section[data-testid="stSidebar"]{{
     position:fixed !important;
     top:var(--header-height) !important;
     left:0 !important;
@@ -848,117 +876,93 @@ section[data-testid="stSidebar"]{
     z-index:900 !important;
     transform:none !important;
     visibility:visible !important;
-    overflow-y:auto !important;
-    overflow-x:hidden !important;
+    overflow:hidden !important;
     color:var(--text);
-}
-section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
-div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
-section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
+}}
+section[data-testid="stSidebar"] > div{{ padding-top:0 !important; margin-top:0 !important; }}
+div[data-testid="stSidebarContent"]{{ padding-top:0 !important; margin-top:0 !important; }}
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{{ padding-top:0 !important; margin-top:0 !important; }}
 
-/* some default separators/lines do sidebar */
-section[data-testid="stSidebar"] hr,
-section[data-testid="stSidebar"] [role="separator"]{
-    display:none !important;
-}
+div[data-testid="stAppViewContainer"]{{ margin-left:var(--sidebar-w) !important }}
 
-div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
-
-/* Sidebar títulos */
-.sidebar-header{
+/* Header do histórico */
+.sidebar-header{{
     font-size:0.9rem;
     font-weight:600;
     letter-spacing:.02em;
     color:var(--text);
-    margin:0 4px -2px 2px;
-}
-.sidebar-sub{
+    margin:4px 8px 0 8px;
+}}
+.sidebar-sub{{
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
-}
-.hist-empty{
+    margin:0 8px 6px 8px;
+}}
+
+/* Itens de conversa na sidebar */
+.conv-row-container {{
+    margin:6px 8px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+}}
+.conv-pill {{
+    flex:1;
+}}
+.conv-pill button{{
+    width:100% !important;
+    text-align:left !important;
+    border-radius:12px !important;
+    padding:10px 12px !important;
+    font-size:0.9rem !important;
+    font-weight:400 !important;
+    white-space:normal !important;
+    line-height:1.32 !important;
+    background:#111827 !important;
+    color:#E5E7EB !important;
+    border:1px solid #1F2937 !important;
+    box-shadow:none !important;
+}}
+.conv-pill button:hover{{
+    background:#1F2937 !important;
+}}
+
+.conv-pill-active button{{
+    background:#1F2937 !important;
+    border-color:#374151 !important;
+}}
+
+.conv-ellipsis button{{
+    width:32px !important;
+    height:32px !important;
+    border-radius:10px !important;
+    padding:0 !important;
+    background:#111827 !important;
+    border:1px solid #1F2937 !important;
+    color:#9CA3AF !important;
+    font-size:18px !important;
+    line-height:1 !important;
+}}
+.conv-ellipsis button:hover{{
+    background:#1F2937 !important;
+    color:#E5E7EB !important;
+}}
+
+/* Texto quando não há histórico */
+.hist-empty{{
     color:var(--muted);
     font-size:.9rem;
     padding:8px 10px;
-}
-
-/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
-section[data-testid="stSidebar"] button{
-    background:transparent !important;
-    border:none !important;
-    box-shadow:none !important;
-    color:var(--text-dim) !important;
-    font-size:0.9rem !important;
-    padding:4px 8px !important;
-    border-radius:999px !important;
-    text-align:left !important;
-    width:100%;
-}
-section[data-testid="stSidebar"] button:hover{
-    background:#111827 !important;
-    color:#E5E7EB !important;
-}
-section[data-testid="stSidebar"] button:active{
-    background:#1F2937 !important;
-}
-
-/* Linha de conversa (título + reticências) */
-.sidebar-row{
-    position:relative;
-    display:flex;
-    flex-direction:column;
-    gap:2px;
-    margin:4px 4px;
-    padding:2px 2px;
-    border-radius:10px;
-}
-.sidebar-row-active{
-    background:#111827;
-}
-.sidebar-row-title button{
-    width:100%;
-}
-.sidebar-row-menu button{
-    width:auto;
-    min-width:26px;
-    text-align:center;
-    padding-inline:4px !important;
-    font-size:0.9rem !important;
-}
-
-/* Menu flutuante (Excluir conversa) lateral, estilo popover */
-.conv-menu{
-    position:absolute;
-    top:4px;
-    right:-210px;                 /* sai para fora da sidebar, tipo ChatGPT */
-    width:190px;
-    background:#111827;
-    border:1px solid #374151;
-    border-radius:12px;
-    box-shadow:0 18px 40px rgba(0,0,0,0.70);
-    padding:4px;
-    z-index:1200;
-}
-.conv-menu button{
-    width:100% !important;
-    color:#FCA5A5 !important;
-    text-align:left !important;
-    font-size:0.86rem !important;
-    padding:6px 10px !important;
-}
-.conv-menu button:hover{
-    background:#7F1D1D !important;
-    color:#FEE2E2 !important;
-}
+}}
 
 /* ÁREA CENTRAL */
-.content{
+.content{{
     max-width:var(--content-max-width);
     margin:var(--header-height) auto 0;
     padding:8px;
-}
-#chatCard, .chat-card{
+}}
+#chatCard, .chat-card{{
     position:relative;
     z-index:50 !important;
     background:var(--bg) !important;
@@ -972,17 +976,17 @@ section[data-testid="stSidebar"] button:active{
     padding-bottom:350px;
     scroll-padding-bottom:350px;
     color:var(--text);
-}
-#chatCard *, .chat-card *{ position:relative; z-index:51 !important }
+}}
+#chatCard *, .chat-card *{{ position:relative; z-index:51 !important }}
 
-.message-row{
+.message-row{{
     display:flex !important;
     margin:12px 4px;
-}
-.message-row.user{ justify-content:flex-end }
-.message-row.assistant{ justify-content:flex-start }
+}}
+.message-row.user{{ justify-content:flex-end }}
+.message-row.assistant{{ justify-content:flex-start }}
 
-.bubble{
+.bubble{{
     max-width:88%;
     padding:14px 16px;
     border-radius:12px;
@@ -992,24 +996,24 @@ section[data-testid="stSidebar"] button:active{
     word-wrap:break-word;
     border:1px solid transparent !important;
     box-shadow:none !important;
-}
-.bubble.user{
+}}
+.bubble.user{{
     background:var(--bubble-user);
     border-bottom-right-radius:6px;
-}
-.bubble.assistant{
+}}
+.bubble.assistant{{
     background:var(--bubble-assistant);
     border-bottom-left-radius:6px;
-}
+}}
 
-.chat-card a{
+.chat-card a{{
     color:var(--link) !important;
     text-decoration:underline;
-}
-.chat-card a:hover{ color:var(--link-hover) }
+}}
+.chat-card a:hover{{ color:var(--link-hover) }}
 
 /* CHAT INPUT */
-[data-testid="stChatInput"]{
+[data-testid="stChatInput"]{{
     position:fixed !important;
     left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2) !important;
     transform:translateX(-50%) !important;
@@ -1020,20 +1024,20 @@ section[data-testid="stSidebar"] button:active{
     border:none !important;
     box-shadow:none !important;
     padding:0 !important;
-}
-[data-testid="stChatInput"] *{
+}}
+[data-testid="stChatInput"] *{{
     background:transparent !important;
     color:var(--text) !important;
-}
-[data-testid="stChatInput"] > div{
+}}
+[data-testid="stChatInput"] > div{{
     background:var(--input-bg) !important;
     border:1px solid var(--input-border) !important;
     border-radius:999px !important;
     box-shadow:0 10px 24px rgba(0,0,0,.45) !important;
     overflow:hidden;
     transition:border-color .12s ease, box-shadow .12s ease;
-}
-[data-testid="stChatInput"] textarea{
+}}
+[data-testid="stChatInput"] textarea{{
     width:100% !important;
     border:none !important;
     border-radius:999px !important;
@@ -1045,21 +1049,21 @@ section[data-testid="stSidebar"] button:active{
     max-height:220px !important;
     overflow-y:hidden !important;
     caret-color:#ffffff !important;
-}
-[data-testid="stChatInput"] textarea::placeholder{
+}}
+[data-testid="stChatInput"] textarea::placeholder{{
     color:var(--muted) !important;
-}
-[data-testid="stChatInput"] textarea:focus::placeholder{
+}}
+[data-testid="stChatInput"] textarea:focus::placeholder{{
     color:transparent !important;
     opacity:0 !important;
-}
-[data-testid="stChatInput"] button{
+}}
+[data-testid="stChatInput"] button{{
     margin-right:8px !important;
     border:none !important;
     background:transparent !important;
     color:var(--text-dim) !important;
-}
-[data-testid="stChatInput"] svg{ fill:currentColor !important }
+}}
+[data-testid="stChatInput"] svg{{ fill:currentColor !important }}
 
 /* bottom container fantasma */
 [data-testid="stBottomBlockContainer"],
@@ -1067,30 +1071,30 @@ section[data-testid="stSidebar"] button:active{
 [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"],
 [data-testid="stBottomBlockContainer"] [class*="block-container"],
 [data-testid="stBottomBlockContainer"]::before,
-[data-testid="stBottomBlockContainer"]::after{
+[data-testid="stBottomBlockContainer"]::after{{
     background:transparent !important;
     box-shadow:none !important;
     border:none !important;
-}
-[data-testid="stBottomBlockContainer"]{
+}}
+[data-testid="stBottomBlockContainer"]{{
     padding:0 !important;
     margin:0 !important;
     height:0 !important;
     min-height:0 !important;
-}
+}}
 
 /* Scrollbar */
 [data-testid="stDecoration"],
-[data-testid="stStatusWidget"]{ display:none !important }
-*::-webkit-scrollbar{ width:10px; height:10px }
-*::-webkit-scrollbar-thumb{
+[data-testid="stStatusWidget"]{{ display:none !important }}
+*::-webkit-scrollbar{{ width:10px; height:10px }}
+*::-webkit-scrollbar-thumb{{
     background:#565869;
     border-radius:8px;
-}
-*::-webkit-scrollbar-track{ background:#171717 }
+}}
+*::-webkit-scrollbar-track{{ background:#171717 }}
 
 /* Spinner */
-.spinner{
+.spinner{{
     width:16px;
     height:16px;
     border:2px solid rgba(37,99,235,.25);
@@ -1098,8 +1102,42 @@ section[data-testid="stSidebar"] button:active{
     border-radius:50%;
     display:inline-block;
     animation:spin .8s linear infinite;
-}
-@keyframes spin{ to{ transform:rotate(360deg) } }
+}}
+@keyframes spin{{ to{{ transform:rotate(360deg) }} }}
+
+/* ==== MENU FLUTUANTE DAS 3 BARRINHAS (EXCLUIR) ==== */
+.conv-menu-wrapper {{
+    position:fixed;
+    left:calc(var(--sidebar-w) + 8px);
+    z-index:1400;
+    background:#111827;
+    border-radius:12px;
+    border:1px solid #4B5563;
+    box-shadow:0 18px 40px rgba(0,0,0,.65);
+    padding:4px 0;
+    min-width:180px;
+}}
+.conv-menu-wrapper button{{
+    width:100% !important;
+    text-align:left !important;
+    padding:8px 12px !important;
+    border:none !important;
+    background:transparent !important;
+    color:#F9FAFB !important;
+    font-size:0.9rem !important;
+    font-weight:400 !important;
+    border-radius:10px !important;
+}}
+.conv-menu-wrapper button:hover{{
+    background:#7F1D1D !important;
+    color:#FEE2E2 !important;
+}}
+
+/* Ícone de lixeira no texto */
+.conv-menu-wrapper button span.icon{{
+    margin-right:6px;
+    font-size:0.95rem;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1133,56 +1171,62 @@ if st.session_state.get("_sb_last_error"):
     st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
     st.session_state["_sb_last_error"] = None
 
-# ====== SIDEBAR (Histórico estilo ChatGPT) ======
+# ====== SIDEBAR (Histórico por conversa) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
-        <div class="sidebar-sub">Conversas</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
-    conversas = st.session_state.conversations_list or []
-
-    if not conversas:
-        st.markdown('<div class="hist-empty">Sem conversas ainda.</div>', unsafe_allow_html=True)
+    convs = st.session_state.get("conversations_list") or []
+    if not convs:
+        st.markdown('<div class="hist-empty">Nenhuma conversa ainda.</div>', unsafe_allow_html=True)
     else:
-        for conv in conversas:
+        for idx, conv in enumerate(convs):
             cid = conv.get("id")
-            titulo = conv.get("title") or "Nova conversa"
-            titulo = titulo.strip().replace("\n", " ")
+            titulo = (conv.get("title") or "Nova conversa").strip().replace("\n", " ")
             if len(titulo) > 80:
                 titulo = titulo[:80] + "…"
 
-            active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
-            st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
-            col_t, col_menu = st.columns([0.78, 0.22])
-            with col_t:
-                if st.button(titulo, key=f"conv_title_{cid}"):
-                    load_conversation_messages(cid)
-                    st.session_state.open_menu_conv = None
+            is_active = (cid == st.session_state.get("active_conversation_id"))
+
+            pill_class = "conv-pill-active" if is_active else "conv-pill"
+            st.markdown(f'<div class="conv-row-container">', unsafe_allow_html=True)
+            col_title, col_menu = st.columns([10, 2])
+
+            with col_title:
+                if st.button(titulo, key=f"conv_open_{cid}", use_container_width=True):
+                    load_conversation_history(cid)
+                    st.session_state.active_conversation_id = cid
+                    st.session_state.conv_menu_open_for = None
                     do_rerun()
+
             with col_menu:
                 if st.button("⋯", key=f"conv_menu_{cid}"):
-                    current = st.session_state.get("open_menu_conv")
-                    st.session_state.open_menu_conv = None if current == cid else cid
+                    current = st.session_state.get("conv_menu_open_for")
+                    if current == cid:
+                        st.session_state.conv_menu_open_for = None
+                    else:
+                        st.session_state.conv_menu_open_for = cid
+                        st.session_state.conv_menu_open_index = idx
                     do_rerun()
-
-            # menu lateral dentro da mesma row (popover)
-            if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                if st.button("🗑 Excluir conversa", key=f"conv_delete_{cid}"):
-                    delete_conversation(cid)
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
-                    st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
-                    do_rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('</div>', unsafe_allow_html=True)
+
+# ====== MENU FLUTUANTE (EXCLUIR CONVERSA) ======
+menu_conv_id = st.session_state.get("conv_menu_open_for")
+if menu_conv_id:
+    idx = st.session_state.get("conv_menu_open_index", 0)
+    # posição aproximada vertical baseada no índice
+    top_px = 120 + idx * 52  # ajuste fino se quiser
+    menu_placeholder = st.empty()
+    with menu_placeholder.container():
+        st.markdown(
+            f'<div class="conv-menu-wrapper" style="top:{top_px}px;">',
+            unsafe_allow_html=True,
+        )
+        if st.button("🗑 Excluir conversa", key="btn_delete_conversation"):
+            delete_conversation(menu_conv_id)
+            do_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ====== RENDER MENSAGENS ======
 msgs_html = []
@@ -1206,7 +1250,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ====== JS (autoscroll simples) ======
+# ====== JS (autoscroll + autoGrow) ======
 st.markdown("""
 <script>
 (function(){
@@ -1268,8 +1312,9 @@ if pergunta and pergunta.strip():
 
     try:
         cid = get_or_create_conversation()
-        save_message(cid, "user", q)
-        update_conversation_title_if_first_question(cid, q)
+        if cid:
+            save_message(cid, "user", q)
+            update_conversation_title_if_first_question(cid, q)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.user: {_extract_err_msg(e)}"
 
@@ -1292,7 +1337,8 @@ if st.session_state.awaiting_answer and st.session_state.answering_started:
 
     try:
         cid = get_or_create_conversation()
-        save_message(cid, "assistant", resposta)
+        if cid:
+            save_message(cid, "assistant", resposta)
     except Exception as e:
         st.session_state["_sb_last_error"] = f"save.assistant: {_extract_err_msg(e)}"
 
