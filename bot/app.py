@@ -861,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
+    z-index:2000 !important;
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -876,6 +876,11 @@ section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 
 section[data-testid="stSidebar"] hr,
 section[data-testid="stSidebar"] [role="separator"]{
     display:none !important;
+}
+
+/* esconde barras horizontais criadas com border-bottom inline */
+section[data-testid="stSidebar"] div[style*="border-bottom"]{
+    border-bottom:none !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -932,23 +937,21 @@ section[data-testid="stSidebar"] button:active{
 .sidebar-row-active{
     background:#111827;
 }
-.sidebar-row-title button{
+
+/* âncora pro menu (envolve o botão ⋯ + menu) */
+.menu-anchor{
+    position:relative;
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
     width:100%;
 }
-.sidebar-row-menu button{
-    width:auto;
-    min-width:26px;
-    text-align:center;
-    padding-inline:4px !important;
-    font-size:0.9rem !important;
-}
 
-/* Menu flutuante – alinhado à direita da linha, sem barra estranha */
+/* Menu flutuante – do lado dos 3 pontinhos */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
-    left:auto;
+    left:calc(100% + 8px);   /* logo à direita dos 3 pontinhos */
     transform:translateY(-50%);
     width:190px;
     background:#020617;
@@ -956,7 +959,7 @@ section[data-testid="stSidebar"] button:active{
     border-radius:12px;
     box-shadow:0 18px 40px rgba(0,0,0,0.75);
     padding:4px;
-    z-index:3000;       /* acima de tudo na sidebar */
+    z-index:3000;
 }
 
 /* Item clicável dentro do menu (sem cara de botão Streamlit) */
@@ -1178,29 +1181,34 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
+
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
                     load_conversation_messages(cid)
                     st.session_state.open_menu_conv = None
+
             with col_menu:
+                st.markdown('<div class="menu-anchor">', unsafe_allow_html=True)
+
                 if st.button("⋯", key=f"conv_menu_{cid}"):
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral (popover fake estilo ChatGPT)
-            if st.session_state.get("open_menu_conv") == cid:
-                st.markdown(
-                    f"""
-                    <div class="conv-menu">
-                        <div class="conv-menu-item"
-                             onclick="window.location.search='?delete_conv={cid}'">
-                            🗑 Excluir conversa
+                if st.session_state.get("open_menu_conv") == cid:
+                    st.markdown(
+                        f"""
+                        <div class="conv-menu">
+                            <div class="conv-menu-item"
+                                 onclick="window.location.search='?delete_conv={cid}'">
+                                🗑 Excluir conversa
+                            </div>
                         </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown('</div>', unsafe_allow_html=True)
 
