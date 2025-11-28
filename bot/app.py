@@ -68,7 +68,6 @@ def carregar_imagem_base64(path):
     except Exception:
         return None
 
-
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # Logo do header com tamanho inline
@@ -890,7 +889,7 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* MATAR QUALQUER SEPARADOR GLOBAL (inclusive essa barra chata do histórico) */
+/* Remove separadores globais */
 hr,
 div[role="separator"],
 [role="separator"]{
@@ -900,11 +899,16 @@ div[role="separator"],
     margin:0 !important;
     padding:0 !important;
 }
-/* mata barras finas criadas como div inline na sidebar */
+
+/* CAMUFLAGEM FINAL DA BARRA "FANTASMA" DENTRO DA SIDEBAR */
 section[data-testid="stSidebar"] div[style*="height: 1px"],
 section[data-testid="stSidebar"] div[style*="height:1px"],
-section[data-testid="stSidebar"] div[style*="height: 0.5px"]{
-    display:none !important;
+section[data-testid="stSidebar"] div[style*="height: 0.5px"],
+section[data-testid="stSidebar"] div[style*="border-bottom"],
+section[data-testid="stSidebar"] div[style*="border-top"]{
+    background-color:#050509 !important;
+    border-color:#050509 !important;
+    color:#050509 !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -915,12 +919,12 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-weight:600;
     letter-spacing:.02em;
     color:var(--text);
-    margin:0 4px -2px 2px;
+    margin:0 4px 4px 2px;
 }
 .sidebar-sub{
-    font-size:0.95rem;        /* maior que antes */
+    font-size:0.9rem;  /* fonte maior para "Conversas" */
     color:var(--muted);
-    font-weight:600;          /* mais forte */
+    font-weight:500;
     margin:4px 4px 6px;
 }
 .hist-empty{
@@ -929,29 +933,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
-/* Botão NOVO CHAT (wrapper) */
-.new-chat-wrap{
-    margin:8px 4px 4px;
-}
-.new-chat-wrap button{
-    width:100% !important;
-    background:#1D4ED8 !important;
-    color:#F9FAFB !important;
-    border-radius:999px !important;
-    border:1px solid #1D4ED8 !important;
-    padding:6px 10px !important;
-    font-size:0.9rem !important;
-    font-weight:600 !important;
-    text-align:center !important;
-    box-shadow:0 14px 30px rgba(0,0,0,0.7) !important;
-}
-.new-chat-wrap button:hover{
-    background:#2563EB !important;
-    border-color:#2563EB !important;
-    color:#FFFFFF !important;
-}
-
-/* Botões da sidebar (títulos + reticências) sem cara de botão branco */
+/* Botões da sidebar (títulos + reticências + novo chat) */
 section[data-testid="stSidebar"] button{
     background:transparent !important;
     border:none !important;
@@ -962,6 +944,13 @@ section[data-testid="stSidebar"] button{
     border-radius:999px !important;
     text-align:left !important;
     width:100%;
+}
+section[data-testid="stSidebar"] button:hover{
+    background:#111827 !important;
+    color:#E5E7EB !important;
+}
+section[data-testid="stSidebar"] button:active{
+    background:#1F2937 !important;
 }
 
 /* Linha de conversa (título + reticências) */
@@ -1217,11 +1206,8 @@ if st.session_state.get("conversation_to_delete"):
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # --- Botão NOVO CHAT acima do histórico ---
-    st.markdown('<div class="new-chat-wrap">', unsafe_allow_html=True)
-    new_chat_clicked = st.button("＋ Novo chat", key="btn_new_chat")
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    # Botão "Novo chat" – apenas limpa estado e prepara nova conversa
+    new_chat_clicked = st.button("+ Novo chat", key="btn_new_chat")
     if new_chat_clicked:
         st.session_state.historico = []
         st.session_state.conversation_id = None
@@ -1231,8 +1217,8 @@ with st.sidebar:
         st.session_state.awaiting_answer = False
         st.session_state.answering_started = False
         st.session_state.open_menu_conv = None
-        st.session_state.conversation_to_delete = None
         st.session_state._title_set = False
+        # não mexe em conversations_list: as conversas antigas permanecem
         do_rerun()
 
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
@@ -1364,7 +1350,7 @@ if pergunta and pergunta.strip():
 
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True    #
+    st.session_state.awaiting_answer = True
     st.session_state.answering_started = False
     do_rerun()
 
