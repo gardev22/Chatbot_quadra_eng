@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT / DELETE VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -846,7 +846,7 @@ section[data-testid="stSidebar"]{
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
-    overflow-x:visible !important;
+    overflow-x:hidden !important;
     color:var(--text);
 }
 section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !important; }
@@ -875,14 +875,15 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-weight:400;
 }
 
-/* barra sob "Conversas": neutra, sem efeito */
+/* barra sob "Conversas": remove completamente */
 .sidebar-bar{
     border:0 !important;
     box-shadow:none !important;
     padding:0 !important;
-    margin:0 !important;
-    background:transparent !important;
+    margin:2px 0 4px 0 !important;
 }
+
+/* tentativa extra de matar bordas que o Streamlit possa injetar */
 .sidebar-bar *{
     border:0 !important;
     box-shadow:none !important;
@@ -938,11 +939,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão azul pill, ao lado dos 3 pontos (pra fora) */
+/* Menu flutuante – botão azul pill, ao lado dos 3 pontos */
 .conv-menu{
     position:absolute;
     top:50%;
-    left:calc(100% + 8px);
+    right:4px;
     transform:translateY(-50%);
     z-index:3000;
 }
@@ -1150,8 +1151,11 @@ if st.session_state.get("_sb_last_error"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    # Cabeçalho simples, sem wrapper que vira barra
-    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
+        <div class="sidebar-sub">Conversas</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
 
