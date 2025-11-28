@@ -138,6 +138,8 @@ st.session_state.setdefault("_sb_last_error", None)
 st.session_state.setdefault("_sidebar_loaded", False)
 st.session_state.setdefault("selected_conversation_id", None)
 st.session_state.setdefault("open_menu_conv", None)
+# controle de exclusão de conversa (1 clique)
+st.session_state.setdefault("conversation_to_delete", None)
 
 # ====== HELPERS SUPABASE ======
 def _title_from_first_question(q: str) -> str:
@@ -192,6 +194,8 @@ def load_conversation_messages(cid):
         st.session_state.historico = historico
         st.session_state.conversation_id = cid
         st.session_state.selected_conversation_id = cid
+        # reset do controle de título ao trocar de conversa
+        st.session_state._title_set = False
     except Exception as e:
         st.session_state["_sb_last_error"] = f"conv.load_msgs: {_extract_err_msg(e)}"
 
@@ -207,11 +211,12 @@ def delete_conversation(cid):
         st.session_state["_sb_last_error"] = f"conv.delete: {_extract_err_msg(e)}"
 
 
-def get_or_create_conversation():
+def get_or_create_conversation(initial_title: str | None = None):
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-    IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
-    O título inicial agora é neutro ("Nova conversa") até receber a 1ª pergunta.
+
+    AGORA: se for a primeira pergunta, já grava o título com o texto da pergunta
+    (estilo ChatGPT) e nunca aparece "Nova conversa" no histórico.
     """
     if not sb or not st.session_state.get("user_id"):
         return None
@@ -221,13 +226,23 @@ def get_or_create_conversation():
     payload = {
         "user_id": st.session_state.user_id,
     }
+    # se já tiver título inicial (primeira pergunta), usa ele na criação
+    if initial_title:
+        payload["title"] = _title_from_first_question(initial_title)
+
     try:
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
+        # se por algum motivo o Supabase já retornar título, usamos; se não, derivamos
+        title_db = r.data[0].get("title")
+        final_title = title_db or _title_from_first_question(initial_title)
+
         st.session_state["conversation_id"] = cid
         st.session_state["selected_conversation_id"] = cid
-        # título local começa como "Nova conversa" até ser atualizado pela 1ª pergunta
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": "Nova conversa"})
+        st.session_state["_title_set"] = bool(initial_title)
+
+        # adiciona na lista local com o título da primeira pergunta
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": final_title})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
@@ -235,8 +250,25 @@ def get_or_create_conversation():
 
 
 def update_conversation_title_if_first_question(cid, first_question: str):
-    if not sb or not cid or not first_question or st.session_state.get("_title_set"):
+    """
+    Mantida por compatibilidade, mas agora só atualiza se o título ainda for vazio/"Nova conversa".
+    Assim garantimos que a 1ª pergunta vira título e não fica travando em "Nova conversa".
+    """
+    if not sb or not cid or not first_question:
         return
+
+    # checa título local atual
+    current_title = None
+    for it in st.session_state.conversations_list:
+        if it.get("id") == cid:
+            current_title = (it.get("title") or "").strip()
+            break
+
+    if current_title and current_title not in ("Nova conversa",):
+        # já tem título de verdade, não mexe
+        st.session_state._title_set = True
+        return
+
     title = _title_from_first_question(first_question)
     try:
         sb.table("conversations").update({"title": title}).eq("id", cid).execute()
@@ -306,6 +338,7 @@ if "logout" in qp:
         "_sidebar_loaded": False,
         "selected_conversation_id": None,
         "open_menu_conv": None,
+        "conversation_to_delete": None,
     })
     _clear_query_params()
     do_rerun()
@@ -486,6 +519,7 @@ def render_login_screen():
                     "selected_conversation_id": None,
                     "open_menu_conv": None,
                     "historico": [],
+                    "conversation_to_delete": None,
                 })
                 return
 
@@ -532,6 +566,7 @@ def render_login_screen():
                 st.session_state.selected_conversation_id = None
                 st.session_state.open_menu_conv = None
                 st.session_state.historico = []
+                st.session_state.conversation_to_delete = None
 
                 try:
                     sb.table("profiles").upsert({"id": user.id, "email": email_val}).execute()
@@ -873,6 +908,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     font-size:0.78rem;
     color:var(--muted);
     font-weight:400;
+    margin:2px 4px 6px;
 }
 .hist-empty{
     color:var(--muted);
@@ -924,7 +960,7 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão azul pill */
+/* Menu flutuante – botão de excluir azul */
 .conv-menu{
     position:absolute;
     top:50%;
@@ -1131,14 +1167,29 @@ if st.session_state.get("_sb_last_error"):
     st.error(f"💾 Detalhes Supabase: {st.session_state['_sb_last_error']}")
     st.session_state["_sb_last_error"] = None
 
+# ====== PROCESSA EXCLUSÃO DE CONVERSA (1 clique) ======
+if st.session_state.get("conversation_to_delete"):
+    _cid_del = st.session_state["conversation_to_delete"]
+    delete_conversation(_cid_del)
+
+    # se era a conversa aberta, limpa a janela
+    if st.session_state.get("conversation_id") == _cid_del:
+        st.session_state.historico = []
+        st.session_state.conversation_id = None
+        st.session_state.selected_conversation_id = None
+
+    # limpa estado temporário
+    st.session_state["conversation_to_delete"] = None
+    st.session_state["open_menu_conv"] = None
+
+    # recarrega lista
+    load_conversations_from_supabase()
+
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="sidebar-bar" style="display:flex;align-items:center;justify-content:space-between;">
-        <div class="sidebar-sub">Conversas</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # remove a "barra estranha" e deixa só um subtítulo limpo
+    st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
 
@@ -1164,23 +1215,16 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir azul
+            # menu flutuante – botão de excluir azul (agora 1 clique)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 if delete_clicked:
-                    # remove no Supabase
-                    delete_conversation(cid)
-                    # se era a conversa aberta, limpa janela
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
-                    # fecha menu e recarrega lista
-                    st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
+                    st.session_state["conversation_to_delete"] = cid
+                    # forçamos um rerun imediatamente pra não precisar de 2 cliques
+                    do_rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1267,7 +1311,8 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
 
     try:
-        cid = get_or_create_conversation()
+        # AGORA: passa a primeira pergunta pra já criar a conversa com título certo
+        cid = get_or_create_conversation(q)
         save_message(cid, "user", q)
         update_conversation_title_if_first_question(cid, q)
     except Exception as e:
