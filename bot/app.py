@@ -888,6 +888,13 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     box-shadow:none !important;
 }
 
+/* Tentar matar qualquer linha/borda interna residual na sidebar */
+section[data-testid="stSidebar"] *{
+    border-top-color:transparent !important;
+    border-bottom-color:transparent !important;
+    box-shadow:none !important;
+}
+
 .hist-empty{
     color:var(--muted);
     font-size:.9rem;
@@ -938,11 +945,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão azul pill, ao lado dos 3 pontos (pra fora) */
+/* Menu flutuante – botão azul pill, “saindo” da sidebar em direção ao chat */
 .conv-menu{
     position:absolute;
     top:50%;
-    left:calc(100% + 8px);
+    left:calc(100% + 28px);   /* mais pra dentro da área cinza do chat */
     transform:translateY(-50%);
     z-index:3000;
 }
@@ -1150,7 +1157,7 @@ if st.session_state.get("_sb_last_error"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    # Cabeçalho simples, sem wrapper que vira barra
+    # Cabeçalho simples
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
@@ -1177,7 +1184,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral: botão azul pill, usando a mesma lógica de deleção já ok
+            # menu flutuante lateral: botão azul pill
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
@@ -1285,7 +1292,7 @@ if pergunta and pergunta.strip():
 
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
+    st.session_state.awaiting_answer = True    # marca que tem resposta pra buscar
     st.session_state.answering_started = False
     do_rerun()
 
