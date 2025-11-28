@@ -310,6 +310,22 @@ if "logout" in qp:
     _clear_query_params()
     do_rerun()
 
+elif "delete_conv" in qp:
+    delete_cid = qp["delete_conv"]
+    if isinstance(delete_cid, list):
+        delete_cid = delete_cid[0]
+
+    delete_conversation(delete_cid)
+    if st.session_state.get("conversation_id") == delete_cid:
+        st.session_state.historico = []
+        st.session_state.conversation_id = None
+        st.session_state.selected_conversation_id = None
+
+    st.session_state.open_menu_conv = None
+    load_conversations_from_supabase()
+    _clear_query_params()
+    do_rerun()
+
 # ====== TELAS DE AUTENTICAÇÃO ======
 BASE_LOGIN_CSS = """
 <style>
@@ -745,6 +761,9 @@ img.logo { height: 44px !important; width: auto !important }
     --input-border:#565869;
 
     --sidebar-w:270px;
+    --sidebar-items-top-gap: -45px;
+    --sidebar-sub-top-gap: -30px;
+    --sidebar-list-start-gap: 3px;
 }
 
 body, .stApp {
@@ -842,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;
+    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -874,21 +893,6 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     color:var(--muted);
     font-weight:400;
 }
-
-/* barra sob "Conversas": remove completamente */
-.sidebar-bar{
-    border:0 !important;
-    box-shadow:none !important;
-    padding:0 !important;
-    margin:2px 0 4px 0 !important;
-}
-
-/* tentativa extra de matar bordas que o Streamlit possa injetar */
-.sidebar-bar *{
-    border:0 !important;
-    box-shadow:none !important;
-}
-
 .hist-empty{
     color:var(--muted);
     font-size:.9rem;
@@ -939,32 +943,35 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão azul pill, ao lado dos 3 pontos */
+/* Menu flutuante – alinhado à direita da linha, sem barra estranha */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:4px;
+    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
+    left:auto;
     transform:translateY(-50%);
-    z-index:3000;
+    width:190px;
+    background:#020617;
+    border:1px solid #1f2937;
+    border-radius:12px;
+    box-shadow:0 18px 40px rgba(0,0,0,0.75);
+    padding:4px;
+    z-index:3000;       /* acima de tudo na sidebar */
 }
 
-/* estiliza especificamente o botão de excluir dentro do menu */
-.conv-menu button{
-    background:#1D4ED8 !important;
-    color:#E5F0FF !important;
-    border-radius:999px !important;
-    border:1px solid #1D4ED8 !important;
-    padding:6px 18px !important;
-    font-size:0.86rem !important;
-    font-weight:500 !important;
-    box-shadow:0 0 0 0 rgba(0,0,0,0) !important;
-    text-align:center !important;
-    width:auto !important;
+/* Item clicável dentro do menu (sem cara de botão Streamlit) */
+.conv-menu-item{
+    cursor:pointer;
+    width:100%;
+    color:#BFDBFE;          /* azul claro suave */
+    text-align:left;
+    font-size:0.86rem;
+    padding:6px 10px;
+    border-radius:8px;
 }
-.conv-menu button:hover{
-    background:#2563EB !important;
-    border-color:#2563EB !important;
-    color:#EFF6FF !important;
+.conv-menu-item:hover{
+    background:#1D4ED8;      /* azul mais forte no hover */
+    color:#EFF6FF;
 }
 
 /* ÁREA CENTRAL */
@@ -1181,20 +1188,19 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante lateral: botão azul pill, usando a mesma lógica de deleção já ok
+            # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-                if delete_clicked:
-                    delete_conversation(cid)
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
-                    st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
+                st.markdown(
+                    f"""
+                    <div class="conv-menu">
+                        <div class="conv-menu-item"
+                             onclick="window.location.search='?delete_conv={cid}'">
+                            🗑 Excluir conversa
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown('</div>', unsafe_allow_html=True)
 
