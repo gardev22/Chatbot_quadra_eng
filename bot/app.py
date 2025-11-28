@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT VIA QUERY PARAM ======
+# ====== LOGOUT / DELETE VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -307,6 +307,22 @@ if "logout" in qp:
         "selected_conversation_id": None,
         "open_menu_conv": None,
     })
+    _clear_query_params()
+    do_rerun()
+
+elif "delete_conv" in qp:
+    delete_cid = qp["delete_conv"]
+    if isinstance(delete_cid, list):
+        delete_cid = delete_cid[0]
+
+    delete_conversation(delete_cid)
+    if st.session_state.get("conversation_id") == delete_cid:
+        st.session_state.historico = []
+        st.session_state.conversation_id = None
+        st.session_state.selected_conversation_id = None
+
+    st.session_state.open_menu_conv = None
+    load_conversations_from_supabase()
     _clear_query_params()
     do_rerun()
 
@@ -745,6 +761,9 @@ img.logo { height: 44px !important; width: auto !important }
     --input-border:#565869;
 
     --sidebar-w:270px;
+    --sidebar-items-top-gap: -45px;
+    --sidebar-sub-top-gap: -30px;
+    --sidebar-list-start-gap: 3px;
 }
 
 body, .stApp {
@@ -842,7 +861,7 @@ section[data-testid="stSidebar"]{
     padding:0 !important;
     background:var(--panel) !important;
     border-right:1px solid var(--border);
-    z-index:2000 !important;
+    z-index:2000 !important;   /* elevado para o menu ficar sempre por cima */
     transform:none !important;
     visibility:visible !important;
     overflow-y:auto !important;
@@ -853,18 +872,10 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* separadores / linhas – camuflados na mesma cor do fundo da sidebar */
+/* some default separators/lines do sidebar */
 section[data-testid="stSidebar"] hr,
 section[data-testid="stSidebar"] [role="separator"]{
-    background:var(--panel) !important;
-    border-color:var(--panel) !important;
-    color:var(--panel) !important;
-}
-
-/* por segurança, qualquer borda superior/inferior interna também herda a cor do fundo */
-section[data-testid="stSidebar"] *{
-    border-top-color:var(--panel) !important;
-    border-bottom-color:var(--panel) !important;
+    display:none !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -932,30 +943,35 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – visual tipo pill, mas usando button do Streamlit */
+/* Menu flutuante – alinhado à direita da linha, sem barra estranha */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:-4px;
+    right:8px;          /* colado à borda direita da linha (perto dos 3 pontos) */
+    left:auto;
     transform:translateY(-50%);
-    z-index:3000;
+    width:190px;
+    background:#020617;
+    border:1px solid #1f2937;
+    border-radius:12px;
+    box-shadow:0 18px 40px rgba(0,0,0,0.75);
+    padding:4px;
+    z-index:3000;       /* acima de tudo na sidebar */
 }
-.conv-menu button{
-    width:190px !important;
-    background:#020617 !important;
-    color:#BFDBFE !important;
-    border-radius:999px !important;
-    border:1px solid #1F2937 !important;
-    padding:6px 10px !important;
-    font-size:0.86rem !important;
-    font-weight:500 !important;
-    text-align:center !important;
-    box-shadow:0 18px 40px rgba(0,0,0,0.75) !important;
+
+/* Item clicável dentro do menu (sem cara de botão Streamlit) */
+.conv-menu-item{
+    cursor:pointer;
+    width:100%;
+    color:#BFDBFE;          /* azul claro suave */
+    text-align:left;
+    font-size:0.86rem;
+    padding:6px 10px;
+    border-radius:8px;
 }
-.conv-menu button:hover{
-    background:#1D4ED8 !important;
-    border-color:#1D4ED8 !important;
-    color:#EFF6FF !important;
+.conv-menu-item:hover{
+    background:#1D4ED8;      /* azul mais forte no hover */
+    color:#EFF6FF;
 }
 
 /* ÁREA CENTRAL */
@@ -1172,20 +1188,19 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir estilizado
+            # menu flutuante lateral (popover fake estilo ChatGPT)
             if st.session_state.get("open_menu_conv") == cid:
-                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
-                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
-                st.markdown('</div>', unsafe_allow_html=True)
-
-                if delete_clicked:
-                    delete_conversation(cid)
-                    if st.session_state.get("conversation_id") == cid:
-                        st.session_state.historico = []
-                        st.session_state.conversation_id = None
-                        st.session_state.selected_conversation_id = None
-                    st.session_state.open_menu_conv = None
-                    load_conversations_from_supabase()
+                st.markdown(
+                    f"""
+                    <div class="conv-menu">
+                        <div class="conv-menu-item"
+                             onclick="window.location.search='?delete_conv={cid}'">
+                            🗑 Excluir conversa
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             st.markdown('</div>', unsafe_allow_html=True)
 
