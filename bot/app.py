@@ -888,10 +888,16 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* separadores / linhas – somem completamente */
+/* separadores / linhas – somem completamente (mais agressivo pra matar a barra) */
 section[data-testid="stSidebar"] hr,
-section[data-testid="stSidebar"] [role="separator"]{
+section[data-testid="stSidebar"] [role="separator"],
+section[data-testid="stSidebar"] div[role="separator"],
+section[data-testid="stSidebar"] [aria-hidden="true"]{
     display:none !important;
+    border:none !important;
+    height:0 !important;
+    margin:0 !important;
+    padding:0 !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -960,11 +966,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão de excluir azul */
+/* Menu flutuante – aproximado do item (só mexi no right) */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:-4px;
+    right:8px;  /* antes era -4px, agora fica mais perto do item */
     transform:translateY(-50%);
     z-index:3000;
 }
@@ -1215,7 +1221,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir azul (agora 1 clique)
+            # menu flutuante – botão de excluir (1 clique, mais perto do item)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
