@@ -330,6 +330,8 @@ if "logout" in qp:
         "pending_index": None,
         "pending_question": None,
         "historico": [],
+
+
         "user_id": None,
         "conversation_id": None,
         "_title_set": False,
@@ -888,11 +890,10 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* separadores / linhas – somem completamente (mais agressivo pra matar a barra) */
-section[data-testid="stSidebar"] hr,
-section[data-testid="stSidebar"] [role="separator"],
-section[data-testid="stSidebar"] div[role="separator"],
-section[data-testid="stSidebar"] [aria-hidden="true"]{
+/* MATAR QUALQUER SEPARADOR GLOBAL (inclusive essa barra chata do histórico) */
+hr,
+div[role="separator"],
+[role="separator"]{
     display:none !important;
     border:none !important;
     height:0 !important;
@@ -966,11 +967,11 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – aproximado do item (só mexi no right) */
+/* Menu flutuante – aproximado do item */
 .conv-menu{
     position:absolute;
     top:50%;
-    right:8px;  /* antes era -4px, agora fica mais perto do item */
+    right:8px;
     transform:translateY(-50%);
     z-index:3000;
 }
@@ -1194,7 +1195,6 @@ if st.session_state.get("conversation_to_delete"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    # remove a "barra estranha" e deixa só um subtítulo limpo
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
@@ -1221,7 +1221,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir (1 clique, mais perto do item)
+            # menu flutuante – botão de excluir (1 clique)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
@@ -1229,7 +1229,6 @@ with st.sidebar:
 
                 if delete_clicked:
                     st.session_state["conversation_to_delete"] = cid
-                    # forçamos um rerun imediatamente pra não precisar de 2 cliques
                     do_rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1317,7 +1316,6 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
 
     try:
-        # AGORA: passa a primeira pergunta pra já criar a conversa com título certo
         cid = get_or_create_conversation(q)
         save_message(cid, "user", q)
         update_conversation_title_if_first_question(cid, q)
