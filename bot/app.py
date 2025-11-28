@@ -211,6 +211,7 @@ def get_or_create_conversation():
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
     IMPORTANTE: envia user_id para satisfazer a policy WITH CHECK (user_id = auth.uid()).
+    O título inicial agora é neutro ("Nova conversa") até receber a 1ª pergunta.
     """
     if not sb or not st.session_state.get("user_id"):
         return None
@@ -219,15 +220,14 @@ def get_or_create_conversation():
 
     payload = {
         "user_id": st.session_state.user_id,
-        "title": f"Sessão de {st.session_state.user_name}",
     }
     try:
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
         st.session_state["conversation_id"] = cid
         st.session_state["selected_conversation_id"] = cid
-        # atualiza lista local (conversa mais recente no topo)
-        st.session_state.conversations_list.insert(0, {"id": cid, "title": payload["title"]})
+        # título local começa como "Nova conversa" até ser atualizado pela 1ª pergunta
+        st.session_state.conversations_list.insert(0, {"id": cid, "title": "Nova conversa"})
         return cid
     except Exception as e:
         st.session_state["_sb_last_error"] = f"Supabase: conv.insert: {_extract_err_msg(e)}"
@@ -262,7 +262,7 @@ def save_message(cid, role, content):
         st.session_state["_sb_last_error"] = f"msg.insert: {_extract_err_msg(e)}"
 
 
-# ====== LOGOUT / DELETE VIA QUERY PARAM ======
+# ====== LOGOUT VIA QUERY PARAM ======
 def _clear_query_params():
     try:
         st.query_params.clear()
@@ -307,22 +307,6 @@ if "logout" in qp:
         "selected_conversation_id": None,
         "open_menu_conv": None,
     })
-    _clear_query_params()
-    do_rerun()
-
-elif "delete_conv" in qp:
-    delete_cid = qp["delete_conv"]
-    if isinstance(delete_cid, list):
-        delete_cid = delete_cid[0]
-
-    delete_conversation(delete_cid)
-    if st.session_state.get("conversation_id") == delete_cid:
-        st.session_state.historico = []
-        st.session_state.conversation_id = None
-        st.session_state.selected_conversation_id = None
-
-    st.session_state.open_menu_conv = None
-    load_conversations_from_supabase()
     _clear_query_params()
     do_rerun()
 
@@ -761,9 +745,6 @@ img.logo { height: 44px !important; width: auto !important }
     --input-border:#565869;
 
     --sidebar-w:270px;
-    --sidebar-items-top-gap: -45px;
-    --sidebar-sub-top-gap: -30px;
-    --sidebar-list-start-gap: 3px;
 }
 
 body, .stApp {
@@ -872,15 +853,10 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* some default separators/lines do sidebar */
+/* separadores / linhas – somem completamente */
 section[data-testid="stSidebar"] hr,
 section[data-testid="stSidebar"] [role="separator"]{
     display:none !important;
-}
-
-/* esconde barras horizontais criadas com border-bottom inline */
-section[data-testid="stSidebar"] div[style*="border-bottom"]{
-    border-bottom:none !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -937,44 +913,41 @@ section[data-testid="stSidebar"] button:active{
 .sidebar-row-active{
     background:#111827;
 }
-
-/* âncora pro menu (envolve o botão ⋯ + menu) */
-.menu-anchor{
-    position:relative;
-    display:flex;
-    justify-content:flex-end;
-    align-items:center;
+.sidebar-row-title button{
     width:100%;
 }
+.sidebar-row-menu button{
+    width:auto;
+    min-width:26px;
+    text-align:center;
+    padding-inline:4px !important;
+    font-size:0.9rem !important;
+}
 
-/* Menu flutuante – do lado dos 3 pontinhos */
+/* Menu flutuante – botão azul pill */
 .conv-menu{
     position:absolute;
     top:50%;
-    left:calc(100% + 8px);   /* logo à direita dos 3 pontinhos */
+    right:-4px;
     transform:translateY(-50%);
-    width:190px;
-    background:#020617;
-    border:1px solid #1f2937;
-    border-radius:12px;
-    box-shadow:0 18px 40px rgba(0,0,0,0.75);
-    padding:4px;
     z-index:3000;
 }
-
-/* Item clicável dentro do menu (sem cara de botão Streamlit) */
-.conv-menu-item{
-    cursor:pointer;
-    width:100%;
-    color:#BFDBFE;          /* azul claro suave */
-    text-align:left;
-    font-size:0.86rem;
-    padding:6px 10px;
-    border-radius:8px;
+.conv-menu button{
+    width:190px !important;
+    background:#1D4ED8 !important;
+    color:#F9FAFB !important;
+    border-radius:999px !important;
+    border:1px solid #1D4ED8 !important;
+    padding:6px 10px !important;
+    font-size:0.86rem !important;
+    font-weight:500 !important;
+    text-align:center !important;
+    box-shadow:0 18px 40px rgba(0,0,0,0.75) !important;
 }
-.conv-menu-item:hover{
-    background:#1D4ED8;      /* azul mais forte no hover */
-    color:#EFF6FF;
+.conv-menu button:hover{
+    background:#2563EB !important;
+    border-color:#2563EB !important;
+    color:#FFFFFF !important;
 }
 
 /* ÁREA CENTRAL */
@@ -1181,34 +1154,33 @@ with st.sidebar:
 
             active_class = " sidebar-row-active" if st.session_state.get("selected_conversation_id") == cid else ""
             st.markdown(f'<div class="sidebar-row{active_class}">', unsafe_allow_html=True)
-
             col_t, col_menu = st.columns([0.78, 0.22])
             with col_t:
                 if st.button(titulo, key=f"conv_title_{cid}"):
                     load_conversation_messages(cid)
                     st.session_state.open_menu_conv = None
-
             with col_menu:
-                st.markdown('<div class="menu-anchor">', unsafe_allow_html=True)
-
                 if st.button("⋯", key=f"conv_menu_{cid}"):
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-                if st.session_state.get("open_menu_conv") == cid:
-                    st.markdown(
-                        f"""
-                        <div class="conv-menu">
-                            <div class="conv-menu-item"
-                                 onclick="window.location.search='?delete_conv={cid}'">
-                                🗑 Excluir conversa
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
+            # menu flutuante – botão de excluir azul
+            if st.session_state.get("open_menu_conv") == cid:
+                st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
+                delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
                 st.markdown('</div>', unsafe_allow_html=True)
+
+                if delete_clicked:
+                    # remove no Supabase
+                    delete_conversation(cid)
+                    # se era a conversa aberta, limpa janela
+                    if st.session_state.get("conversation_id") == cid:
+                        st.session_state.historico = []
+                        st.session_state.conversation_id = None
+                        st.session_state.selected_conversation_id = None
+                    # fecha menu e recarrega lista
+                    st.session_state.open_menu_conv = None
+                    load_conversations_from_supabase()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
