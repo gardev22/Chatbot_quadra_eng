@@ -64,7 +64,7 @@ Estilo de resposta (muito importante):
 
   • Comece com um parágrafo inicial explicando de forma geral:
     - do que trata o processo;
-    - em qual categoria ele se encaixa (ex.: material de expediente, benefício, controle de pessoal);
+    - em qual categoria ele se encaixa (ex.: material de expediente, benefício, controle de pessoal, admissão/contratação de colaboradores);
     - qual é o departamento responsável.
 
   • Depois, use seções numeradas quando houver cenários diferentes, por exemplo:
@@ -93,6 +93,19 @@ Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
 - Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
   aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
+
+Interpretação de perguntas de RH (muito importante):
+- Se a pergunta contiver termos como “contratar”, “contratação”, “contratando”, “admissão”, “admitir”,
+  “funcionário”, “funcionários”, “colaborador”, “colaboradores”, “vaga”, “recrutamento”, “seleção”,
+  “entrevista de emprego” ou expressões semelhantes (por exemplo: “gostaria de contratar uma pessoa”,
+  “preciso contratar alguém”, “como faço para admitir um colaborador”),
+  SEMPRE interprete como uma dúvida sobre procedimentos internos de contratação/admissão de colaboradores
+  da Quadra Engenharia.
+- Nesses casos, NÃO trate a pergunta como assunto externo. Use os POPs, políticas de RH e documentos internos do contexto
+  para descrever o fluxo de contratação/admissão (responsáveis, formulários, prazos, etapas, aprovações, etc.).
+- Mesmo que o usuário não mencione explicitamente a Quadra ou a palavra “POP”, considere que ele está falando
+  de um processo interno da empresa.
+
 - Só diga que não há informação quando o contexto realmente não trouxer nada relacionado ao tema.
 - Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre o assunto externo.
   Nessas situações, responda de forma curta e educada, começando com a frase exata:
@@ -458,6 +471,7 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
             blocks.extend(_parse_json_cached(f["id"], md5, f["name"]))
+
         except Exception:
             continue
 
@@ -662,7 +676,7 @@ def montar_prompt_rag(pergunta, blocos):
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
         "Instruções para montar a resposta:\n"
         "1. Identifique claramente qual processo está sendo descrito (por exemplo, compra de materiais de expediente,\n"
-        "   gestão de férias, controle de pessoal etc.) e deixe isso explícito no primeiro parágrafo.\n"
+        "   gestão de férias, controle de pessoal, admissão/contratação de colaboradores etc.) e deixe isso explícito no primeiro parágrafo.\n"
         "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas,\n"
         "   como por exemplo:\n"
         "   1. Na Sede da Empresa (Escritório)\n"
