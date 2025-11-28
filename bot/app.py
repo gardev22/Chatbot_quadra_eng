@@ -888,12 +888,10 @@ section[data-testid="stSidebar"] > div{ padding-top:0 !important; margin-top:0 !
 div[data-testid="stSidebarContent"]{ padding-top:0 !important; margin-top:0 !important; }
 section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ padding-top:0 !important; margin-top:0 !important; }
 
-/* separadores / linhas – mesma cor do fundo para sumir visualmente */
+/* separadores / linhas – somem completamente */
 section[data-testid="stSidebar"] hr,
 section[data-testid="stSidebar"] [role="separator"]{
-    border-color:var(--panel) !important;
-    background:var(--panel) !important;
-    color:var(--panel) !important;
+    display:none !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -962,15 +960,15 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – botão de excluir conversa azul, mais próximo do item */
-section[data-testid="stSidebar"] .conv-menu{
+/* Menu flutuante – botão de excluir azul */
+.conv-menu{
     position:absolute;
-    top:6px;
-    right:4px;
-    transform:none;
+    top:50%;
+    right:-4px;
+    transform:translateY(-50%);
     z-index:3000;
 }
-section[data-testid="stSidebar"] .conv-menu button{
+.conv-menu button{
     width:190px !important;
     background:#1D4ED8 !important;
     color:#F9FAFB !important;
@@ -982,7 +980,7 @@ section[data-testid="stSidebar"] .conv-menu button{
     text-align:center !important;
     box-shadow:0 18px 40px rgba(0,0,0,0.75) !important;
 }
-section[data-testid="stSidebar"] .conv-menu button:hover{
+.conv-menu button:hover{
     background:#2563EB !important;
     border-color:#2563EB !important;
     color:#FFFFFF !important;
@@ -1190,7 +1188,7 @@ if st.session_state.get("conversation_to_delete"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
-    # subtítulo simples, sem barra extra
+    # remove a "barra estranha" e deixa só um subtítulo limpo
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
@@ -1217,7 +1215,7 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir azul (1 clique)
+            # menu flutuante – botão de excluir azul (agora 1 clique)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
@@ -1225,6 +1223,7 @@ with st.sidebar:
 
                 if delete_clicked:
                     st.session_state["conversation_to_delete"] = cid
+                    # forçamos um rerun imediatamente pra não precisar de 2 cliques
                     do_rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
@@ -1312,7 +1311,7 @@ if pergunta and pergunta.strip():
     st.session_state.historico.append((q, ""))
 
     try:
-        # passa a primeira pergunta pra já criar a conversa com título certo
+        # AGORA: passa a primeira pergunta pra já criar a conversa com título certo
         cid = get_or_create_conversation(q)
         save_message(cid, "user", q)
         update_conversation_title_if_first_question(cid, q)
