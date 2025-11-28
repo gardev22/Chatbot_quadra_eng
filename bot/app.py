@@ -259,7 +259,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
         return
 
     # checa título local atual
-    current_title = None    #
+    current_title = None
     for it in st.session_state.conversations_list:
         if it.get("id") == cid:
             current_title = (it.get("title") or "").strip()
@@ -900,6 +900,12 @@ div[role="separator"],
     margin:0 !important;
     padding:0 !important;
 }
+/* mata barras finas criadas como div inline na sidebar */
+section[data-testid="stSidebar"] div[style*="height: 1px"],
+section[data-testid="stSidebar"] div[style*="height:1px"],
+section[data-testid="stSidebar"] div[style*="height: 0.5px"]{
+    display:none !important;
+}
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
 
@@ -912,10 +918,10 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     margin:0 4px -2px 2px;
 }
 .sidebar-sub{
-    font-size:0.78rem;
+    font-size:0.95rem;        /* maior que antes */
     color:var(--muted);
-    font-weight:400;
-    margin:2px 4px 6px;
+    font-weight:600;          /* mais forte */
+    margin:4px 4px 6px;
 }
 .hist-empty{
     color:var(--muted);
@@ -1217,8 +1223,6 @@ with st.sidebar:
     st.markdown('</div>', unsafe_allow_html=True)
 
     if new_chat_clicked:
-        # limpa apenas o estado da conversa atual;
-        # lista de conversas no Supabase permanece
         st.session_state.historico = []
         st.session_state.conversation_id = None
         st.session_state.selected_conversation_id = None
@@ -1360,7 +1364,7 @@ if pergunta and pergunta.strip():
 
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
+    st.session_state.awaiting_answer = True    #
     st.session_state.answering_started = False
     do_rerun()
 
