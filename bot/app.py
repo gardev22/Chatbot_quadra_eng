@@ -68,6 +68,7 @@ def carregar_imagem_base64(path):
     except Exception:
         return None
 
+
 logo_b64 = carregar_imagem_base64(LOGO_PATH)
 
 # Logo do header com tamanho inline
@@ -258,7 +259,7 @@ def update_conversation_title_if_first_question(cid, first_question: str):
         return
 
     # checa título local atual
-    current_title = None
+    current_title = None    #
     for it in st.session_state.conversations_list:
         if it.get("id") == cid:
             current_title = (it.get("title") or "").strip()
@@ -330,7 +331,6 @@ if "logout" in qp:
         "pending_index": None,
         "pending_question": None,
         "historico": [],
-
 
         "user_id": None,
         "conversation_id": None,
@@ -923,6 +923,28 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     padding:8px 10px;
 }
 
+/* Botão NOVO CHAT (wrapper) */
+.new-chat-wrap{
+    margin:8px 4px 4px;
+}
+.new-chat-wrap button{
+    width:100% !important;
+    background:#1D4ED8 !important;
+    color:#F9FAFB !important;
+    border-radius:999px !important;
+    border:1px solid #1D4ED8 !important;
+    padding:6px 10px !important;
+    font-size:0.9rem !important;
+    font-weight:600 !important;
+    text-align:center !important;
+    box-shadow:0 14px 30px rgba(0,0,0,0.7) !important;
+}
+.new-chat-wrap button:hover{
+    background:#2563EB !important;
+    border-color:#2563EB !important;
+    color:#FFFFFF !important;
+}
+
 /* Botões da sidebar (títulos + reticências) sem cara de botão branco */
 section[data-testid="stSidebar"] button{
     background:transparent !important;
@@ -934,13 +956,6 @@ section[data-testid="stSidebar"] button{
     border-radius:999px !important;
     text-align:left !important;
     width:100%;
-}
-section[data-testid="stSidebar"] button:hover{
-    background:#111827 !important;
-    color:#E5E7EB !important;
-}
-section[data-testid="stSidebar"] button:active{
-    background:#1F2937 !important;
 }
 
 /* Linha de conversa (título + reticências) */
@@ -1195,6 +1210,27 @@ if st.session_state.get("conversation_to_delete"):
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
+
+    # --- Botão NOVO CHAT acima do histórico ---
+    st.markdown('<div class="new-chat-wrap">', unsafe_allow_html=True)
+    new_chat_clicked = st.button("＋ Novo chat", key="btn_new_chat")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if new_chat_clicked:
+        # limpa apenas o estado da conversa atual;
+        # lista de conversas no Supabase permanece
+        st.session_state.historico = []
+        st.session_state.conversation_id = None
+        st.session_state.selected_conversation_id = None
+        st.session_state.pending_index = None
+        st.session_state.pending_question = None
+        st.session_state.awaiting_answer = False
+        st.session_state.answering_started = False
+        st.session_state.open_menu_conv = None
+        st.session_state.conversation_to_delete = None
+        st.session_state._title_set = False
+        do_rerun()
+
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
 
     conversas = st.session_state.conversations_list or []
