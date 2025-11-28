@@ -214,9 +214,6 @@ def delete_conversation(cid):
 def get_or_create_conversation(initial_title: str | None = None):
     """
     Cria uma conversa no Supabase e memoriza o ID na sessão.
-
-    AGORA: se for a primeira pergunta, já grava o título com o texto da pergunta
-    (estilo ChatGPT) e nunca aparece "Nova conversa" no histórico.
     """
     if not sb or not st.session_state.get("user_id"):
         return None
@@ -226,14 +223,12 @@ def get_or_create_conversation(initial_title: str | None = None):
     payload = {
         "user_id": st.session_state.user_id,
     }
-    # se já tiver título inicial (primeira pergunta), usa ele na criação
     if initial_title:
         payload["title"] = _title_from_first_question(initial_title)
 
     try:
         r = sb.table("conversations").insert(payload).execute()
         cid = r.data[0]["id"]
-        # se por algum motivo o Supabase já retornar título, usamos; se não, derivamos
         title_db = r.data[0].get("title")
         final_title = title_db or _title_from_first_question(initial_title)
 
@@ -241,7 +236,6 @@ def get_or_create_conversation(initial_title: str | None = None):
         st.session_state["selected_conversation_id"] = cid
         st.session_state["_title_set"] = bool(initial_title)
 
-        # adiciona na lista local com o título da primeira pergunta
         st.session_state.conversations_list.insert(0, {"id": cid, "title": final_title})
         return cid
     except Exception as e:
@@ -251,13 +245,11 @@ def get_or_create_conversation(initial_title: str | None = None):
 
 def update_conversation_title_if_first_question(cid, first_question: str):
     """
-    Mantida por compatibilidade, mas agora só atualiza se o título ainda for vazio/"Nova conversa".
-    Assim garantimos que a 1ª pergunta vira título e não fica travando em "Nova conversa".
+    Atualiza o título se ainda estiver vazio/"Nova conversa".
     """
     if not sb or not cid or not first_question:
         return
 
-    # checa título local atual
     current_title = None
     for it in st.session_state.conversations_list:
         if it.get("id") == cid:
@@ -265,7 +257,6 @@ def update_conversation_title_if_first_question(cid, first_question: str):
             break
 
     if current_title and current_title not in ("Nova conversa",):
-        # já tem título de verdade, não mexe
         st.session_state._title_set = True
         return
 
@@ -900,15 +891,21 @@ div[role="separator"],
     padding:0 !important;
 }
 
-/* CAMUFLAGEM FINAL DA BARRA "FANTASMA" DENTRO DA SIDEBAR */
+/* Camuflagem extra da barra "fantasma" */
 section[data-testid="stSidebar"] div[style*="height: 1px"],
 section[data-testid="stSidebar"] div[style*="height:1px"],
-section[data-testid="stSidebar"] div[style*="height: 0.5px"],
+section[data-testid="stSidebar"] div[style*="height: 2px"],
 section[data-testid="stSidebar"] div[style*="border-bottom"],
 section[data-testid="stSidebar"] div[style*="border-top"]{
     background-color:#050509 !important;
     border-color:#050509 !important;
     color:#050509 !important;
+}
+
+/* Fallback: qualquer borda horizontal de divs dentro da sidebar fica na cor do fundo */
+section[data-testid="stSidebar"] div{
+    border-top-color:#050509 !important;
+    border-bottom-color:#050509 !important;
 }
 
 div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
@@ -922,7 +919,7 @@ div[data-testid="stAppViewContainer"]{ margin-left:var(--sidebar-w) !important }
     margin:0 4px 4px 2px;
 }
 .sidebar-sub{
-    font-size:0.9rem;  /* fonte maior para "Conversas" */
+    font-size:0.9rem;  /* maior para "Conversas" */
     color:var(--muted);
     font-weight:500;
     margin:4px 4px 6px;
@@ -953,7 +950,7 @@ section[data-testid="stSidebar"] button:active{
     background:#1F2937 !important;
 }
 
-/* Linha de conversa (título + reticências) */
+/* Linha de conversa */
 .sidebar-row{
     position:relative;
     display:flex;
@@ -977,7 +974,7 @@ section[data-testid="stSidebar"] button:active{
     font-size:0.9rem !important;
 }
 
-/* Menu flutuante – aproximado do item */
+/* Menu flutuante – excluir */
 .conv-menu{
     position:absolute;
     top:50%;
@@ -1189,25 +1186,21 @@ if st.session_state.get("conversation_to_delete"):
     _cid_del = st.session_state["conversation_to_delete"]
     delete_conversation(_cid_del)
 
-    # se era a conversa aberta, limpa a janela
     if st.session_state.get("conversation_id") == _cid_del:
         st.session_state.historico = []
         st.session_state.conversation_id = None
         st.session_state.selected_conversation_id = None
 
-    # limpa estado temporário
     st.session_state["conversation_to_delete"] = None
     st.session_state["open_menu_conv"] = None
-
-    # recarrega lista
     load_conversations_from_supabase()
 
 # ====== SIDEBAR (Histórico estilo ChatGPT) ======
 with st.sidebar:
     st.markdown('<div class="sidebar-header">Histórico</div>', unsafe_allow_html=True)
 
-    # Botão "Novo chat" – apenas limpa estado e prepara nova conversa
-    new_chat_clicked = st.button("+ Novo chat", key="btn_new_chat")
+    # Botão "Novo chat"
+    new_chat_clicked = st.button("Novo chat", key="btn_new_chat")
     if new_chat_clicked:
         st.session_state.historico = []
         st.session_state.conversation_id = None
@@ -1218,7 +1211,6 @@ with st.sidebar:
         st.session_state.answering_started = False
         st.session_state.open_menu_conv = None
         st.session_state._title_set = False
-        # não mexe em conversations_list: as conversas antigas permanecem
         do_rerun()
 
     st.markdown('<div class="sidebar-sub">Conversas</div>', unsafe_allow_html=True)
@@ -1247,7 +1239,6 @@ with st.sidebar:
                     current = st.session_state.get("open_menu_conv")
                     st.session_state.open_menu_conv = None if current == cid else cid
 
-            # menu flutuante – botão de excluir (1 clique)
             if st.session_state.get("open_menu_conv") == cid:
                 st.markdown('<div class="conv-menu">', unsafe_allow_html=True)
                 delete_clicked = st.button("🗑 Excluir conversa", key=f"delete_{cid}")
@@ -1350,7 +1341,7 @@ if pergunta and pergunta.strip():
 
     st.session_state.pending_index = len(st.session_state.historico) - 1
     st.session_state.pending_question = q
-    st.session_state.awaiting_answer = True
+    st.session_state.awaiting_answer = True    # trava até resposta
     st.session_state.answering_started = False
     do_rerun()
 
