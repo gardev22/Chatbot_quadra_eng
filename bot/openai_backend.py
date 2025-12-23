@@ -1,5 +1,6 @@
 # openai_backend.py — RAG conversacional detalhado + link do POP correto
 # (Atualizado: desambiguação inteligente de contratação: Obra (DP/PO.08) vs Administrativo (PP/PO.06))
+# (Corrigido: NÃO cair direto em Pessoas & Performance quando a pergunta é genérica; pergunta SEMPRE o tipo.)
 
 import os
 import io
@@ -16,20 +17,18 @@ from google.oauth2 import service_account
 
 # ========= CONFIG BÁSICA =========
 API_KEY = st.secrets["openai"]["api_key"]
-# Ajuste aqui se quiser outro modelo (ex.: "gpt-4.1" ou "gpt-4.1-mini")
 MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
 USE_CE = False  # CrossEncoder desativado para manter leve/rápido
 
-TOP_N_ANN = 12   # candidatos na ANN
-TOP_K = 5        # blocos que vão para o contexto
+TOP_N_ANN = 12
+TOP_K = 5
 
 MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
 
-# espaço para respostas ricas, estilo POP detalhado
 MAX_TOKENS = 750
 REQUEST_TIMEOUT = 60
 TEMPERATURE = 0.30
@@ -98,14 +97,11 @@ Regras de conteúdo:
 Interpretação de perguntas de RH (muito importante):
 - Se a pergunta contiver termos como “contratar”, “contratação”, “contratando”, “admissão”, “admitir”,
   “funcionário”, “funcionários”, “colaborador”, “colaboradores”, “vaga”, “recrutamento”, “seleção”,
-  “entrevista de emprego” ou expressões semelhantes (por exemplo: “gostaria de contratar uma pessoa”,
-  “preciso contratar alguém”, “como faço para admitir um colaborador”),
+  “entrevista de emprego” ou expressões semelhantes,
   SEMPRE interprete como uma dúvida sobre procedimentos internos de contratação/admissão de colaboradores
   da Quadra Engenharia.
 - Nesses casos, NÃO trate a pergunta como assunto externo. Use os POPs, políticas de RH e documentos internos do contexto
   para descrever o fluxo de contratação/admissão (responsáveis, formulários, prazos, etapas, aprovações, etc.).
-- Mesmo que o usuário não mencione explicitamente a Quadra ou a palavra “POP”, considere que ele está falando
-  de um processo interno da empresa.
 
 - Só diga que não há informação quando o contexto realmente não trouxer nada relacionado ao tema.
 - Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre o assunto externo.
@@ -178,10 +174,6 @@ def _overlap_score(a: str, b: str) -> float:
     return inter / max(1.0, len(ta))
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
-    """
-    Escolhe o bloco mais parecido com a resposta e a pergunta
-    para linkar o documento correto.
-    """
     if not blocos:
         return None
 
@@ -203,10 +195,6 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
     return melhor
 
 def _is_off_domain_reply(text: str) -> bool:
-    """
-    Detecta se a resposta é do tipo "fora de escopo",
-    usando a frase padrão definida no SYSTEM_PROMPT_RAG.
-    """
     if not text:
         return False
     t = _strip_accents(text.lower())
@@ -220,9 +208,6 @@ HR_TIPO_OBRA = "obra"               # Departamento Pessoal (PO.08)
 HR_TIPO_ADMIN = "administrativo"    # Pessoas & Performance (PO.06)
 
 def _is_hr_hiring_question(q: str) -> bool:
-    """
-    Detecta intenção de contratação/admissão (RH), mesmo sem citar POP.
-    """
     t = _strip_accents((q or "").lower())
     termos = [
         "contrat", "admiss", "admit", "recrut", "sele", "vaga",
@@ -235,10 +220,6 @@ def _is_hr_hiring_question(q: str) -> bool:
     return any(x in t for x in termos)
 
 def _parse_tipo_contratacao(texto: str):
-    """
-    Retorna 'obra' | 'administrativo' | None
-    Aceita: 'Obra', 'Administrativo', '1', '2', frases com 'sede', 'canteiro', etc.
-    """
     t_raw = (texto or "").strip()
     t = _strip_accents(t_raw.lower())
 
@@ -248,13 +229,12 @@ def _parse_tipo_contratacao(texto: str):
     if re.fullmatch(r"\s*2\s*", t_raw):
         return HR_TIPO_ADMIN
 
-    # sinais fortes (diretos)
+    # sinais fortes
     if "pessoas e performance" in t or "pessoas & performance" in t or "po.06" in t or "po 06" in t or re.search(r"\bpp\b", t):
         return HR_TIPO_ADMIN
     if "departamento pessoal" in t or "po.08" in t or "po 08" in t or re.search(r"\bdp\b", t):
         return HR_TIPO_OBRA
 
-    # sinais por contexto
     sinais_obra = ["obra", "canteiro", "campo", "frente de obra", "produção", "apoio de obra", "alojamento"]
     sinais_admin = ["administrativo", "escritorio", "escritório", "sede", "corporativo", "matriz"]
 
@@ -269,9 +249,6 @@ def _parse_tipo_contratacao(texto: str):
     return None
 
 def _tipo_boost(block: dict, tipo: str) -> float:
-    """
-    Boost leve no score para puxar o POP certo sem "travar" o RAG.
-    """
     if not tipo or not block:
         return 0.0
 
@@ -290,10 +267,6 @@ def _tipo_boost(block: dict, tipo: str) -> float:
     return 0.0
 
 def _expand_query_for_hr(query: str, tipo_contratacao: str | None = None) -> str:
-    """
-    Expande queries para melhorar match semântico.
-    Inclui padrões de RH e de Compras (toner -> material de expediente).
-    """
     q_norm = _strip_accents(query.lower())
     extras = []
 
@@ -319,7 +292,7 @@ def _expand_query_for_hr(query: str, tipo_contratacao: str | None = None) -> str
             "recrutamento e seleção aprovação de vaga"
         )
 
-    # Compras / toner como material de expediente
+    # Compras / toner
     if "toner" in q_norm:
         extras.append(
             "material de expediente suprimentos de escritório cartucho de impressão "
@@ -335,9 +308,6 @@ def _expand_query_for_hr(query: str, tipo_contratacao: str | None = None) -> str
 def gerar_resposta_fallback_interativa(pergunta: str,
                                        api_key: str = API_KEY,
                                        model_id: str = MODEL_ID) -> str:
-    """
-    Só usamos esse fallback quando REALMENTE não há nenhum bloco retornado.
-    """
     try:
         prompt_usuario = (
             "O usuário fez a pergunta abaixo, mas não encontramos nenhum conteúdo correspondente "
@@ -572,9 +542,6 @@ def load_all_blocks_cached(folder_id: str):
 
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
-    """
-    Agrupa blocos em janelas pequenas, sem misturar documentos diferentes.
-    """
     grouped = []
     n = len(blocos)
     if n == 0:
@@ -704,7 +671,7 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: str | None = None)
         lex = _lexical_overlap(query_text, block.get("texto", ""))
 
         b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
-        adj_score = float(s) + 0.25 * lex + b_tipo  # boost lexical leve + boost de tipo
+        adj_score = float(s) + 0.25 * lex + b_tipo
 
         results.append({
             "idx": i,
@@ -717,12 +684,6 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: str | None = None)
 
 # ========================= PROMPT RAG =========================
 def montar_prompt_rag(pergunta, blocos, tipo_contratacao: str | None = None):
-    """
-    Monta o texto que vai na mensagem do usuário:
-    - contexto dos POPs
-    - instruções para usar esse contexto de forma detalhada
-    - pergunta do colaborador
-    """
     if not blocos:
         return (
             "Nenhum trecho de POP relevante foi encontrado para a pergunta abaixo.\n"
@@ -787,26 +748,28 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # ===== 0) Se estamos aguardando o tipo de contratação, tratar a resposta do usuário =====
+        tipo_contratacao = None
+        forced_tipo = None
+
+        # ===== 0) Se estamos aguardando o tipo, tratar a resposta e seguir para a pergunta original =====
         if _state_get("awaiting_contratacao_tipo", False):
             tipo = _parse_tipo_contratacao(pergunta)
             if not tipo:
-                return "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance)."
+                return "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance) — ou **1** / **2**."
 
-            _state_set("tipo_contratacao", tipo)
             _state_set("awaiting_contratacao_tipo", False)
-
             pergunta_original = _state_pop("pending_hr_question", "")
+
             if not pergunta_original:
                 return "✅ Tipo registrado. Agora me envie sua dúvida sobre contratação/admissão."
-            pergunta = pergunta_original  # volta para a pergunta original e segue o fluxo normal
 
-        # ===== 1) Se for contratação/admissão e ainda não tiver tipo, perguntar antes do RAG =====
-        tipo_contratacao = None
+            forced_tipo = tipo
+            pergunta = pergunta_original  # retoma a pergunta original
+
+        # ===== 1) Se for contratação/admissão e o tipo NÃO estiver explícito na mensagem atual, perguntar SEMPRE =====
         if _is_hr_hiring_question(pergunta):
-            # Se o usuário já escreveu "obra"/"administrativo"/PO.06/PO.08 na própria pergunta,
-            # isso já conta como resposta do tipo.
-            tipo_contratacao = _parse_tipo_contratacao(pergunta) or _state_get("tipo_contratacao")
+            # Regra: só considera tipo se estiver explícito (na msg atual) OU se vier do passo de escolha (forced_tipo)
+            tipo_contratacao = forced_tipo or _parse_tipo_contratacao(pergunta)
 
             if not tipo_contratacao:
                 _state_set("awaiting_contratacao_tipo", True)
@@ -818,18 +781,18 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                     "Responda com **Obra** ou **Administrativo** (ou apenas **1** / **2**)."
                 )
 
-        # 2) Busca ANN (agora com tipo_contratacao quando aplicável)
+        # 2) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
         if not candidates:
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
-        # 3) Usa os TOP_K blocos, sem thresholds agressivos
+        # 3) Usa os TOP_K blocos
         reranked = candidates[:top_k]
         blocos_relevantes = [r["block"] for r in reranked]
 
         t_rag = time.perf_counter()
 
-        # 4) Monta prompt (agora com tipo_contratacao)
+        # 4) Monta prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
 
         payload = {
@@ -868,8 +831,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = resposta_final.strip()
 
-        # 6) Link para o documento mais provável
-        #    NÃO anexar link se a resposta for fora de escopo (ex.: pergunta sobre futebol, política etc.)
+        # 6) Link para o documento mais provável (não anexar se for fora de escopo)
         if blocos_relevantes and not _is_off_domain_reply(resposta):
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
@@ -881,9 +843,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                     resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
 
         t_end = time.perf_counter()
-        print(
-            f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s"
-        )
+        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s")
 
         return resposta
 
