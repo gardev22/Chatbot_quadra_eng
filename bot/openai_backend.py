@@ -786,8 +786,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 _state_set("pending_rh_question", pergunta)
                 return (
                     "Antes de eu te orientar, isso se refere a:\n\n"
-                    "1) **Obra** (Departamento Pessoal – **PO.08 - Controle de Pessoal R.02**)\n"
-                    "2) **Administrativo** (Pessoas & Performance – **PO.06 - Pessoas e Performance**)\n\n"
+                    "1) **Obra** (Departamento Pessoal)\n"
+                    "2) **Administrativo** (Pessoas & Performance)\n\n"
                     "Responda com **Obra** ou **Administrativo** (ou apenas **1** / **2**)."
                 )
 
