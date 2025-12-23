@@ -1,4 +1,5 @@
 # openai_backend.py — RAG conversacional detalhado + link do POP correto
+# (Atualizado: desambiguação inteligente de contratação: Obra (DP/PO.08) vs Administrativo (PP/PO.06))
 
 import os
 import io
@@ -126,21 +127,39 @@ session.headers.update({
     "Content-Type": "application/json"
 })
 
+# ========================= STATE (ROBUSTO: STREAMLIT OU CLI) =========================
+_FALLBACK_STATE = {}
+
+def _state_get(key, default=None):
+    try:
+        return st.session_state.get(key, default)
+    except Exception:
+        return _FALLBACK_STATE.get(key, default)
+
+def _state_set(key, value):
+    try:
+        st.session_state[key] = value
+    except Exception:
+        _FALLBACK_STATE[key] = value
+
+def _state_pop(key, default=None):
+    try:
+        return st.session_state.pop(key, default)
+    except Exception:
+        return _FALLBACK_STATE.pop(key, default)
+
 # ========================= UTILS =========================
 def sanitize_doc_name(name: str) -> str:
     name = re.sub(r"^(C[oó]pia de|Copy of)\s+", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\.(docx?|pdf|txt|jsonl?|JSONL?)$", "", name, flags=re.IGNORECASE)
     return name.strip()
 
-
 def _strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
-
 
 def _tokenize(s: str):
     s = _strip_accents((s or "").lower())
     return re.findall(r"[a-zA-Z0-9_]{3,}", s)
-
 
 def _lexical_overlap(query: str, text: str) -> float:
     q_tokens = set(_tokenize(query))
@@ -150,7 +169,6 @@ def _lexical_overlap(query: str, text: str) -> float:
     inter = len(q_tokens & t_tokens)
     return inter / len(q_tokens)
 
-
 def _overlap_score(a: str, b: str) -> float:
     ta = set(_tokenize(a))
     tb = set(_tokenize(b))
@@ -158,7 +176,6 @@ def _overlap_score(a: str, b: str) -> float:
         return 0.0
     inter = len(ta & tb)
     return inter / max(1.0, len(ta))
-
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
     """
@@ -185,8 +202,94 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
         return None
     return melhor
 
+def _is_off_domain_reply(text: str) -> bool:
+    """
+    Detecta se a resposta é do tipo "fora de escopo",
+    usando a frase padrão definida no SYSTEM_PROMPT_RAG.
+    """
+    if not text:
+        return False
+    t = _strip_accents(text.lower())
+    gatilho = _strip_accents(
+        "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
+    ).lower()
+    return gatilho[:60] in t
 
-def _expand_query_for_hr(query: str) -> str:
+# ========================= ROTAS RH: OBRA x ADMIN =========================
+HR_TIPO_OBRA = "obra"               # Departamento Pessoal (PO.08)
+HR_TIPO_ADMIN = "administrativo"    # Pessoas & Performance (PO.06)
+
+def _is_hr_hiring_question(q: str) -> bool:
+    """
+    Detecta intenção de contratação/admissão (RH), mesmo sem citar POP.
+    """
+    t = _strip_accents((q or "").lower())
+    termos = [
+        "contrat", "admiss", "admit", "recrut", "sele", "vaga",
+        "curriculo", "currículo", "entrevista", "processo selet",
+        "candidato", "colaborador", "funcionario", "funcionário",
+        "registro", "registrar", "folha", "clt",
+        "departamento pessoal", "dp", "pessoas e performance", "pessoas & performance", "pp",
+        "adicionar colaborador", "incluir colaborador", "cadastro de colaborador", "cadastro de funcionario"
+    ]
+    return any(x in t for x in termos)
+
+def _parse_tipo_contratacao(texto: str):
+    """
+    Retorna 'obra' | 'administrativo' | None
+    Aceita: 'Obra', 'Administrativo', '1', '2', frases com 'sede', 'canteiro', etc.
+    """
+    t_raw = (texto or "").strip()
+    t = _strip_accents(t_raw.lower())
+
+    # respostas numéricas
+    if re.fullmatch(r"\s*1\s*", t_raw):
+        return HR_TIPO_OBRA
+    if re.fullmatch(r"\s*2\s*", t_raw):
+        return HR_TIPO_ADMIN
+
+    # sinais fortes (diretos)
+    if "pessoas e performance" in t or "pessoas & performance" in t or "po.06" in t or "po 06" in t or re.search(r"\bpp\b", t):
+        return HR_TIPO_ADMIN
+    if "departamento pessoal" in t or "po.08" in t or "po 08" in t or re.search(r"\bdp\b", t):
+        return HR_TIPO_OBRA
+
+    # sinais por contexto
+    sinais_obra = ["obra", "canteiro", "campo", "frente de obra", "produção", "apoio de obra", "alojamento"]
+    sinais_admin = ["administrativo", "escritorio", "escritório", "sede", "corporativo", "matriz"]
+
+    has_obra = any(s in t for s in sinais_obra)
+    has_admin = any(s in t for s in sinais_admin)
+
+    if has_obra and not has_admin:
+        return HR_TIPO_OBRA
+    if has_admin and not has_obra:
+        return HR_TIPO_ADMIN
+
+    return None
+
+def _tipo_boost(block: dict, tipo: str) -> float:
+    """
+    Boost leve no score para puxar o POP certo sem "travar" o RAG.
+    """
+    if not tipo or not block:
+        return 0.0
+
+    pagina = _strip_accents((block.get("pagina") or "")).lower()
+    texto = _strip_accents((block.get("texto") or "")).lower()
+    hay = f"{pagina}\n{texto}"
+
+    if tipo == HR_TIPO_OBRA:
+        chaves = ["po.08", "po 08", "controle de pessoal", "departamento pessoal", " dp ", "obra", "r.02", "r 02"]
+        return 0.20 if any(k in hay for k in chaves) else 0.0
+
+    if tipo == HR_TIPO_ADMIN:
+        chaves = ["po.06", "po 06", "pessoas e performance", "pessoas & performance", "recrutamento", "selecao", "seleção"]
+        return 0.20 if any(k in hay for k in chaves) else 0.0
+
+    return 0.0
+
+def _expand_query_for_hr(query: str, tipo_contratacao: str | None = None) -> str:
     """
     Expande queries para melhorar match semântico.
     Inclui padrões de RH e de Compras (toner -> material de expediente).
@@ -194,17 +297,26 @@ def _expand_query_for_hr(query: str) -> str:
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    # RH
-    if "contrat" in q_norm:
+    # RH (intenção geral)
+    if any(x in q_norm for x in ["contrat", "admiss", "admit", "recrut", "sele", "vaga", "curricul", "entrevist"]):
         extras.append(
             "contratação de funcionários admissão de colaboradores "
-            "processo de admissão contratação de pessoal recrutamento seleção de candidatos"
+            "processo de admissão recrutamento seleção de candidatos "
+            "documentos admissionais cadastro de colaborador"
         )
 
-    if "admiss" in q_norm:
+    # RH (roteamento por tipo)
+    if tipo_contratacao == HR_TIPO_OBRA:
         extras.append(
-            "admissão de pessoal contratação de funcionários contratação de colaboradores "
-            "processo de admissão recrutamento"
+            "Obra canteiro Departamento Pessoal DP "
+            "PO.08 Controle de Pessoal R.02 "
+            "admissão em obra registro de pessoal"
+        )
+    elif tipo_contratacao == HR_TIPO_ADMIN:
+        extras.append(
+            "Administrativo sede escritório Pessoas e Performance "
+            "PO.06 Pessoas e Performance "
+            "recrutamento e seleção aprovação de vaga"
         )
 
     # Compras / toner como material de expediente
@@ -218,20 +330,6 @@ def _expand_query_for_hr(query: str) -> str:
     if extras:
         return query + " " + " ".join(extras)
     return query
-
-
-def _is_off_domain_reply(text: str) -> bool:
-    """
-    Detecta se a resposta é do tipo "fora de escopo",
-    usando a frase padrão definida no SYSTEM_PROMPT_RAG.
-    """
-    if not text:
-        return False
-    t = _strip_accents(text.lower())
-    gatilho = _strip_accents(
-        "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
-    ).lower()
-    return gatilho[:60] in t
 
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
@@ -292,7 +390,6 @@ def gerar_resposta_fallback_interativa(pergunta: str,
     except Exception:
         return FALLBACK_MSG
 
-
 # ========================= CLIENTES CACHEADOS =========================
 @st.cache_resource(show_spinner=False)
 def get_drive_client(_v=CACHE_BUSTER):
@@ -301,12 +398,10 @@ def get_drive_client(_v=CACHE_BUSTER):
     )
     return build('drive', 'v3', credentials=creds)
 
-
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
@@ -316,7 +411,6 @@ def get_cross_encoder(_v=CACHE_BUSTER):
     from sentence_transformers import CrossEncoder
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
-
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _drive_list_all(drive_service, query: str, fields: str):
@@ -339,19 +433,16 @@ def _drive_list_all(drive_service, query: str, fields: str):
             break
     return all_files
 
-
 def _list_by_mime_query(drive_service, folder_id, mime_query):
     query = f"'{folder_id}' in parents and ({mime_query}) and trashed = false"
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     return _drive_list_all(drive_service, query, fields)
-
 
 def _list_docx_metadata(drive_service, folder_id):
     return _list_by_mime_query(
         drive_service, folder_id,
         "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
     )
-
 
 def _list_json_metadata(drive_service, folder_id):
     files = _list_by_mime_query(
@@ -360,28 +451,23 @@ def _list_json_metadata(drive_service, folder_id):
     )
     return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
 
-
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
     query = f"'{folder_id}' in parents and trashed = false"
     files = _drive_list_all(drive_service, query, fields)
     return {f["name"]: f for f in files if f.get("name") in wanted_names}
 
-
 def _download_bytes(drive_service, file_id):
     request = drive_service.files().get_media(fileId=file_id, supportsAllDrives=True)
     return request.execute()
 
-
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
-
 
 # ========================= PARSE DOCX/JSON =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-
 
 def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
     doc = Document(io.BytesIO(file_bytes))
@@ -390,7 +476,6 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
         {"pagina": file_name, "texto": chunk, "file_id": file_id}
         for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
     ]
-
 
 def _records_from_json_text(text: str):
     recs = []
@@ -413,7 +498,6 @@ def _records_from_json_text(text: str):
                 continue
     return recs
 
-
 def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
     out = []
     for r in recs:
@@ -424,7 +508,6 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
             out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
 
-
 # ========================= CACHE DE FONTES =========================
 @st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
@@ -433,10 +516,8 @@ def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
     files_docx = _list_docx_metadata(drive, folder_id)
     return {"json": files_json, "docx": files_docx}
 
-
 def _signature_from_files(files):
     return [{k: f.get(k) for k in ("id", "name", "md5Checksum", "modifiedTime")} for f in (files or [])]
-
 
 def _build_signature_sources(files_json, files_docx):
     payload = {
@@ -445,19 +526,16 @@ def _build_signature_sources(files_json, files_docx):
     }
     return json.dumps(payload, ensure_ascii=False)
 
-
 @st.cache_data(show_spinner=False)
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
-
 
 @st.cache_data(show_spinner=False)
 def _parse_json_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
     recs = _records_from_json_text(_download_text(drive, file_id))
     return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
-
 
 @st.cache_data(show_spinner=False)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
@@ -471,7 +549,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
             blocks.extend(_parse_json_cached(f["id"], md5, f["name"]))
-
         except Exception:
             continue
 
@@ -484,7 +561,6 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
 
     return blocks
 
-
 def load_all_blocks_cached(folder_id: str):
     src = _list_sources_cached(folder_id)
     signature = _build_signature_sources(
@@ -493,7 +569,6 @@ def load_all_blocks_cached(folder_id: str):
     )
     blocks = _download_and_parse_blocks(signature, folder_id)
     return blocks, signature
-
 
 # ========================= AGRUPAMENTO =========================
 def agrupar_blocos(blocos, janela=GROUP_WINDOW):
@@ -527,14 +602,12 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
 
     return grouped
 
-
 # ========================= ÍNDICE / EMBEDDINGS =========================
 def _list_named_files_map():
     drive = get_drive_client()
     want = {PRECOMP_FAISS_NAME, PRECOMP_VECTORS_NAME, PRECOMP_BLOCKS_NAME}
     name_map = _list_named_files(drive, FOLDER_ID, want)
     return name_map if all(n in name_map for n in want) else None
-
 
 @st.cache_resource(show_spinner=False)
 def _load_precomputed_index(_v=CACHE_BUSTER):
@@ -558,14 +631,12 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
     except Exception:
         return None
 
-
 def try_import_faiss():
     try:
         import faiss
         return faiss
     except Exception:
         return None
-
 
 @st.cache_resource(show_spinner=False)
 def build_vector_index(signature: str, _v=CACHE_BUSTER):
@@ -598,14 +669,12 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
 
     return {"blocks": grouped, "emb": emb, "index": index, "use_faiss": use_faiss}
 
-
 def get_vector_index():
     _blocks, signature = load_all_blocks_cached(FOLDER_ID)
     return build_vector_index(signature)
 
-
 # ========================= BUSCA ANN =========================
-def ann_search(query_text: str, top_n: int):
+def ann_search(query_text: str, top_n: int, tipo_contratacao: str | None = None):
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
@@ -613,7 +682,7 @@ def ann_search(query_text: str, top_n: int):
 
     sbert = get_sbert_model()
 
-    query_for_embed = _expand_query_for_hr(query_text)
+    query_for_embed = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
@@ -633,7 +702,10 @@ def ann_search(query_text: str, top_n: int):
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
-        adj_score = float(s) + 0.25 * lex  # boost lexical leve
+
+        b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
+        adj_score = float(s) + 0.25 * lex + b_tipo  # boost lexical leve + boost de tipo
+
         results.append({
             "idx": i,
             "score": adj_score,
@@ -643,9 +715,8 @@ def ann_search(query_text: str, top_n: int):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]
 
-
 # ========================= PROMPT RAG =========================
-def montar_prompt_rag(pergunta, blocos):
+def montar_prompt_rag(pergunta, blocos, tipo_contratacao: str | None = None):
     """
     Monta o texto que vai na mensagem do usuário:
     - contexto dos POPs
@@ -663,7 +734,6 @@ def montar_prompt_rag(pergunta, blocos):
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
         texto = b.get("texto") or ""
-        # deixa espaço para o modelo trabalhar, mas evita estourar token demais
         if len(texto) > 3000:
             texto = texto[:3000]
         pagina = b.get("pagina", "?")
@@ -671,9 +741,16 @@ def montar_prompt_rag(pergunta, blocos):
 
     contexto_str = "\n\n".join(contexto_parts)
 
+    tipo_txt = ""
+    if tipo_contratacao == HR_TIPO_OBRA:
+        tipo_txt = "Tipo de contratação informado: OBRA (Departamento Pessoal – PO.08 - Controle de Pessoal R.02)."
+    elif tipo_contratacao == HR_TIPO_ADMIN:
+        tipo_txt = "Tipo de contratação informado: ADMINISTRATIVO (Pessoas & Performance – PO.06 - Pessoas e Performance)."
+
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
+        f"{tipo_txt}\n\n"
         "Instruções para montar a resposta:\n"
         "1. Identifique claramente qual processo está sendo descrito (por exemplo, compra de materiais de expediente,\n"
         "   gestão de férias, controle de pessoal, admissão/contratação de colaboradores etc.) e deixe isso explícito no primeiro parágrafo.\n"
@@ -702,7 +779,6 @@ def montar_prompt_rag(pergunta, blocos):
 
     return prompt_usuario
 
-
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     t0 = time.perf_counter()
@@ -711,20 +787,50 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        # 1) Busca ANN
-        candidates = ann_search(pergunta, top_n=TOP_N_ANN)
+        # ===== 0) Se estamos aguardando o tipo de contratação, tratar a resposta do usuário =====
+        if _state_get("awaiting_contratacao_tipo", False):
+            tipo = _parse_tipo_contratacao(pergunta)
+            if not tipo:
+                return "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance)."
+
+            _state_set("tipo_contratacao", tipo)
+            _state_set("awaiting_contratacao_tipo", False)
+
+            pergunta_original = _state_pop("pending_hr_question", "")
+            if not pergunta_original:
+                return "✅ Tipo registrado. Agora me envie sua dúvida sobre contratação/admissão."
+            pergunta = pergunta_original  # volta para a pergunta original e segue o fluxo normal
+
+        # ===== 1) Se for contratação/admissão e ainda não tiver tipo, perguntar antes do RAG =====
+        tipo_contratacao = None
+        if _is_hr_hiring_question(pergunta):
+            # Se o usuário já escreveu "obra"/"administrativo"/PO.06/PO.08 na própria pergunta,
+            # isso já conta como resposta do tipo.
+            tipo_contratacao = _parse_tipo_contratacao(pergunta) or _state_get("tipo_contratacao")
+
+            if not tipo_contratacao:
+                _state_set("awaiting_contratacao_tipo", True)
+                _state_set("pending_hr_question", pergunta)
+                return (
+                    "Antes de eu te orientar, essa contratação é para:\n\n"
+                    "1) **Obra** (Departamento Pessoal – **PO.08 - Controle de Pessoal R.02**)\n"
+                    "2) **Administrativo** (Pessoas & Performance – **PO.06 - Pessoas e Performance**)\n\n"
+                    "Responda com **Obra** ou **Administrativo** (ou apenas **1** / **2**)."
+                )
+
+        # 2) Busca ANN (agora com tipo_contratacao quando aplicável)
+        candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
         if not candidates:
-            # Nenhum bloco em lugar nenhum: aí sim usamos fallback
             return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
-        # 2) Usa os TOP_K blocos, sem thresholds agressivos
+        # 3) Usa os TOP_K blocos, sem thresholds agressivos
         reranked = candidates[:top_k]
         blocos_relevantes = [r["block"] for r in reranked]
 
         t_rag = time.perf_counter()
 
-        # 3) Monta prompt
-        prompt = montar_prompt_rag(pergunta, blocos_relevantes)
+        # 4) Monta prompt (agora com tipo_contratacao)
+        prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
 
         payload = {
             "model": model_id,
@@ -738,7 +844,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
             "stream": False,
         }
 
-        # 4) Chamada à API
+        # 5) Chamada à API
         try:
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -762,7 +868,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = resposta_final.strip()
 
-        # 5) Link para o documento mais provável
+        # 6) Link para o documento mais provável
         #    NÃO anexar link se a resposta for fora de escopo (ex.: pergunta sobre futebol, política etc.)
         if blocos_relevantes and not _is_off_domain_reply(resposta):
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
@@ -783,7 +889,6 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
     except Exception as e:
         return f"❌ Erro interno: {e}"
-
 
 # ========================= CLI =========================
 if __name__ == "__main__":
