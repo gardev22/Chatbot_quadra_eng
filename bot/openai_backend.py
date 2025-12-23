@@ -1,6 +1,6 @@
 # openai_backend.py — RAG conversacional detalhado + link do POP correto
-# (Atualizado: desambiguação inteligente de contratação: Obra (DP/PO.08) vs Administrativo (PP/PO.06))
-# (Corrigido: NÃO cair direto em Pessoas & Performance quando a pergunta é genérica; pergunta SEMPRE o tipo.)
+# (Atualizado: desambiguação inteligente para processos de Pessoas/RH:
+#  Obra (Departamento Pessoal / PO.08) vs Administrativo (Pessoas & Performance / PO.06))
 
 import os
 import io
@@ -8,6 +8,8 @@ import re
 import json
 import time
 import unicodedata
+from typing import Optional
+
 import numpy as np
 import requests
 import streamlit as st
@@ -23,8 +25,8 @@ MODEL_ID = "gpt-4o"
 USE_JSONL = True
 USE_CE = False  # CrossEncoder desativado para manter leve/rápido
 
-TOP_N_ANN = 12
-TOP_K = 5
+TOP_N_ANN = 12   # candidatos na ANN
+TOP_K = 5        # blocos que vão para o contexto
 
 MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
@@ -60,57 +62,25 @@ Seu papel:
 
 Estilo de resposta (muito importante):
 - Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
-- Estruture a resposta de forma parecida com um manual interno bem escrito, por exemplo:
-
-  • Comece com um parágrafo inicial explicando de forma geral:
-    - do que trata o processo;
-    - em qual categoria ele se encaixa (ex.: material de expediente, benefício, controle de pessoal, admissão/contratação de colaboradores);
-    - qual é o departamento responsável.
-
-  • Depois, use seções numeradas quando houver cenários diferentes, por exemplo:
-    1. Na Sede da Empresa (Escritório)
-    2. Em Obras
-    3. Contexto Geral da Compra de Materiais
-
-    Dentro de cada seção, escreva por extenso, em frases completas.
-    Você pode usar marcadores com o símbolo “•” ou apenas parágrafos separados.
-    Não use linhas iniciadas com hífen simples (“- ”) para listar itens.
-
-    Inclua, sempre que aparecer no contexto:
-    - frequência e prazos;
-    - responsáveis (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);
-    - formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101 etc.);
-    - etapas do fluxo (solicitação, cotação com 3 fornecedores, análise do mapa de cotações,
-      aprovação, emissão do pedido, retirada do material).
-
-  • Conclua com um parágrafo de resumo começando com “Em resumo,” ou equivalente,
-    amarrando o que o colaborador precisa fazer no caso específico da pergunta.
-
-- Escreva de forma fluida, por extenso, sem excesso de tópicos telegráficos.
-- Não omita detalhes relevantes que estejam nos trechos de contexto apenas para encurtar a resposta.
+- Estruture a resposta de forma parecida com um manual interno bem escrito.
 
 Regras de conteúdo:
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
 - Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
   aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
 
-Interpretação de perguntas de RH (muito importante):
-- Se a pergunta contiver termos como “contratar”, “contratação”, “contratando”, “admissão”, “admitir”,
-  “funcionário”, “funcionários”, “colaborador”, “colaboradores”, “vaga”, “recrutamento”, “seleção”,
-  “entrevista de emprego” ou expressões semelhantes,
-  SEMPRE interprete como uma dúvida sobre procedimentos internos de contratação/admissão de colaboradores
-  da Quadra Engenharia.
-- Nesses casos, NÃO trate a pergunta como assunto externo. Use os POPs, políticas de RH e documentos internos do contexto
-  para descrever o fluxo de contratação/admissão (responsáveis, formulários, prazos, etapas, aprovações, etc.).
+Interpretação de perguntas de Pessoas/RH (muito importante):
+- Se a pergunta indicar temas como admissão/contratação, período de experiência, avaliação de desempenho,
+  desligamento/rescisão, férias, ponto/folha, ASO, documentos admissionais, benefícios ou rotinas de pessoal,
+  interprete SEMPRE como dúvida sobre procedimentos internos da Quadra Engenharia.
+- Nesses casos, NÃO trate como assunto externo. Use os POPs e documentos internos do contexto
+  para descrever o fluxo (responsáveis, formulários, prazos, etapas, aprovações etc.).
 
-- Só diga que não há informação quando o contexto realmente não trouxer nada relacionado ao tema.
-- Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre o assunto externo.
-  Nessas situações, responda de forma curta e educada, começando com a frase exata:
+Fora de escopo:
+- Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre assunto externo.
+  Nesses casos, responda curto e educado, começando com a frase exata:
 
   "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
-
-  Depois dessa frase, explique brevemente que não consegue ajudar nesse tema externo e convide o usuário a reformular a dúvida
-  com foco nos processos internos da empresa.
 """
 
 # ========= CACHE BUSTER =========
@@ -203,23 +173,54 @@ def _is_off_domain_reply(text: str) -> bool:
     ).lower()
     return gatilho[:60] in t
 
-# ========================= ROTAS RH: OBRA x ADMIN =========================
+# ========================= ROTAS PESSOAS/RH: OBRA x ADMIN =========================
 HR_TIPO_OBRA = "obra"               # Departamento Pessoal (PO.08)
 HR_TIPO_ADMIN = "administrativo"    # Pessoas & Performance (PO.06)
 
-def _is_hr_hiring_question(q: str) -> bool:
+def _is_people_process_question(q: str) -> bool:
+    """
+    Detecta se a pergunta é de Pessoas/RH (contratação, experiência, avaliação, férias, ponto, desligamento, etc.)
+    para disparar a escolha Obra x Administrativo antes de responder.
+    """
     t = _strip_accents((q or "").lower())
+
     termos = [
-        "contrat", "admiss", "admit", "recrut", "sele", "vaga",
-        "curriculo", "currículo", "entrevista", "processo selet",
-        "candidato", "colaborador", "funcionario", "funcionário",
-        "registro", "registrar", "folha", "clt",
-        "departamento pessoal", "dp", "pessoas e performance", "pessoas & performance", "pp",
-        "adicionar colaborador", "incluir colaborador", "cadastro de colaborador", "cadastro de funcionario"
+        # pessoas gerais
+        "colaborador", "colaboradores", "funcionario", "funcionarios", "funcionário", "funcionários",
+        "empregado", "empregados", "clt",
+
+        # contratação / admissão
+        "contrat", "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "currículo", "entrevista",
+        "aso", "documentos admissionais", "documentacao admissional", "documentação admissional",
+
+        # experiência / avaliação / desempenho
+        "experiencia", "experiência", "periodo de experiencia", "período de experiência", "contrato de experiencia",
+        "avaliacao", "avaliação", "desempenho", "feedback", "pdi", "metas", "performance",
+
+        # desligamento / rescisão
+        "deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato",
+
+        # rotina de pessoal
+        "férias", "ferias", "ponto", "banco de horas", "folha", "holerite", "salario", "salário",
+        "atestado", "afastamento", "beneficio", "benefícios", "vr", "vt", "vale transporte", "vale refeicao", "vale refeição",
+        "epi", "epis", "uniforme",
+
+        # áreas/nomes
+        "departamento pessoal", " dp", "pessoas e performance", "pessoas & performance", " pp", "rh",
+        "po.06", "po 06", "po.08", "po 08",
     ]
+
+    # match com cuidado em dp/pp (evitar pegar "dp" dentro de palavra)
+    if re.search(r"\bdp\b", t) or re.search(r"\bpp\b", t):
+        return True
+
     return any(x in t for x in termos)
 
-def _parse_tipo_contratacao(texto: str):
+def _parse_tipo_contratacao(texto: str) -> Optional[str]:
+    """
+    Retorna 'obra' | 'administrativo' | None
+    Entende: 'Obra', 'Administrativo', '1', '2', 'DP', 'PP', PO.08, PO.06, sede, canteiro.
+    """
     t_raw = (texto or "").strip()
     t = _strip_accents(t_raw.lower())
 
@@ -229,13 +230,14 @@ def _parse_tipo_contratacao(texto: str):
     if re.fullmatch(r"\s*2\s*", t_raw):
         return HR_TIPO_ADMIN
 
-    # sinais fortes
+    # sinais fortes (diretos)
     if "pessoas e performance" in t or "pessoas & performance" in t or "po.06" in t or "po 06" in t or re.search(r"\bpp\b", t):
         return HR_TIPO_ADMIN
     if "departamento pessoal" in t or "po.08" in t or "po 08" in t or re.search(r"\bdp\b", t):
         return HR_TIPO_OBRA
 
-    sinais_obra = ["obra", "canteiro", "campo", "frente de obra", "produção", "apoio de obra", "alojamento"]
+    # sinais por contexto
+    sinais_obra = ["obra", "canteiro", "campo", "frente de obra", "producao", "produção", "apoio de obra", "alojamento"]
     sinais_admin = ["administrativo", "escritorio", "escritório", "sede", "corporativo", "matriz"]
 
     has_obra = any(s in t for s in sinais_obra)
@@ -249,6 +251,9 @@ def _parse_tipo_contratacao(texto: str):
     return None
 
 def _tipo_boost(block: dict, tipo: str) -> float:
+    """
+    Boost leve para puxar o POP certo (sem travar o RAG).
+    """
     if not tipo or not block:
         return 0.0
 
@@ -266,33 +271,50 @@ def _tipo_boost(block: dict, tipo: str) -> float:
 
     return 0.0
 
-def _expand_query_for_hr(query: str, tipo_contratacao: str | None = None) -> str:
+def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> str:
+    """
+    Expande queries para melhorar match semântico (Pessoas/RH + Compras).
+    """
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    # RH (intenção geral)
+    # Pessoas/RH geral
+    if _is_people_process_question(query):
+        extras.append(
+            "rotinas de pessoas rh procedimentos internos pop quadra "
+            "controle de pessoal pessoas e performance departamento pessoal "
+            "formularios prazos responsaveis aprovacao fluxo"
+        )
+
+    # Experiência / avaliação
+    if "experien" in q_norm or "experiên" in q_norm:
+        extras.append(
+            "periodo de experiencia contrato de experiencia 45 dias 90 dias "
+            "avaliacao de desempenho feedback ficha de avaliacao F.90 F.99"
+        )
+
+    # Contratação/admissão (reforço)
     if any(x in q_norm for x in ["contrat", "admiss", "admit", "recrut", "sele", "vaga", "curricul", "entrevist"]):
         extras.append(
             "contratação de funcionários admissão de colaboradores "
             "processo de admissão recrutamento seleção de candidatos "
-            "documentos admissionais cadastro de colaborador"
+            "documentos admissionais aso cadastro de colaborador"
         )
 
-    # RH (roteamento por tipo)
+    # Desligamento/rescisão
+    if any(x in q_norm for x in ["deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato"]):
+        extras.append(
+            "procedimento de desligamento rescisao documentos rescisorios "
+            "controle de aviso previo ficha avaliacao prazos dp"
+        )
+
+    # Roteamento por tipo (quando informado)
     if tipo_contratacao == HR_TIPO_OBRA:
-        extras.append(
-            "Obra canteiro Departamento Pessoal DP "
-            "PO.08 Controle de Pessoal R.02 "
-            "admissão em obra registro de pessoal"
-        )
+        extras.append("Obra canteiro Departamento Pessoal DP PO.08 Controle de Pessoal R.02")
     elif tipo_contratacao == HR_TIPO_ADMIN:
-        extras.append(
-            "Administrativo sede escritório Pessoas e Performance "
-            "PO.06 Pessoas e Performance "
-            "recrutamento e seleção aprovação de vaga"
-        )
+        extras.append("Administrativo sede escritório Pessoas e Performance PO.06 Pessoas e Performance")
 
-    # Compras / toner
+    # Compras / toner como material de expediente
     if "toner" in q_norm:
         extras.append(
             "material de expediente suprimentos de escritório cartucho de impressão "
@@ -641,7 +663,7 @@ def get_vector_index():
     return build_vector_index(signature)
 
 # ========================= BUSCA ANN =========================
-def ann_search(query_text: str, top_n: int, tipo_contratacao: str | None = None):
+def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = None):
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
     if not blocks:
@@ -683,7 +705,7 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: str | None = None)
     return results[:top_n]
 
 # ========================= PROMPT RAG =========================
-def montar_prompt_rag(pergunta, blocos, tipo_contratacao: str | None = None):
+def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
     if not blocos:
         return (
             "Nenhum trecho de POP relevante foi encontrado para a pergunta abaixo.\n"
@@ -704,36 +726,21 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: str | None = None):
 
     tipo_txt = ""
     if tipo_contratacao == HR_TIPO_OBRA:
-        tipo_txt = "Tipo de contratação informado: OBRA (Departamento Pessoal)."
+        tipo_txt = "Contexto informado: OBRA (Departamento Pessoal – PO.08 - Controle de Pessoal R.02)."
     elif tipo_contratacao == HR_TIPO_ADMIN:
-        tipo_txt = "Tipo de contratação informado: ADMINISTRATIVO (Pessoas & Performance)."
+        tipo_txt = "Contexto informado: ADMINISTRATIVO (Pessoas & Performance – PO.06 - Pessoas e Performance)."
 
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
         f"{tipo_txt}\n\n"
         "Instruções para montar a resposta:\n"
-        "1. Identifique claramente qual processo está sendo descrito (por exemplo, compra de materiais de expediente,\n"
-        "   gestão de férias, controle de pessoal, admissão/contratação de colaboradores etc.) e deixe isso explícito no primeiro parágrafo.\n"
-        "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas,\n"
-        "   como por exemplo:\n"
-        "   1. Na Sede da Empresa (Escritório)\n"
-        "   2. Em Obras\n"
-        "   3. Contexto Geral da Compra de Materiais\n"
-        "3. Dentro de cada seção, escreva por extenso, em frases completas, sem usar linhas iniciadas com hífen simples (“- ”).\n"
-        "   Você pode usar o símbolo “•” ou apenas parágrafos separados para destacar frequência, prazos, responsáveis,\n"
-        "   formulários (F.18, F.45 etc.) e etapas do fluxo.\n"
-        "4. Quando a pergunta for sobre um item específico (como um tipo de material, um benefício ou um documento),\n"
-        "   deixe claro em qual categoria geral ele se enquadra (por exemplo, material de expediente, benefício de alimentação,\n"
-        "   documento de admissão) e explique o passo a passo aplicando o procedimento geral ao caso específico.\n"
-        "5. Inclua, sempre que estiver presente nos trechos, informações como:\n"
-        "   • frequência das solicitações e prazos de atendimento;\n"
-        "   • responsáveis em cada etapa (gestor, Comprador, Gerente de Compras, Diretor, DP, PP, Almoxarife etc.);\n"
-        "   • formulários e códigos (F.14, F.16, F.17, F.18, F.45, F.101 etc.);\n"
-        "   • etapas do fluxo (solicitação, cotação com 3 fornecedores, análise do mapa de cotações, aprovação,\n"
-        "     emissão do pedido, retirada do material).\n"
-        "6. Finalize com um parágrafo de resumo começando com “Em resumo,” ou frase equivalente, reforçando\n"
-        "   o que o colaborador deve fazer na prática.\n\n"
+        "1. Identifique claramente qual processo está sendo descrito (por exemplo, compras, gestão de férias,\n"
+        "   controle de pessoal, admissão, período de experiência, avaliação de desempenho, desligamento etc.) e deixe isso explícito no primeiro parágrafo.\n"
+        "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas.\n"
+        "3. Dentro de cada seção, escreva por extenso, em frases completas.\n"
+        "   Você pode usar o símbolo “•” ou parágrafos separados para destacar prazos, responsáveis, formulários e etapas.\n"
+        "4. Finalize com “Em resumo,” reforçando o que o colaborador deve fazer na prática.\n\n"
         f"Trechos de contexto dos POPs:\n{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
@@ -748,34 +755,37 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        tipo_contratacao = None
-        forced_tipo = None
+        tipo_contratacao: Optional[str] = None
+        forced_tipo: Optional[str] = None
 
-        # ===== 0) Se estamos aguardando o tipo, tratar a resposta e seguir para a pergunta original =====
-        if _state_get("awaiting_contratacao_tipo", False):
+        # ===== 0) Se estamos aguardando a escolha (Obra/Admin), tratar e seguir para a pergunta original =====
+        if _state_get("awaiting_rh_tipo", False):
             tipo = _parse_tipo_contratacao(pergunta)
             if not tipo:
-                return "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance) — ou **1** / **2**."
+                return (
+                    "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance) — "
+                    "ou **1** / **2**."
+                )
 
-            _state_set("awaiting_contratacao_tipo", False)
-            pergunta_original = _state_pop("pending_hr_question", "")
+            _state_set("awaiting_rh_tipo", False)
+            pergunta_original = _state_pop("pending_rh_question", "")
 
             if not pergunta_original:
-                return "✅ Tipo registrado. Agora me envie sua dúvida sobre contratação/admissão."
+                return "✅ Entendi. Agora me envie sua dúvida sobre o processo de Pessoas/RH."
 
             forced_tipo = tipo
             pergunta = pergunta_original  # retoma a pergunta original
 
-        # ===== 1) Se for contratação/admissão e o tipo NÃO estiver explícito na mensagem atual, perguntar SEMPRE =====
-        if _is_hr_hiring_question(pergunta):
-            # Regra: só considera tipo se estiver explícito (na msg atual) OU se vier do passo de escolha (forced_tipo)
+        # ===== 1) Se for tema de Pessoas/RH e tipo NÃO estiver explícito, perguntar SEMPRE antes do RAG =====
+        if _is_people_process_question(pergunta):
+            # Regra: só considera tipo se estiver explícito (na msg atual) OU se veio do passo de escolha (forced_tipo)
             tipo_contratacao = forced_tipo or _parse_tipo_contratacao(pergunta)
 
             if not tipo_contratacao:
-                _state_set("awaiting_contratacao_tipo", True)
-                _state_set("pending_hr_question", pergunta)
+                _state_set("awaiting_rh_tipo", True)
+                _state_set("pending_rh_question", pergunta)
                 return (
-                    "Antes de eu te orientar, essa contratação é para:\n\n"
+                    "Antes de eu te orientar, isso se refere a:\n\n"
                     "1) **Obra** (Departamento Pessoal – **PO.08 - Controle de Pessoal R.02**)\n"
                     "2) **Administrativo** (Pessoas & Performance – **PO.06 - Pessoas e Performance**)\n\n"
                     "Responda com **Obra** ou **Administrativo** (ou apenas **1** / **2**)."
