@@ -704,9 +704,9 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: str | None = None):
 
     tipo_txt = ""
     if tipo_contratacao == HR_TIPO_OBRA:
-        tipo_txt = "Tipo de contratação informado: OBRA (Departamento Pessoal – PO.08 - Controle de Pessoal R.02)."
+        tipo_txt = "Tipo de contratação informado: OBRA (Departamento Pessoal)."
     elif tipo_contratacao == HR_TIPO_ADMIN:
-        tipo_txt = "Tipo de contratação informado: ADMINISTRATIVO (Pessoas & Performance – PO.06 - Pessoas e Performance)."
+        tipo_txt = "Tipo de contratação informado: ADMINISTRATIVO (Pessoas & Performance)."
 
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
