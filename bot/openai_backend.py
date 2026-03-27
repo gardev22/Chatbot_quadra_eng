@@ -746,8 +746,61 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
     )
 
     return prompt_usuario
+def auditar_base_conhecimento():
+    try:
+        src = _list_sources_cached(FOLDER_ID)
+        files_json = src.get("json", []) if USE_JSONL else []
+        files_docx = src.get("docx", []) or []
 
+        blocks_raw, signature = load_all_blocks_cached(FOLDER_ID)
+        grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
+
+        linhas = []
+        linhas.append("📚 Auditoria da base de conhecimento")
+        linhas.append(f"FOLDER_ID: {FOLDER_ID}")
+        linhas.append("")
+
+        linhas.append(f"JSON/JSONL encontrados: {len(files_json)}")
+        for f in sorted(files_json, key=lambda x: x.get("name", "").lower()):
+            linhas.append(
+                f"  [JSON] {f.get('name')} | id={f.get('id')} | modified={f.get('modifiedTime')}"
+            )
+
+        linhas.append("")
+        linhas.append(f"DOCX encontrados: {len(files_docx)}")
+        for f in sorted(files_docx, key=lambda x: x.get("name", "").lower()):
+            linhas.append(
+                f"  [DOCX] {f.get('name')} | id={f.get('id')} | modified={f.get('modifiedTime')}"
+            )
+
+        linhas.append("")
+        linhas.append(f"Total de blocos brutos carregados: {len(blocks_raw)}")
+        linhas.append(f"Total de blocos agrupados: {len(grouped)}")
+
+        contagem_por_documento = {}
+        for b in blocks_raw:
+            nome = b.get("pagina", "?")
+            contagem_por_documento[nome] = contagem_por_documento.get(nome, 0) + 1
+
+        linhas.append("")
+        linhas.append(f"Documentos presentes nos blocos: {len(contagem_por_documento)}")
+        for nome in sorted(contagem_por_documento):
+            linhas.append(f"  -> {nome} ({contagem_por_documento[nome]} blocos)")
+
+        linhas.append("")
+        linhas.append("Prévia da signature:")
+        linhas.append(signature[:1200] + ("..." if len(signature) > 1200 else ""))
+
+        return "\n".join(linhas)
+
+    except Exception as e:
+        return f"❌ Erro ao auditar base: {e}"
+    
+    
+    
 # ========================= PRINCIPAL =========================
+
+
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
     t0 = time.perf_counter()
     try:
@@ -755,41 +808,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
         if not pergunta:
             return "⚠️ Pergunta vazia."
 
-        tipo_contratacao: Optional[str] = None
-        forced_tipo: Optional[str] = None
+        comando = pergunta.lower().strip()
+        if comando in ["/auditar", "/debug_base", "/base", "auditar base", "debug base"]:
+            return auditar_base_conhecimento()
 
-        # ===== 0) Se estamos aguardando a escolha (Obra/Admin), tratar e seguir para a pergunta original =====
-        if _state_get("awaiting_rh_tipo", False):
-            tipo = _parse_tipo_contratacao(pergunta)
-            if not tipo:
-                return (
-                    "Antes de eu seguir, responda apenas com **Obra** ou **Administrativo** (Pessoas & Performance) — "
-                    "ou **1** / **2**."
-                )
+        # não pergunta mais "obra ou administrativo"
+        # só usa o tipo se vier explícito na própria pergunta
+        tipo_contratacao: Optional[str] = _parse_tipo_contratacao(pergunta)
 
-            _state_set("awaiting_rh_tipo", False)
-            pergunta_original = _state_pop("pending_rh_question", "")
-
-            if not pergunta_original:
-                return "✅ Entendi. Agora me envie sua dúvida sobre o processo de Pessoas/RH."
-
-            forced_tipo = tipo
-            pergunta = pergunta_original  # retoma a pergunta original
-
-        # ===== 1) Se for tema de Pessoas/RH e tipo NÃO estiver explícito, perguntar SEMPRE antes do RAG =====
-        if _is_people_process_question(pergunta):
-            # Regra: só considera tipo se estiver explícito (na msg atual) OU se veio do passo de escolha (forced_tipo)
-            tipo_contratacao = forced_tipo or _parse_tipo_contratacao(pergunta)
-
-            if not tipo_contratacao:
-                _state_set("awaiting_rh_tipo", True)
-                _state_set("pending_rh_question", pergunta)
-                return (
-                    "Antes de eu te orientar, isso se refere a:\n\n"
-                    "1) **Obra** (Departamento Pessoal)\n"
-                    "2) **Administrativo** (Pessoas & Performance)\n\n"
-                    "Responda com **Obra** ou **Administrativo** (ou apenas **1** / **2**)."
-                )
+        # limpa qualquer resquício de estado antigo dessa lógica
+        _state_set("awaiting_rh_tipo", False)
+        _state_pop("pending_rh_question", None)
 
         # 2) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
@@ -841,7 +870,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
 
         resposta = resposta_final.strip()
 
-        # 6) Link para o documento mais provável (não anexar se for fora de escopo)
+        # 6) Link para o documento mais provável
         if blocos_relevantes and not _is_off_domain_reply(resposta):
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
