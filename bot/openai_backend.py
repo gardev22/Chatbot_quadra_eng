@@ -1,6 +1,6 @@
-# openai_backend.py — RAG conversacional detalhado + link do POP correto
-# (Atualizado: desambiguação inteligente para processos de Pessoas/RH:
-#  Obra (Departamento Pessoal / PO.08) vs Administrativo (Pessoas & Performance / PO.06))
+# openai_backend.py — RAG conversacional v2: embeddings multilíngue, chunking semântico,
+# metadata filtering, threshold de relevância, anti-alucinação reforçado
+# (Mantém: link do POP, auditoria, desambiguação Obra x Administrativo)
 
 import os
 import io
@@ -23,17 +23,21 @@ MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False  # CrossEncoder desativado para manter leve/rápido
+USE_CE = False  # Cross-encoder desativado para manter rápido
 
-TOP_N_ANN = 12   # candidatos na ANN
-TOP_K = 5        # blocos que vão para o contexto
+TOP_N_ANN = 20        # candidatos na ANN (mais candidatos → rerank por score+lex mais eficaz)
+TOP_K = 5             # blocos que vão para o contexto
+RELEVANCE_THRESHOLD = 0.30  # score mínimo; abaixo disso → fallback (evita alucinação)
 
-MAX_WORDS_PER_BLOCK = 180
+MAX_WORDS_PER_BLOCK = 200
+OVERLAP_WORDS = 40        # overlap entre blocos consecutivos de mesma seção
 GROUP_WINDOW = 2
 
-MAX_TOKENS = 750
+MAX_TOKENS = 1200
 REQUEST_TIMEOUT = 60
-TEMPERATURE = 0.30
+TEMPERATURE = 0.25
+
+HISTORY_TURNS = 3  # quantas trocas de conversa manter no payload
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -51,7 +55,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT (CONVERSACIONAL + MANUAL INTERNO) =========
+# ========= SYSTEM PROMPT (REFORÇADO ANTI-ALUCINAÇÃO) =========
 SYSTEM_PROMPT_RAG = """
 Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 
@@ -64,8 +68,13 @@ Estilo de resposta (muito importante):
 - Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
 - Estruture a resposta de forma parecida com um manual interno bem escrito.
 
-Regras de conteúdo:
+Regras de conteúdo (CRÍTICO — leia com atenção):
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
+- NÃO invente etapas, prazos, formulários, responsáveis ou qualquer informação que NÃO esteja explicitamente nos trechos.
+- Se os trechos NÃO contêm informação suficiente para responder com segurança, diga claramente:
+  "Os documentos disponíveis não cobrem esse tema em detalhe suficiente. Recomendo consultar o setor responsável."
+  NÃO tente completar com conhecimento geral.
+- Quando citar um formulário, prazo ou responsável, ele DEVE estar presente nos trechos fornecidos.
 - Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
   aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
 
@@ -84,7 +93,7 @@ Fora de escopo:
 """
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2025-11-25-RAG-GERAL-OFFDOMAIN-01"
+CACHE_BUSTER = "2026-03-31-v3"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -146,7 +155,6 @@ def _overlap_score(a: str, b: str) -> float:
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
     if not blocos:
         return None
-
     melhor = None
     melhor_score = 0.0
     for b in blocos:
@@ -159,7 +167,6 @@ def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
         if score > melhor_score:
             melhor_score = score
             melhor = b
-
     if melhor is None or melhor_score < 0.02:
         return None
     return melhor
@@ -173,70 +180,103 @@ def _is_off_domain_reply(text: str) -> bool:
     ).lower()
     return gatilho[:60] in t
 
+# ========================= METADATA EXTRACTION =========================
+# Extrai código POP e departamento de cada bloco para filtragem rápida
+
+_POP_CODE_RE = re.compile(
+    r"(PO[\.\s]?\d{2}|F[\.\s]?\d{2,3}|R[\.\s]?\d{2})",
+    re.IGNORECASE,
+)
+
+_DEPT_KEYWORDS = {
+    "compras": "compras",
+    "suprimentos": "compras",
+    "financeiro": "financeiro",
+    "contabil": "financeiro",
+    "pessoal": "pessoal",
+    "departamento pessoal": "pessoal",
+    "pessoas e performance": "pessoas_performance",
+    "pessoas & performance": "pessoas_performance",
+    "recrutamento": "pessoas_performance",
+    "selecao": "pessoas_performance",
+    "seleção": "pessoas_performance",
+    "engenharia": "engenharia",
+    "qualidade": "qualidade",
+    "seguranca": "seguranca",
+    "segurança": "seguranca",
+    "contratos": "contratos",
+    "medicoes": "contratos",
+    "medições": "contratos",
+    "estrategia": "estrategia",
+    "inovacao": "estrategia",
+}
+
+def _extract_pop_codes(text: str) -> list[str]:
+    """Extrai códigos POP (PO.06, F.18, R.02 etc.) do texto."""
+    if not text:
+        return []
+    matches = _POP_CODE_RE.findall(text)
+    # Normaliza: PO 06 → PO.06
+    normalized = []
+    for m in matches:
+        clean = re.sub(r"\s+", ".", m.upper())
+        if clean not in normalized:
+            normalized.append(clean)
+    return normalized
+
+def _extract_department(text: str) -> Optional[str]:
+    """Identifica departamento a partir de palavras-chave no texto."""
+    t = _strip_accents((text or "").lower())
+    for keyword, dept in _DEPT_KEYWORDS.items():
+        if _strip_accents(keyword) in t:
+            return dept
+    return None
+
+def _enrich_block_metadata(block: dict) -> dict:
+    """Adiciona pop_codes e department ao bloco (sem alterar texto)."""
+    combined = f"{block.get('pagina', '')} {block.get('texto', '')}"
+    block["pop_codes"] = _extract_pop_codes(combined)
+    block["department"] = _extract_department(combined)
+    return block
+
 # ========================= ROTAS PESSOAS/RH: OBRA x ADMIN =========================
-HR_TIPO_OBRA = "obra"               # Departamento Pessoal (PO.08)
-HR_TIPO_ADMIN = "administrativo"    # Pessoas & Performance (PO.06)
+HR_TIPO_OBRA = "obra"
+HR_TIPO_ADMIN = "administrativo"
 
 def _is_people_process_question(q: str) -> bool:
-    """
-    Detecta se a pergunta é de Pessoas/RH (contratação, experiência, avaliação, férias, ponto, desligamento, etc.)
-    para disparar a escolha Obra x Administrativo antes de responder.
-    """
     t = _strip_accents((q or "").lower())
-
     termos = [
-        # pessoas gerais
         "colaborador", "colaboradores", "funcionario", "funcionarios", "funcionário", "funcionários",
         "empregado", "empregados", "clt",
-
-        # contratação / admissão
         "contrat", "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "currículo", "entrevista",
         "aso", "documentos admissionais", "documentacao admissional", "documentação admissional",
-
-        # experiência / avaliação / desempenho
         "experiencia", "experiência", "periodo de experiencia", "período de experiência", "contrato de experiencia",
         "avaliacao", "avaliação", "desempenho", "feedback", "pdi", "metas", "performance",
-
-        # desligamento / rescisão
         "deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato",
-
-        # rotina de pessoal
         "férias", "ferias", "ponto", "banco de horas", "folha", "holerite", "salario", "salário",
         "atestado", "afastamento", "beneficio", "benefícios", "vr", "vt", "vale transporte", "vale refeicao", "vale refeição",
         "epi", "epis", "uniforme",
-
-        # áreas/nomes
         "departamento pessoal", " dp", "pessoas e performance", "pessoas & performance", " pp", "rh",
         "po.06", "po 06", "po.08", "po 08",
     ]
-
-    # match com cuidado em dp/pp (evitar pegar "dp" dentro de palavra)
     if re.search(r"\bdp\b", t) or re.search(r"\bpp\b", t):
         return True
-
     return any(x in t for x in termos)
 
 def _parse_tipo_contratacao(texto: str) -> Optional[str]:
-    """
-    Retorna 'obra' | 'administrativo' | None
-    Entende: 'Obra', 'Administrativo', '1', '2', 'DP', 'PP', PO.08, PO.06, sede, canteiro.
-    """
     t_raw = (texto or "").strip()
     t = _strip_accents(t_raw.lower())
 
-    # respostas numéricas
     if re.fullmatch(r"\s*1\s*", t_raw):
         return HR_TIPO_OBRA
     if re.fullmatch(r"\s*2\s*", t_raw):
         return HR_TIPO_ADMIN
 
-    # sinais fortes (diretos)
     if "pessoas e performance" in t or "pessoas & performance" in t or "po.06" in t or "po 06" in t or re.search(r"\bpp\b", t):
         return HR_TIPO_ADMIN
     if "departamento pessoal" in t or "po.08" in t or "po 08" in t or re.search(r"\bdp\b", t):
         return HR_TIPO_OBRA
 
-    # sinais por contexto
     sinais_obra = ["obra", "canteiro", "campo", "frente de obra", "producao", "produção", "apoio de obra", "alojamento"]
     sinais_admin = ["administrativo", "escritorio", "escritório", "sede", "corporativo", "matriz"]
 
@@ -247,16 +287,11 @@ def _parse_tipo_contratacao(texto: str) -> Optional[str]:
         return HR_TIPO_OBRA
     if has_admin and not has_obra:
         return HR_TIPO_ADMIN
-
     return None
 
 def _tipo_boost(block: dict, tipo: str) -> float:
-    """
-    Boost leve para puxar o POP certo (sem travar o RAG).
-    """
     if not tipo or not block:
         return 0.0
-
     pagina = _strip_accents((block.get("pagina") or "")).lower()
     texto = _strip_accents((block.get("texto") or "")).lower()
     hay = f"{pagina}\n{texto}"
@@ -264,67 +299,96 @@ def _tipo_boost(block: dict, tipo: str) -> float:
     if tipo == HR_TIPO_OBRA:
         chaves = ["po.08", "po 08", "controle de pessoal", "departamento pessoal", " dp ", "obra", "r.02", "r 02"]
         return 0.20 if any(k in hay for k in chaves) else 0.0
-
     if tipo == HR_TIPO_ADMIN:
         chaves = ["po.06", "po 06", "pessoas e performance", "pessoas & performance", "recrutamento", "selecao", "seleção"]
         return 0.20 if any(k in hay for k in chaves) else 0.0
-
     return 0.0
 
 def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> str:
-    """
-    Expande queries para melhorar match semântico (Pessoas/RH + Compras).
-    """
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    # Pessoas/RH geral
     if _is_people_process_question(query):
         extras.append(
             "rotinas de pessoas rh procedimentos internos pop quadra "
             "controle de pessoal pessoas e performance departamento pessoal "
             "formularios prazos responsaveis aprovacao fluxo"
         )
-
-    # Experiência / avaliação
     if "experien" in q_norm or "experiên" in q_norm:
         extras.append(
             "periodo de experiencia contrato de experiencia 45 dias 90 dias "
             "avaliacao de desempenho feedback ficha de avaliacao F.90 F.99"
         )
-
-    # Contratação/admissão (reforço)
     if any(x in q_norm for x in ["contrat", "admiss", "admit", "recrut", "sele", "vaga", "curricul", "entrevist"]):
         extras.append(
             "contratação de funcionários admissão de colaboradores "
             "processo de admissão recrutamento seleção de candidatos "
             "documentos admissionais aso cadastro de colaborador"
         )
-
-    # Desligamento/rescisão
     if any(x in q_norm for x in ["deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato"]):
         extras.append(
             "procedimento de desligamento rescisao documentos rescisorios "
             "controle de aviso previo ficha avaliacao prazos dp"
         )
-
-    # Roteamento por tipo (quando informado)
     if tipo_contratacao == HR_TIPO_OBRA:
         extras.append("Obra canteiro Departamento Pessoal DP PO.08 Controle de Pessoal R.02")
     elif tipo_contratacao == HR_TIPO_ADMIN:
         extras.append("Administrativo sede escritório Pessoas e Performance PO.06 Pessoas e Performance")
-
-    # Compras / toner como material de expediente
     if "toner" in q_norm:
         extras.append(
             "material de expediente suprimentos de escritório cartucho de impressão "
             "cartucho de impressora toner de impressora compras de materiais de expediente "
             "procedimento de solicitação de material de expediente F.18 F.45 Departamento de Compras"
         )
-
     if extras:
         return query + " " + " ".join(extras)
     return query
+
+# ========================= METADATA FILTER (PRÉ-ANN) =========================
+def _extract_query_pop_codes(query: str) -> list[str]:
+    return _extract_pop_codes(query)
+
+def _extract_query_department(query: str) -> Optional[str]:
+    return _extract_department(query)
+
+def _metadata_prefilter(blocks: list[dict], query: str, tipo_contratacao: Optional[str] = None) -> list[int]:
+    """Retorna índices dos blocos que passam pelo filtro de metadados.
+    Se nenhum filtro se aplica, retorna todos os índices (sem filtrar)."""
+    q_codes = _extract_query_pop_codes(query)
+    q_dept = _extract_query_department(query)
+
+    # Também considera tipo_contratacao como filtro de departamento
+    if tipo_contratacao == HR_TIPO_OBRA and not q_dept:
+        q_dept = "pessoal"
+    elif tipo_contratacao == HR_TIPO_ADMIN and not q_dept:
+        q_dept = "pessoas_performance"
+
+    # Se não há filtros, retorna tudo
+    if not q_codes and not q_dept:
+        return list(range(len(blocks)))
+
+    matched_indices = set()
+    for i, b in enumerate(blocks):
+        b_codes = b.get("pop_codes", [])
+        b_dept = b.get("department")
+
+        # Match por código POP explícito (forte)
+        if q_codes and b_codes:
+            if any(c in b_codes for c in q_codes):
+                matched_indices.add(i)
+                continue
+
+        # Match por departamento
+        if q_dept and b_dept == q_dept:
+            matched_indices.add(i)
+            continue
+
+    # Se o filtro é muito restritivo (< 5 blocos), relaxa e inclui tudo
+    # para não perder contexto relevante
+    if len(matched_indices) < 5:
+        return list(range(len(blocks)))
+
+    return sorted(matched_indices)
 
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
@@ -344,7 +408,6 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "4. Use um tom profissional, mas próximo e amigável, em português do Brasil.\n\n"
             f"Pergunta do usuário:\n\"{pergunta}\""
         )
-
         payload = {
             "model": model_id,
             "messages": [
@@ -362,7 +425,6 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "n": 1,
             "stream": False,
         }
-
         resp = session.post(
             "https://api.openai.com/v1/chat/completions",
             json=payload,
@@ -378,7 +440,6 @@ def gerar_resposta_fallback_interativa(pergunta: str,
         if not texto or not texto.strip():
             return FALLBACK_MSG
         return texto.strip()
-
     except Exception:
         return FALLBACK_MSG
 
@@ -393,7 +454,8 @@ def get_drive_client(_v=CACHE_BUSTER):
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    # Modelo multilíngue — muito superior ao MiniLM-L6 para português
+    return SentenceTransformer("intfloat/multilingual-e5-base")
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
@@ -441,7 +503,12 @@ def _list_json_metadata(drive_service, folder_id):
         drive_service, folder_id,
         "mimeType='application/json' or mimeType='text/plain'"
     )
-    return [f for f in files if f.get("name", "").lower().endswith((".jsonl", ".json"))]
+    IGNORED = {"blocks_cache.json"}
+    return [
+        f for f in files
+        if f.get("name", "").lower().endswith((".jsonl", ".json"))
+        and f.get("name", "") not in IGNORED
+    ]
 
 def _list_named_files(drive_service, folder_id, wanted_names):
     fields = "files(id, name, md5Checksum, modifiedTime, mimeType)"
@@ -456,18 +523,96 @@ def _download_bytes(drive_service, file_id):
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
-# ========================= PARSE DOCX/JSON =========================
+# ========================= PARSE DOCX — CHUNKING SEMÂNTICO =========================
+def _split_text_blocks_with_overlap(text: str, max_words=MAX_WORDS_PER_BLOCK, overlap=OVERLAP_WORDS):
+    """Divide texto em blocos com overlap entre consecutivos."""
+    words = text.split()
+    if not words:
+        return []
+    blocks = []
+    start = 0
+    while start < len(words):
+        end = min(start + max_words, len(words))
+        chunk = " ".join(words[start:end])
+        if chunk.strip():
+            blocks.append(chunk)
+        # Próximo bloco começa (max_words - overlap) à frente
+        start += max(max_words - overlap, 1)
+    return blocks
+
+def _detect_heading_level(style_name: str) -> Optional[int]:
+    """Detecta se o estilo do parágrafo é um heading e retorna o nível."""
+    if not style_name:
+        return None
+    s = style_name.lower()
+    if s.startswith("heading"):
+        try:
+            return int(s.replace("heading", "").strip())
+        except ValueError:
+            return 1
+    # Estilos personalizados comuns em docs brasileiros
+    if "título" in s or "titulo" in s:
+        return 1
+    return None
+
+def _docx_to_blocks_semantic(file_bytes, file_name, file_id,
+                              max_words=MAX_WORDS_PER_BLOCK, overlap=OVERLAP_WORDS):
+    """Chunking semântico: respeita headings e parágrafos do DOCX."""
+    doc = Document(io.BytesIO(file_bytes))
+
+    sections = []  # lista de {"heading": str, "paragraphs": [str]}
+    current_heading = file_name
+    current_paragraphs = []
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+
+        style_name = para.style.name if para.style else ""
+        heading_level = _detect_heading_level(style_name)
+
+        if heading_level is not None:
+            # Salva seção anterior
+            if current_paragraphs:
+                sections.append({"heading": current_heading, "paragraphs": current_paragraphs})
+            current_heading = f"{file_name} — {text}"
+            current_paragraphs = []
+        else:
+            current_paragraphs.append(text)
+
+    # Última seção
+    if current_paragraphs:
+        sections.append({"heading": current_heading, "paragraphs": current_paragraphs})
+
+    # Agora divide cada seção em blocos com overlap
+    blocks = []
+    for section in sections:
+        section_text = "\n".join(section["paragraphs"])
+        chunks = _split_text_blocks_with_overlap(section_text, max_words=max_words, overlap=overlap)
+        for chunk in chunks:
+            b = {
+                "pagina": section["heading"],
+                "texto": chunk,
+                "file_id": file_id,
+            }
+            _enrich_block_metadata(b)
+            blocks.append(b)
+
+    # Fallback: se nenhum bloco (doc sem parágrafos com texto), tenta bruto
+    if not blocks:
+        full_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
+        for chunk in _split_text_blocks_with_overlap(full_text, max_words=max_words, overlap=overlap):
+            b = {"pagina": file_name, "texto": chunk, "file_id": file_id}
+            _enrich_block_metadata(b)
+            blocks.append(b)
+
+    return blocks
+
+# Mantém compatibilidade: função legada para JSONL
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
-
-def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
-    doc = Document(io.BytesIO(file_bytes))
-    text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    return [
-        {"pagina": file_name, "texto": chunk, "file_id": file_id}
-        for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
-    ]
 
 def _records_from_json_text(text: str):
     recs = []
@@ -497,7 +642,9 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
         texto = r.get("texto") or r.get("text") or r.get("content") or ""
         fid = r.get("file_id") or r.get("source_id") or file_id
         if str(texto).strip():
-            out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
+            b = {"pagina": str(pagina), "texto": str(texto), "file_id": fid}
+            _enrich_block_metadata(b)
+            out.append(b)
     return out
 
 # ========================= CACHE DE FONTES =========================
@@ -521,7 +668,7 @@ def _build_signature_sources(files_json, files_docx):
 @st.cache_data(show_spinner=False)
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
-    return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
+    return _docx_to_blocks_semantic(_download_bytes(drive, file_id), name, file_id)
 
 @st.cache_data(show_spinner=False)
 def _parse_json_cached(file_id: str, md5: str, name: str):
@@ -529,28 +676,25 @@ def _parse_json_cached(file_id: str, md5: str, name: str):
     recs = _records_from_json_text(_download_text(drive, file_id))
     return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     sources = _list_sources_cached(folder_id)
     files_json = sources.get("json", []) if USE_JSONL else []
     files_docx = sources.get("docx", []) or []
 
     blocks = []
-
     for f in files_json:
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
             blocks.extend(_parse_json_cached(f["id"], md5, f["name"]))
         except Exception:
             continue
-
     for f in files_docx:
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
             blocks.extend(_parse_docx_cached(f["id"], md5, f["name"]))
         except Exception:
             continue
-
     return blocks
 
 def load_all_blocks_cached(folder_id: str):
@@ -583,11 +727,21 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
                 break
             group.append(b_next)
 
-        grouped.append({
+        merged = {
             "pagina": group[0].get("pagina", "?"),
             "texto": " ".join(b["texto"] for b in group),
             "file_id": current_file_id,
-        })
+        }
+        # Agrega metadados
+        all_codes = []
+        dept = None
+        for b in group:
+            all_codes.extend(b.get("pop_codes", []))
+            if not dept:
+                dept = b.get("department")
+        merged["pop_codes"] = list(set(all_codes))
+        merged["department"] = dept
+        grouped.append(merged)
 
     return grouped
 
@@ -639,7 +793,9 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
     sbert = get_sbert_model()
-    texts = [b["texto"] for b in grouped]
+
+    # E5 exige prefixo "passage: " para documentos
+    texts = [f"passage: {b['texto']}" for b in grouped]
 
     @st.cache_data(show_spinner=False)
     def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
@@ -672,32 +828,45 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
     sbert = get_sbert_model()
 
     query_for_embed = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
-    q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
+    # E5 exige prefixo "query: " para consultas
+    q = sbert.encode(
+        [f"query: {query_for_embed}"],
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+    )[0]
+
+    # --- Metadata prefilter ---
+    allowed_indices = set(_metadata_prefilter(blocks, query_text, tipo_contratacao))
 
     if vecdb["use_faiss"]:
         import numpy as _np
-        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), top_n)
-        idxs = I[0].tolist()
-        scores = D[0].tolist()
+        # Busca mais candidatos do FAISS, depois filtra
+        search_n = min(top_n * 3, len(blocks))
+        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), search_n)
+        raw_idxs = I[0].tolist()
+        raw_scores = D[0].tolist()
     else:
         emb = vecdb["emb"]
         scores_all = (emb @ q)
-        idxs = np.argsort(-scores_all)[:top_n].tolist()
-        scores = [float(scores_all[i]) for i in idxs]
+        raw_idxs = np.argsort(-scores_all)[:top_n * 3].tolist()
+        raw_scores = [float(scores_all[i]) for i in raw_idxs]
 
     results = []
-    for i, s in zip(idxs, scores):
+    for i, s in zip(raw_idxs, raw_scores):
         if i < 0:
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
-
         b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
-        adj_score = float(s) + 0.25 * lex + b_tipo
 
+        # Blocos que passam no metadata filter ganham boost
+        meta_boost = 0.05 if i in allowed_indices else 0.0
+
+        adj_score = float(s) + 0.25 * lex + b_tipo + meta_boost
         results.append({
             "idx": i,
             "score": adj_score,
+            "raw_score": float(s),
             "block": block,
         })
 
@@ -720,7 +889,8 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
         if len(texto) > 3000:
             texto = texto[:3000]
         pagina = b.get("pagina", "?")
-        contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
+        pop_codes = ", ".join(b.get("pop_codes", [])) or "—"
+        contexto_parts.append(f"[Trecho {i} – {pagina} | POPs: {pop_codes}]\n{texto}")
 
     contexto_str = "\n\n".join(contexto_parts)
 
@@ -735,32 +905,56 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
         f"{tipo_txt}\n\n"
         "Instruções para montar a resposta:\n"
-        "1. Identifique claramente qual processo está sendo descrito (por exemplo, compras, gestão de férias,\n"
-        "   controle de pessoal, admissão, período de experiência, avaliação de desempenho, desligamento etc.) e deixe isso explícito no primeiro parágrafo.\n"
+        "1. Identifique claramente qual processo está sendo descrito e deixe isso explícito no primeiro parágrafo.\n"
         "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas.\n"
         "3. Dentro de cada seção, escreva por extenso, em frases completas.\n"
-        "   Você pode usar o símbolo “•” ou parágrafos separados para destacar prazos, responsáveis, formulários e etapas.\n"
-        "4. Finalize com “Em resumo,” reforçando o que o colaborador deve fazer na prática.\n\n"
+        "4. Finalize com 'Em resumo,' reforçando o que o colaborador deve fazer na prática.\n"
+        "5. IMPORTANTE: Se algum detalhe NÃO estiver nos trechos, NÃO invente. Diga que o documento não detalha esse ponto.\n\n"
         f"Trechos de contexto dos POPs:\n{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
-
     return prompt_usuario
+
+# ========================= HISTÓRICO DE CONVERSA =========================
+def _get_conversation_history() -> list[dict]:
+    """Recupera últimas N trocas do session_state para contexto conversacional."""
+    history = _state_get("chat_history", [])
+    if not history:
+        return []
+    # Retorna últimas HISTORY_TURNS trocas (user + assistant)
+    recent = history[-(HISTORY_TURNS * 2):]
+    return recent
+
+def _append_to_history(role: str, content: str):
+    """Adiciona mensagem ao histórico."""
+    history = _state_get("chat_history", [])
+    history.append({"role": role, "content": content})
+    # Mantém no máximo 20 mensagens para não estourar memória
+    if len(history) > 20:
+        history = history[-20:]
+    _state_set("chat_history", history)
+
+# ========================= AUDITORIA =========================
 def auditar_base_conhecimento():
     try:
         src = _list_sources_cached(FOLDER_ID)
         files_json = src.get("json", []) if USE_JSONL else []
         files_docx = src.get("docx", []) or []
 
-        blocks_raw, signature = load_all_blocks_cached(FOLDER_ID)
+        signature = _build_signature_sources(files_json, files_docx)
+        blocks_raw = _download_and_parse_blocks(signature, FOLDER_ID)
         grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
 
         linhas = []
-        linhas.append("📚 Auditoria da base de conhecimento")
+        linhas.append("Auditoria da base de conhecimento (v2)")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
+        linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
+        linhas.append(f"Embedding model: intfloat/multilingual-e5-base")
+        linhas.append(f"RELEVANCE_THRESHOLD: {RELEVANCE_THRESHOLD}")
+        linhas.append(f"TOP_N_ANN: {TOP_N_ANN} | TOP_K: {TOP_K}")
         linhas.append("")
 
-        linhas.append(f"JSON/JSONL encontrados: {len(files_json)}")
+        linhas.append(f"JSON/JSONL encontrados (apos filtro): {len(files_json)}")
         for f in sorted(files_json, key=lambda x: x.get("name", "").lower()):
             linhas.append(
                 f"  [JSON] {f.get('name')} | id={f.get('id')} | modified={f.get('modifiedTime')}"
@@ -777,6 +971,7 @@ def auditar_base_conhecimento():
         linhas.append(f"Total de blocos brutos carregados: {len(blocks_raw)}")
         linhas.append(f"Total de blocos agrupados: {len(grouped)}")
 
+        # Contagem por documento
         contagem_por_documento = {}
         for b in blocks_raw:
             nome = b.get("pagina", "?")
@@ -787,71 +982,103 @@ def auditar_base_conhecimento():
         for nome in sorted(contagem_por_documento):
             linhas.append(f"  -> {nome} ({contagem_por_documento[nome]} blocos)")
 
+        # Contagem de metadados
+        dept_counts = {}
+        code_counts = {}
+        for b in blocks_raw:
+            dept = b.get("department") or "(sem departamento)"
+            dept_counts[dept] = dept_counts.get(dept, 0) + 1
+            for c in b.get("pop_codes", []):
+                code_counts[c] = code_counts.get(c, 0) + 1
+
         linhas.append("")
-        linhas.append("Prévia da signature:")
+        linhas.append("Metadados — Departamentos detectados:")
+        for dept in sorted(dept_counts):
+            linhas.append(f"  {dept}: {dept_counts[dept]} blocos")
+
+        linhas.append("")
+        linhas.append("Metadados — Códigos POP detectados:")
+        for code in sorted(code_counts):
+            linhas.append(f"  {code}: {code_counts[code]} blocos")
+
+        linhas.append("")
+        linhas.append("Previa da signature:")
         linhas.append(signature[:1200] + ("..." if len(signature) > 1200 else ""))
 
         return "\n".join(linhas)
 
     except Exception as e:
-        return f"❌ Erro ao auditar base: {e}"
-    
-    
-    
+        return f"Erro ao auditar base: {e}"
+
 # ========================= PRINCIPAL =========================
+def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
+                        model_id: str = MODEL_ID, history: list[dict] = None):
+    """
+    Responde a pergunta usando RAG.
 
-
-def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, model_id: str = MODEL_ID):
+    Args:
+        pergunta: texto da pergunta
+        top_k: número de blocos no contexto
+        api_key: chave da API
+        model_id: modelo a usar
+        history: lista de mensagens [{"role": "user"/"assistant", "content": "..."}]
+                 Se None, tenta buscar do session_state.
+    """
     t0 = time.perf_counter()
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
         if not pergunta:
-            return "⚠️ Pergunta vazia."
+            return "Pergunta vazia."
 
         comando = pergunta.lower().strip()
         if comando in ["/auditar", "/debug_base", "/base", "auditar base", "debug base"]:
             return auditar_base_conhecimento()
 
-        # não pergunta mais "obra ou administrativo"
-        # só usa o tipo se vier explícito na própria pergunta
         tipo_contratacao: Optional[str] = _parse_tipo_contratacao(pergunta)
-
-        # limpa qualquer resquício de estado antigo dessa lógica
         _state_set("awaiting_rh_tipo", False)
         _state_pop("pending_rh_question", None)
 
-        # 2) Busca ANN
         candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
-        if not candidates:
-            return gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
 
-        # 3) Usa os TOP_K blocos
+        # --- Threshold de relevância ---
+        if not candidates or candidates[0]["raw_score"] < RELEVANCE_THRESHOLD:
+            print(f"[DEBUG QD-BOT] Abaixo do threshold ({candidates[0]['raw_score']:.3f} < {RELEVANCE_THRESHOLD})" if candidates else "[DEBUG QD-BOT] Sem candidatos")
+            resp = gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
+            _append_to_history("user", pergunta)
+            _append_to_history("assistant", resp)
+            return resp
+
         reranked = candidates[:top_k]
         blocos_relevantes = [r["block"] for r in reranked]
 
         t_rag = time.perf_counter()
 
-        # 4) Monta prompt
         prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
+
+        # Monta mensagens com histórico
+        messages = [{"role": "system", "content": SYSTEM_PROMPT_RAG}]
+
+        # Adiciona histórico conversacional
+        conv_history = history if history is not None else _get_conversation_history()
+        if conv_history:
+            messages.extend(conv_history)
+
+        messages.append({"role": "user", "content": prompt})
 
         payload = {
             "model": model_id,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT_RAG},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "n": 1,
             "stream": False,
         }
 
-        # 5) Chamada à API
         try:
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
                 json=payload,
-                timeout=REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -861,16 +1088,16 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 .get("content", "")
             )
         except requests.exceptions.RequestException as e:
-            return f"❌ Erro de conexão com a API: {e}"
+            return f"Erro de conexao com a API: {e}"
         except (ValueError, KeyError, IndexError):
-            return "⚠️ Não consegui interpretar a resposta da API."
+            return "Nao consegui interpretar a resposta da API."
 
         if not resposta_final or not resposta_final.strip():
-            return "⚠️ A resposta da API veio vazia ou incompleta."
+            return "A resposta da API veio vazia ou incompleta."
 
         resposta = resposta_final.strip()
 
-        # 6) Link para o documento mais provável
+        # Adiciona link do documento
         if blocos_relevantes and not _is_off_domain_reply(resposta):
             bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
@@ -879,23 +1106,35 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY, mod
                 doc_nome = sanitize_doc_name(raw_nome)
                 if doc_id:
                     link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
-                    resposta += f"\n\n📄 Documento relacionado: {doc_nome}\n🔗 {link}"
+                    resposta += f"\n\nDocumento relacionado: {doc_nome}\n{link}"
+
+        # Salva no histórico
+        _append_to_history("user", pergunta)
+        _append_to_history("assistant", resposta)
 
         t_end = time.perf_counter()
-        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s")
+        best_score = candidates[0]["raw_score"] if candidates else 0
+        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total: {t_end - t0:.2f}s | Best score: {best_score:.3f}")
 
         return resposta
 
     except Exception as e:
-        return f"❌ Erro interno: {e}"
+        return f"Erro interno: {e}"
 
 # ========================= CLI =========================
 if __name__ == "__main__":
     print("\nDigite sua pergunta (ou 'sair'):\n")
+    cli_history = []
     while True:
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
         print("\nResposta:\n" + "=" * 20)
-        print(responder_pergunta(q))
+        r = responder_pergunta(q, history=cli_history)
+        print(r)
         print("=" * 20 + "\n")
+        cli_history.append({"role": "user", "content": q})
+        cli_history.append({"role": "assistant", "content": r})
+        # Mantém últimas N trocas no CLI também
+        if len(cli_history) > HISTORY_TURNS * 2:
+            cli_history = cli_history[-(HISTORY_TURNS * 2):]
