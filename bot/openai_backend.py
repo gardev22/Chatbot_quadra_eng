@@ -1,6 +1,7 @@
-# openai_backend.py — RAG conversacional v2: embeddings multilíngue, chunking semântico,
-# metadata filtering, threshold de relevância, anti-alucinação reforçado
-# (Mantém: link do POP, auditoria, desambiguação Obra x Administrativo)
+# openai_backend.py — RAG conversacional detalhado + link do POP correto
+# (Atualizado: desambiguação inteligente para processos de Pessoas/RH:
+#  Obra (Departamento Pessoal / PO.08) vs Administrativo (Pessoas & Performance / PO.06))
+# + Histórico de conversa para follow-ups
 
 import os
 import io
@@ -23,21 +24,19 @@ MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False  # Cross-encoder desativado para manter rápido
+USE_CE = False
 
-TOP_N_ANN = 20        # candidatos na ANN (mais candidatos → rerank por score+lex mais eficaz)
-TOP_K = 5             # blocos que vão para o contexto
-RELEVANCE_THRESHOLD = 0.15  # Permissivo — o GPT cuida da qualidade. Suba gradualmente se alucinar.
+TOP_N_ANN = 12
+TOP_K = 5
 
-MAX_WORDS_PER_BLOCK = 200
-OVERLAP_WORDS = 40        # overlap entre blocos consecutivos de mesma seção
+MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
 
-MAX_TOKENS = 1200
+MAX_TOKENS = 750
 REQUEST_TIMEOUT = 60
-TEMPERATURE = 0.25
+TEMPERATURE = 0.30
 
-HISTORY_TURNS = 3  # quantas trocas de conversa manter no payload
+HISTORY_TURNS = 3  # pares (user+assistant) mantidos no contexto
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -55,7 +54,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT (REFORÇADO ANTI-ALUCINAÇÃO) =========
+# ========= SYSTEM PROMPT =========
 SYSTEM_PROMPT_RAG = """
 Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
 
@@ -67,23 +66,27 @@ Seu papel:
 Estilo de resposta (muito importante):
 - Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
 - Estruture a resposta de forma parecida com um manual interno bem escrito.
+- Sempre identifique DE QUAL DOCUMENTO/POP veio a informação (ex: "Conforme o PO.08 - Controle de Pessoal..." ou "De acordo com o documento Contratos e Medições...").
 
-Regras de conteúdo (CRÍTICO — leia com atenção):
+Regras de conteúdo (CRÍTICO):
 - Use APENAS as informações dos trechos de documentos fornecidos no contexto.
-- NÃO invente etapas, prazos, formulários, responsáveis ou qualquer informação que NÃO esteja explicitamente nos trechos.
-- Se os trechos NÃO contêm informação suficiente para responder com segurança, diga claramente:
-  "Os documentos disponíveis não cobrem esse tema em detalhe suficiente. Recomendo consultar o setor responsável."
-  NÃO tente completar com conhecimento geral.
-- Quando citar um formulário, prazo ou responsável, ele DEVE estar presente nos trechos fornecidos.
+- NÃO invente etapas, prazos, formulários ou responsáveis que NÃO estejam nos trechos.
+- Se os trechos NÃO contêm informação suficiente, diga: "Os documentos disponíveis não detalham esse ponto específico. Recomendo consultar o setor responsável."
 - Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
   aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
+- Se os trechos vieram de DOCUMENTOS DIFERENTES, não misture as informações. Responda com base no documento mais relevante para a pergunta.
 
 Interpretação de perguntas de Pessoas/RH (muito importante):
-- Se a pergunta indicar temas como admissão/contratação, período de experiência, avaliação de desempenho,
+- Se a pergunta indicar temas como admissão/contratação de funcionários, período de experiência, avaliação de desempenho,
   desligamento/rescisão, férias, ponto/folha, ASO, documentos admissionais, benefícios ou rotinas de pessoal,
   interprete SEMPRE como dúvida sobre procedimentos internos da Quadra Engenharia.
 - Nesses casos, NÃO trate como assunto externo. Use os POPs e documentos internos do contexto
   para descrever o fluxo (responsáveis, formulários, prazos, etapas, aprovações etc.).
+
+Interpretação de perguntas sobre contratos/medições/aditivos:
+- Se a pergunta mencionar aditivo, contrato de fornecedor, medição, boletim de medição, terceirizado ou cláusulas contratuais,
+  interprete como dúvida sobre GESTÃO DE CONTRATOS (não sobre contratação de funcionários).
+- Use os trechos do documento de Contratos e Medições, não de Controle de Pessoal.
 
 Fora de escopo:
 - Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre assunto externo.
@@ -93,7 +96,7 @@ Fora de escopo:
 """
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2026-03-31-v4"
+CACHE_BUSTER = "2026-03-31-v6"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -102,7 +105,7 @@ session.headers.update({
     "Content-Type": "application/json"
 })
 
-# ========================= STATE (ROBUSTO: STREAMLIT OU CLI) =========================
+# ========================= STATE =========================
 _FALLBACK_STATE = {}
 
 def _state_get(key, default=None):
@@ -153,23 +156,17 @@ def _overlap_score(a: str, b: str) -> float:
     return inter / max(1.0, len(ta))
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
-    """Escolhe o bloco mais relevante para linkar.
-    Prioriza match com a PERGUNTA (não a resposta), porque se a resposta
-    alucionou, o link pelo menos aponta pro documento certo."""
     if not blocos:
         return None
     melhor = None
     melhor_score = 0.0
     for b in blocos:
         txt = b.get("texto") or ""
-        pagina = b.get("pagina") or ""
         if not txt.strip():
             continue
         s_resp = _overlap_score(resposta or "", txt)
         s_perg = _overlap_score(pergunta or "", txt)
-        # Boost forte se o TÍTULO/PAGINA do bloco bate com a pergunta
-        s_titulo = _overlap_score(pergunta or "", pagina)
-        score = 0.3 * s_resp + 0.5 * s_perg + 0.4 * s_titulo
+        score = s_resp + 0.5 * s_perg
         if score > melhor_score:
             melhor_score = score
             melhor = b
@@ -185,65 +182,6 @@ def _is_off_domain_reply(text: str) -> bool:
         "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
     ).lower()
     return gatilho[:60] in t
-
-# ========================= METADATA EXTRACTION =========================
-# Extrai código POP e departamento de cada bloco para filtragem rápida
-
-_POP_CODE_RE = re.compile(
-    r"(PO[\.\s]?\d{2}|F[\.\s]?\d{2,3}|R[\.\s]?\d{2})",
-    re.IGNORECASE,
-)
-
-_DEPT_KEYWORDS = {
-    "compras": "compras",
-    "suprimentos": "compras",
-    "financeiro": "financeiro",
-    "contabil": "financeiro",
-    "pessoal": "pessoal",
-    "departamento pessoal": "pessoal",
-    "pessoas e performance": "pessoas_performance",
-    "pessoas & performance": "pessoas_performance",
-    "recrutamento": "pessoas_performance",
-    "selecao": "pessoas_performance",
-    "seleção": "pessoas_performance",
-    "engenharia": "engenharia",
-    "qualidade": "qualidade",
-    "seguranca": "seguranca",
-    "segurança": "seguranca",
-    "contratos": "contratos",
-    "medicoes": "contratos",
-    "medições": "contratos",
-    "estrategia": "estrategia",
-    "inovacao": "estrategia",
-}
-
-def _extract_pop_codes(text: str) -> list[str]:
-    """Extrai códigos POP (PO.06, F.18, R.02 etc.) do texto."""
-    if not text:
-        return []
-    matches = _POP_CODE_RE.findall(text)
-    # Normaliza: PO 06 → PO.06
-    normalized = []
-    for m in matches:
-        clean = re.sub(r"\s+", ".", m.upper())
-        if clean not in normalized:
-            normalized.append(clean)
-    return normalized
-
-def _extract_department(text: str) -> Optional[str]:
-    """Identifica departamento a partir de palavras-chave no texto."""
-    t = _strip_accents((text or "").lower())
-    for keyword, dept in _DEPT_KEYWORDS.items():
-        if _strip_accents(keyword) in t:
-            return dept
-    return None
-
-def _enrich_block_metadata(block: dict) -> dict:
-    """Adiciona pop_codes e department ao bloco (sem alterar texto)."""
-    combined = f"{block.get('pagina', '')} {block.get('texto', '')}"
-    block["pop_codes"] = _extract_pop_codes(combined)
-    block["department"] = _extract_department(combined)
-    return block
 
 # ========================= ROTAS PESSOAS/RH: OBRA x ADMIN =========================
 HR_TIPO_OBRA = "obra"
@@ -325,12 +263,26 @@ def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> 
             "periodo de experiencia contrato de experiencia 45 dias 90 dias "
             "avaliacao de desempenho feedback ficha de avaliacao F.90 F.99"
         )
+    # "contrat" SÓ expande para RH se NÃO tiver sinais de contrato de fornecedor/obra
+    sinais_contrato_fornecedor = ["aditivo", "medicao", "medição", "medicoes", "medições",
+                                   "boletim", "fornecedor", "terceirizado", "tratto", "clausula",
+                                   "cláusula", "contratual", "contratuais", "r.01", "r 01"]
+    eh_contrato_fornecedor = any(x in q_norm for x in sinais_contrato_fornecedor)
+
     if any(x in q_norm for x in ["contrat", "admiss", "admit", "recrut", "sele", "vaga", "curricul", "entrevist"]):
-        extras.append(
-            "contratação de funcionários admissão de colaboradores "
-            "processo de admissão recrutamento seleção de candidatos "
-            "documentos admissionais aso cadastro de colaborador"
-        )
+        if eh_contrato_fornecedor:
+            # Contrato de fornecedor/terceirizado — NÃO expandir com termos de RH
+            extras.append(
+                "aditivo contratual contratos e medições boletim de medição "
+                "fornecedor terceirizado modelo tratto quadra cláusulas "
+                "ajustes contratuais escopo prazos valores penalidades"
+            )
+        else:
+            extras.append(
+                "contratação de funcionários admissão de colaboradores "
+                "processo de admissão recrutamento seleção de candidatos "
+                "documentos admissionais aso cadastro de colaborador"
+            )
     if any(x in q_norm for x in ["deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato"]):
         extras.append(
             "procedimento de desligamento rescisao documentos rescisorios "
@@ -349,52 +301,6 @@ def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> 
     if extras:
         return query + " " + " ".join(extras)
     return query
-
-# ========================= METADATA FILTER (PRÉ-ANN) =========================
-def _extract_query_pop_codes(query: str) -> list[str]:
-    return _extract_pop_codes(query)
-
-def _extract_query_department(query: str) -> Optional[str]:
-    return _extract_department(query)
-
-def _metadata_prefilter(blocks: list[dict], query: str, tipo_contratacao: Optional[str] = None) -> list[int]:
-    """Retorna índices dos blocos que passam pelo filtro de metadados.
-    Se nenhum filtro se aplica, retorna todos os índices (sem filtrar)."""
-    q_codes = _extract_query_pop_codes(query)
-    q_dept = _extract_query_department(query)
-
-    # Também considera tipo_contratacao como filtro de departamento
-    if tipo_contratacao == HR_TIPO_OBRA and not q_dept:
-        q_dept = "pessoal"
-    elif tipo_contratacao == HR_TIPO_ADMIN and not q_dept:
-        q_dept = "pessoas_performance"
-
-    # Se não há filtros, retorna tudo
-    if not q_codes and not q_dept:
-        return list(range(len(blocks)))
-
-    matched_indices = set()
-    for i, b in enumerate(blocks):
-        b_codes = b.get("pop_codes", [])
-        b_dept = b.get("department")
-
-        # Match por código POP explícito (forte)
-        if q_codes and b_codes:
-            if any(c in b_codes for c in q_codes):
-                matched_indices.add(i)
-                continue
-
-        # Match por departamento
-        if q_dept and b_dept == q_dept:
-            matched_indices.add(i)
-            continue
-
-    # Se o filtro é muito restritivo (< 5 blocos), relaxa e inclui tudo
-    # para não perder contexto relevante
-    if len(matched_indices) < 5:
-        return list(range(len(blocks)))
-
-    return sorted(matched_indices)
 
 # ========================= FALLBACK INTERATIVO =========================
 def gerar_resposta_fallback_interativa(pergunta: str,
@@ -460,8 +366,6 @@ def get_drive_client(_v=CACHE_BUSTER):
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    # MiniLM: estável e já testado. Para upgrade futuro, testar
-    # intfloat/multilingual-e5-base em ambiente de staging primeiro.
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 @st.cache_resource(show_spinner=False)
@@ -530,96 +434,18 @@ def _download_bytes(drive_service, file_id):
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
-# ========================= PARSE DOCX — CHUNKING SEMÂNTICO =========================
-def _split_text_blocks_with_overlap(text: str, max_words=MAX_WORDS_PER_BLOCK, overlap=OVERLAP_WORDS):
-    """Divide texto em blocos com overlap entre consecutivos."""
-    words = text.split()
-    if not words:
-        return []
-    blocks = []
-    start = 0
-    while start < len(words):
-        end = min(start + max_words, len(words))
-        chunk = " ".join(words[start:end])
-        if chunk.strip():
-            blocks.append(chunk)
-        # Próximo bloco começa (max_words - overlap) à frente
-        start += max(max_words - overlap, 1)
-    return blocks
-
-def _detect_heading_level(style_name: str) -> Optional[int]:
-    """Detecta se o estilo do parágrafo é um heading e retorna o nível."""
-    if not style_name:
-        return None
-    s = style_name.lower()
-    if s.startswith("heading"):
-        try:
-            return int(s.replace("heading", "").strip())
-        except ValueError:
-            return 1
-    # Estilos personalizados comuns em docs brasileiros
-    if "título" in s or "titulo" in s:
-        return 1
-    return None
-
-def _docx_to_blocks_semantic(file_bytes, file_name, file_id,
-                              max_words=MAX_WORDS_PER_BLOCK, overlap=OVERLAP_WORDS):
-    """Chunking semântico: respeita headings e parágrafos do DOCX."""
-    doc = Document(io.BytesIO(file_bytes))
-
-    sections = []  # lista de {"heading": str, "paragraphs": [str]}
-    current_heading = file_name
-    current_paragraphs = []
-
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        if not text:
-            continue
-
-        style_name = para.style.name if para.style else ""
-        heading_level = _detect_heading_level(style_name)
-
-        if heading_level is not None:
-            # Salva seção anterior
-            if current_paragraphs:
-                sections.append({"heading": current_heading, "paragraphs": current_paragraphs})
-            current_heading = f"{file_name} — {text}"
-            current_paragraphs = []
-        else:
-            current_paragraphs.append(text)
-
-    # Última seção
-    if current_paragraphs:
-        sections.append({"heading": current_heading, "paragraphs": current_paragraphs})
-
-    # Agora divide cada seção em blocos com overlap
-    blocks = []
-    for section in sections:
-        section_text = "\n".join(section["paragraphs"])
-        chunks = _split_text_blocks_with_overlap(section_text, max_words=max_words, overlap=overlap)
-        for chunk in chunks:
-            b = {
-                "pagina": section["heading"],
-                "texto": chunk,
-                "file_id": file_id,
-            }
-            _enrich_block_metadata(b)
-            blocks.append(b)
-
-    # Fallback: se nenhum bloco (doc sem parágrafos com texto), tenta bruto
-    if not blocks:
-        full_text = "\n".join(p.text.strip() for p in doc.paragraphs if p.text.strip())
-        for chunk in _split_text_blocks_with_overlap(full_text, max_words=max_words, overlap=overlap):
-            b = {"pagina": file_name, "texto": chunk, "file_id": file_id}
-            _enrich_block_metadata(b)
-            blocks.append(b)
-
-    return blocks
-
-# Mantém compatibilidade: função legada para JSONL
+# ========================= PARSE DOCX/JSON =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+
+def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOCK):
+    doc = Document(io.BytesIO(file_bytes))
+    text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+    return [
+        {"pagina": file_name, "texto": chunk, "file_id": file_id}
+        for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
+    ]
 
 def _records_from_json_text(text: str):
     recs = []
@@ -649,9 +475,7 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
         texto = r.get("texto") or r.get("text") or r.get("content") or ""
         fid = r.get("file_id") or r.get("source_id") or file_id
         if str(texto).strip():
-            b = {"pagina": str(pagina), "texto": str(texto), "file_id": fid}
-            _enrich_block_metadata(b)
-            out.append(b)
+            out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
 
 # ========================= CACHE DE FONTES =========================
@@ -675,7 +499,7 @@ def _build_signature_sources(files_json, files_docx):
 @st.cache_data(show_spinner=False)
 def _parse_docx_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
-    return _docx_to_blocks_semantic(_download_bytes(drive, file_id), name, file_id)
+    return _docx_to_blocks(_download_bytes(drive, file_id), name, file_id)
 
 @st.cache_data(show_spinner=False)
 def _parse_json_cached(file_id: str, md5: str, name: str):
@@ -734,21 +558,11 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
                 break
             group.append(b_next)
 
-        merged = {
+        grouped.append({
             "pagina": group[0].get("pagina", "?"),
             "texto": " ".join(b["texto"] for b in group),
             "file_id": current_file_id,
-        }
-        # Agrega metadados
-        all_codes = []
-        dept = None
-        for b in group:
-            all_codes.extend(b.get("pop_codes", []))
-            if not dept:
-                dept = b.get("department")
-        merged["pop_codes"] = list(set(all_codes))
-        merged["department"] = dept
-        grouped.append(merged)
+        })
 
     return grouped
 
@@ -800,8 +614,6 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
     sbert = get_sbert_model()
-
-    # Textos para embedding (sem prefixo — MiniLM não usa)
     texts = [b["texto"] for b in grouped]
 
     @st.cache_data(show_spinner=False)
@@ -835,77 +647,40 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
     sbert = get_sbert_model()
 
     query_for_embed = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
-    q = sbert.encode(
-        [query_for_embed],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )[0]
-
-    # --- Metadata prefilter ---
-    allowed_indices = set(_metadata_prefilter(blocks, query_text, tipo_contratacao))
+    q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
         import numpy as _np
-        # Busca mais candidatos do FAISS, depois filtra
-        search_n = min(top_n * 3, len(blocks))
-        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), search_n)
-        raw_idxs = I[0].tolist()
-        raw_scores = D[0].tolist()
+        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), top_n)
+        idxs = I[0].tolist()
+        scores = D[0].tolist()
     else:
         emb = vecdb["emb"]
         scores_all = (emb @ q)
-        raw_idxs = np.argsort(-scores_all)[:top_n * 3].tolist()
-        raw_scores = [float(scores_all[i]) for i in raw_idxs]
+        idxs = np.argsort(-scores_all)[:top_n].tolist()
+        scores = [float(scores_all[i]) for i in idxs]
 
     results = []
-    for i, s in zip(raw_idxs, raw_scores):
+    for i, s in zip(idxs, scores):
         if i < 0:
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
+
+        # Boost por título/pagina — se o nome do doc bate com a pergunta, prioriza
+        pagina_lex = _lexical_overlap(query_text, block.get("pagina", ""))
+
         b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
+        adj_score = float(s) + 0.25 * lex + 0.30 * pagina_lex + b_tipo
 
-        # Blocos que passam no metadata filter ganham boost
-        meta_boost = 0.05 if i in allowed_indices else 0.0
-
-        # Boost por título/heading do bloco — se o nome da página/seção
-        # bate com a pergunta, é um sinal muito forte de relevância
-        pagina = block.get("pagina", "")
-        titulo_overlap = _lexical_overlap(query_text, pagina)
-
-        adj_score = float(s) + 0.25 * lex + 0.30 * titulo_overlap + b_tipo + meta_boost
         results.append({
             "idx": i,
             "score": adj_score,
-            "raw_score": float(s),
             "block": block,
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-
-    # --- Diversidade de documentos ---
-    # Garante que o top-K não venha todo do mesmo documento.
-    # Máximo MAX_PER_DOC blocos por file_id nos primeiros top_k resultados.
-    MAX_PER_DOC = 3
-    diverse = []
-    doc_count = {}
-    for r in results:
-        fid = r["block"].get("file_id", "?")
-        if doc_count.get(fid, 0) < MAX_PER_DOC:
-            diverse.append(r)
-            doc_count[fid] = doc_count.get(fid, 0) + 1
-        if len(diverse) >= top_n:
-            break
-    # Se não encheu, completa com os restantes
-    if len(diverse) < top_n:
-        seen_idx = {r["idx"] for r in diverse}
-        for r in results:
-            if r["idx"] not in seen_idx:
-                diverse.append(r)
-                if len(diverse) >= top_n:
-                    break
-
-    return diverse[:top_n]
+    return results[:top_n]
 
 # ========================= PROMPT RAG =========================
 def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
@@ -923,8 +698,7 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
         if len(texto) > 3000:
             texto = texto[:3000]
         pagina = b.get("pagina", "?")
-        pop_codes = ", ".join(b.get("pop_codes", [])) or "—"
-        contexto_parts.append(f"[Trecho {i} – {pagina} | POPs: {pop_codes}]\n{texto}")
+        contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
 
     contexto_str = "\n\n".join(contexto_parts)
 
@@ -937,25 +711,29 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
     prompt_usuario = (
         "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
         "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
+        "ATENÇÃO: Cada trecho indica de qual documento veio (entre colchetes). "
+        "Use PRIORITARIAMENTE os trechos do documento cujo nome mais combina com o assunto da pergunta. "
+        "Se a pergunta é sobre 'aditivo de contrato', use trechos de 'Contratos e Medições', não de 'Controle de Pessoal'.\n\n"
         f"{tipo_txt}\n\n"
         "Instruções para montar a resposta:\n"
-        "1. Identifique claramente qual processo está sendo descrito e deixe isso explícito no primeiro parágrafo.\n"
+        "1. Identifique claramente qual processo está sendo descrito e DE QUAL DOCUMENTO/POP ele vem.\n"
         "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas.\n"
         "3. Dentro de cada seção, escreva por extenso, em frases completas.\n"
+        "   Você pode usar o símbolo ou parágrafos separados para destacar prazos, responsáveis, formulários e etapas.\n"
         "4. Finalize com 'Em resumo,' reforçando o que o colaborador deve fazer na prática.\n"
-        "5. IMPORTANTE: Se algum detalhe NÃO estiver nos trechos, NÃO invente. Diga que o documento não detalha esse ponto.\n\n"
+        "5. Se os trechos NÃO contêm informação suficiente sobre o assunto perguntado, diga claramente em vez de inventar.\n\n"
         f"Trechos de contexto dos POPs:\n{contexto_str}\n\n"
         f"Pergunta do colaborador: {pergunta}"
     )
+
     return prompt_usuario
 
 # ========================= HISTÓRICO DE CONVERSA =========================
 def _get_conversation_history() -> list[dict]:
-    """Recupera últimas N trocas do session_state para contexto conversacional."""
+    """Recupera últimas N trocas do session_state."""
     history = _state_get("chat_history", [])
     if not history:
         return []
-    # Retorna últimas HISTORY_TURNS trocas (user + assistant)
     recent = history[-(HISTORY_TURNS * 2):]
     return recent
 
@@ -963,7 +741,6 @@ def _append_to_history(role: str, content: str):
     """Adiciona mensagem ao histórico."""
     history = _state_get("chat_history", [])
     history.append({"role": role, "content": content})
-    # Mantém no máximo 20 mensagens para não estourar memória
     if len(history) > 20:
         history = history[-20:]
     _state_set("chat_history", history)
@@ -980,12 +757,9 @@ def auditar_base_conhecimento():
         grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
 
         linhas = []
-        linhas.append("Auditoria da base de conhecimento (v2)")
+        linhas.append("Auditoria da base de conhecimento")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
         linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
-        linhas.append(f"Embedding model: sentence-transformers/all-MiniLM-L6-v2")
-        linhas.append(f"RELEVANCE_THRESHOLD: {RELEVANCE_THRESHOLD}")
-        linhas.append(f"TOP_N_ANN: {TOP_N_ANN} | TOP_K: {TOP_K}")
         linhas.append("")
 
         linhas.append(f"JSON/JSONL encontrados (apos filtro): {len(files_json)}")
@@ -1005,7 +779,6 @@ def auditar_base_conhecimento():
         linhas.append(f"Total de blocos brutos carregados: {len(blocks_raw)}")
         linhas.append(f"Total de blocos agrupados: {len(grouped)}")
 
-        # Contagem por documento
         contagem_por_documento = {}
         for b in blocks_raw:
             nome = b.get("pagina", "?")
@@ -1016,25 +789,6 @@ def auditar_base_conhecimento():
         for nome in sorted(contagem_por_documento):
             linhas.append(f"  -> {nome} ({contagem_por_documento[nome]} blocos)")
 
-        # Contagem de metadados
-        dept_counts = {}
-        code_counts = {}
-        for b in blocks_raw:
-            dept = b.get("department") or "(sem departamento)"
-            dept_counts[dept] = dept_counts.get(dept, 0) + 1
-            for c in b.get("pop_codes", []):
-                code_counts[c] = code_counts.get(c, 0) + 1
-
-        linhas.append("")
-        linhas.append("Metadados — Departamentos detectados:")
-        for dept in sorted(dept_counts):
-            linhas.append(f"  {dept}: {dept_counts[dept]} blocos")
-
-        linhas.append("")
-        linhas.append("Metadados — Códigos POP detectados:")
-        for code in sorted(code_counts):
-            linhas.append(f"  {code}: {code_counts[code]} blocos")
-
         linhas.append("")
         linhas.append("Previa da signature:")
         linhas.append(signature[:1200] + ("..." if len(signature) > 1200 else ""))
@@ -1044,37 +798,9 @@ def auditar_base_conhecimento():
     except Exception as e:
         return f"Erro ao auditar base: {e}"
 
-def _is_negative_feedback(text: str) -> bool:
-    """Detecta se o usuário está dizendo que a resposta anterior está errada
-    ou insistindo que o documento existe."""
-    t = _strip_accents((text or "").lower().strip())
-    markers = [
-        "incorret", "errad", "nao era isso", "não era isso",
-        "resposta errad", "resposta incorret", "documento errad",
-        "link errad", "nao e isso", "não é isso", "tá errad", "ta errad",
-        "wrong", "nao esta certo", "não está certo",
-        # Meta-feedback: usuário insiste que o documento existe
-        "tem o documento", "tem na base", "tem na memoria", "tem na memória",
-        "voce tem esse", "você tem esse", "ja respondi isso", "já respondi isso",
-        "mas existe", "mas tem", "documento existe",
-        "tenta de novo", "tente novamente", "busca de novo", "busque de novo",
-    ]
-    return any(m in t for m in markers)
-
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
                         model_id: str = MODEL_ID, history: list[dict] = None):
-    """
-    Responde a pergunta usando RAG.
-
-    Args:
-        pergunta: texto da pergunta
-        top_k: número de blocos no contexto
-        api_key: chave da API
-        model_id: modelo a usar
-        history: lista de mensagens [{"role": "user"/"assistant", "content": "..."}]
-                 Se None, tenta buscar do session_state.
-    """
     t0 = time.perf_counter()
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
@@ -1086,34 +812,12 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
             return auditar_base_conhecimento()
 
         tipo_contratacao: Optional[str] = _parse_tipo_contratacao(pergunta)
+
         _state_set("awaiting_rh_tipo", False)
         _state_pop("pending_rh_question", None)
 
-        # --- Detecção de feedback negativo ---
-        # Se o usuário diz "incorreta/errada", exclui o documento da resposta anterior
-        # e rebusca usando a pergunta original que gerou o erro.
-        exclude_file_ids = set()
-        effective_query = pergunta
-
-        if _is_negative_feedback(pergunta):
-            # Recupera último file_id linkado para excluí-lo
-            last_linked = _state_get("last_linked_file_id")
-            last_query = _state_get("last_query")
-            if last_linked:
-                exclude_file_ids.add(last_linked)
-            if last_query:
-                effective_query = last_query  # Rebusca a pergunta original
-            print(f"[DEBUG QD-BOT] Feedback negativo: excluindo file_id={last_linked}, re-query='{effective_query}'")
-
-        candidates = ann_search(effective_query, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
-
-        # Filtra documentos excluídos (feedback negativo)
-        if exclude_file_ids:
-            candidates = [c for c in candidates if c["block"].get("file_id") not in exclude_file_ids]
-
-        # --- Threshold de relevância ---
-        if not candidates or candidates[0]["raw_score"] < RELEVANCE_THRESHOLD:
-            print(f"[DEBUG QD-BOT] Abaixo do threshold ({candidates[0]['raw_score']:.3f} < {RELEVANCE_THRESHOLD})" if candidates else "[DEBUG QD-BOT] Sem candidatos")
+        candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
+        if not candidates:
             resp = gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
             _append_to_history("user", pergunta)
             _append_to_history("assistant", resp)
@@ -1124,15 +828,20 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
         t_rag = time.perf_counter()
 
-        prompt = montar_prompt_rag(effective_query, blocos_relevantes, tipo_contratacao=tipo_contratacao)
+        prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
 
-        # Monta mensagens com histórico
+        # --- Monta mensagens COM histórico de conversa ---
         messages = [{"role": "system", "content": SYSTEM_PROMPT_RAG}]
 
-        # Adiciona histórico conversacional
         conv_history = history if history is not None else _get_conversation_history()
         if conv_history:
-            messages.extend(conv_history)
+            # Adiciona histórico resumido (só texto curto pra não estourar contexto)
+            for msg in conv_history:
+                content = msg.get("content", "")
+                # Limita cada mensagem do histórico a 500 chars
+                if len(content) > 500:
+                    content = content[:500] + "..."
+                messages.append({"role": msg["role"], "content": content})
 
         messages.append({"role": "user", "content": prompt})
 
@@ -1149,7 +858,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
             resp = session.post(
                 "https://api.openai.com/v1/chat/completions",
                 json=payload,
-                timeout=REQUEST_TIMEOUT,
+                timeout=REQUEST_TIMEOUT
             )
             resp.raise_for_status()
             data = resp.json()
@@ -1168,10 +877,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
         resposta = resposta_final.strip()
 
-        # Adiciona link do documento
-        linked_file_id = None
         if blocos_relevantes and not _is_off_domain_reply(resposta):
-            bloco_link = _escolher_bloco_para_link(effective_query, resposta, blocos_relevantes)
+            bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
             if bloco_link:
                 doc_id = bloco_link.get("file_id")
                 raw_nome = bloco_link.get("pagina", "?")
@@ -1179,19 +886,13 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
                 if doc_id:
                     link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                     resposta += f"\n\nDocumento relacionado: {doc_nome}\n{link}"
-                    linked_file_id = doc_id
-
-        # Salva estado para mecanismo de feedback negativo
-        _state_set("last_linked_file_id", linked_file_id)
-        _state_set("last_query", effective_query)
 
         # Salva no histórico
         _append_to_history("user", pergunta)
         _append_to_history("assistant", resposta)
 
         t_end = time.perf_counter()
-        best_score = candidates[0]["raw_score"] if candidates else 0
-        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total: {t_end - t0:.2f}s | Best score: {best_score:.3f}")
+        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s")
 
         return resposta
 
@@ -1212,6 +913,5 @@ if __name__ == "__main__":
         print("=" * 20 + "\n")
         cli_history.append({"role": "user", "content": q})
         cli_history.append({"role": "assistant", "content": r})
-        # Mantém últimas N trocas no CLI também
         if len(cli_history) > HISTORY_TURNS * 2:
             cli_history = cli_history[-(HISTORY_TURNS * 2):]
