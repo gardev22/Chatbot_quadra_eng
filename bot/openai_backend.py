@@ -153,17 +153,23 @@ def _overlap_score(a: str, b: str) -> float:
     return inter / max(1.0, len(ta))
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
+    """Escolhe o bloco mais relevante para linkar.
+    Prioriza match com a PERGUNTA (não a resposta), porque se a resposta
+    alucionou, o link pelo menos aponta pro documento certo."""
     if not blocos:
         return None
     melhor = None
     melhor_score = 0.0
     for b in blocos:
         txt = b.get("texto") or ""
+        pagina = b.get("pagina") or ""
         if not txt.strip():
             continue
         s_resp = _overlap_score(resposta or "", txt)
         s_perg = _overlap_score(pergunta or "", txt)
-        score = s_resp + 0.5 * s_perg
+        # Boost forte se o TÍTULO/PAGINA do bloco bate com a pergunta
+        s_titulo = _overlap_score(pergunta or "", pagina)
+        score = 0.3 * s_resp + 0.5 * s_perg + 0.4 * s_titulo
         if score > melhor_score:
             melhor_score = score
             melhor = b
@@ -862,7 +868,12 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
         # Blocos que passam no metadata filter ganham boost
         meta_boost = 0.05 if i in allowed_indices else 0.0
 
-        adj_score = float(s) + 0.25 * lex + b_tipo + meta_boost
+        # Boost por título/heading do bloco — se o nome da página/seção
+        # bate com a pergunta, é um sinal muito forte de relevância
+        pagina = block.get("pagina", "")
+        titulo_overlap = _lexical_overlap(query_text, pagina)
+
+        adj_score = float(s) + 0.25 * lex + 0.30 * titulo_overlap + b_tipo + meta_boost
         results.append({
             "idx": i,
             "score": adj_score,
@@ -871,7 +882,30 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:top_n]
+
+    # --- Diversidade de documentos ---
+    # Garante que o top-K não venha todo do mesmo documento.
+    # Máximo MAX_PER_DOC blocos por file_id nos primeiros top_k resultados.
+    MAX_PER_DOC = 3
+    diverse = []
+    doc_count = {}
+    for r in results:
+        fid = r["block"].get("file_id", "?")
+        if doc_count.get(fid, 0) < MAX_PER_DOC:
+            diverse.append(r)
+            doc_count[fid] = doc_count.get(fid, 0) + 1
+        if len(diverse) >= top_n:
+            break
+    # Se não encheu, completa com os restantes
+    if len(diverse) < top_n:
+        seen_idx = {r["idx"] for r in diverse}
+        for r in results:
+            if r["idx"] not in seen_idx:
+                diverse.append(r)
+                if len(diverse) >= top_n:
+                    break
+
+    return diverse[:top_n]
 
 # ========================= PROMPT RAG =========================
 def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
@@ -1010,6 +1044,17 @@ def auditar_base_conhecimento():
     except Exception as e:
         return f"Erro ao auditar base: {e}"
 
+def _is_negative_feedback(text: str) -> bool:
+    """Detecta se o usuário está dizendo que a resposta anterior está errada."""
+    t = _strip_accents((text or "").lower().strip())
+    markers = [
+        "incorret", "errad", "nao era isso", "não era isso",
+        "resposta errad", "resposta incorret", "documento errad",
+        "link errad", "nao e isso", "não é isso", "tá errad", "ta errad",
+        "wrong", "nao esta certo", "não está certo",
+    ]
+    return any(m in t for m in markers)
+
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
                         model_id: str = MODEL_ID, history: list[dict] = None):
@@ -1038,7 +1083,27 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
         _state_set("awaiting_rh_tipo", False)
         _state_pop("pending_rh_question", None)
 
-        candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
+        # --- Detecção de feedback negativo ---
+        # Se o usuário diz "incorreta/errada", exclui o documento da resposta anterior
+        # e rebusca usando a pergunta original que gerou o erro.
+        exclude_file_ids = set()
+        effective_query = pergunta
+
+        if _is_negative_feedback(pergunta):
+            # Recupera último file_id linkado para excluí-lo
+            last_linked = _state_get("last_linked_file_id")
+            last_query = _state_get("last_query")
+            if last_linked:
+                exclude_file_ids.add(last_linked)
+            if last_query:
+                effective_query = last_query  # Rebusca a pergunta original
+            print(f"[DEBUG QD-BOT] Feedback negativo: excluindo file_id={last_linked}, re-query='{effective_query}'")
+
+        candidates = ann_search(effective_query, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
+
+        # Filtra documentos excluídos (feedback negativo)
+        if exclude_file_ids:
+            candidates = [c for c in candidates if c["block"].get("file_id") not in exclude_file_ids]
 
         # --- Threshold de relevância ---
         if not candidates or candidates[0]["raw_score"] < RELEVANCE_THRESHOLD:
@@ -1053,7 +1118,7 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
         t_rag = time.perf_counter()
 
-        prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
+        prompt = montar_prompt_rag(effective_query, blocos_relevantes, tipo_contratacao=tipo_contratacao)
 
         # Monta mensagens com histórico
         messages = [{"role": "system", "content": SYSTEM_PROMPT_RAG}]
@@ -1098,8 +1163,9 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
         resposta = resposta_final.strip()
 
         # Adiciona link do documento
+        linked_file_id = None
         if blocos_relevantes and not _is_off_domain_reply(resposta):
-            bloco_link = _escolher_bloco_para_link(pergunta, resposta, blocos_relevantes)
+            bloco_link = _escolher_bloco_para_link(effective_query, resposta, blocos_relevantes)
             if bloco_link:
                 doc_id = bloco_link.get("file_id")
                 raw_nome = bloco_link.get("pagina", "?")
@@ -1107,6 +1173,11 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
                 if doc_id:
                     link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                     resposta += f"\n\nDocumento relacionado: {doc_nome}\n{link}"
+                    linked_file_id = doc_id
+
+        # Salva estado para mecanismo de feedback negativo
+        _state_set("last_linked_file_id", linked_file_id)
+        _state_set("last_query", effective_query)
 
         # Salva no histórico
         _append_to_history("user", pergunta)
