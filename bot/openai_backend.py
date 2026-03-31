@@ -27,7 +27,7 @@ USE_CE = False  # Cross-encoder desativado para manter rápido
 
 TOP_N_ANN = 20        # candidatos na ANN (mais candidatos → rerank por score+lex mais eficaz)
 TOP_K = 5             # blocos que vão para o contexto
-RELEVANCE_THRESHOLD = 0.30  # score mínimo; abaixo disso → fallback (evita alucinação)
+RELEVANCE_THRESHOLD = 0.15  # Permissivo — o GPT cuida da qualidade. Suba gradualmente se alucinar.
 
 MAX_WORDS_PER_BLOCK = 200
 OVERLAP_WORDS = 40        # overlap entre blocos consecutivos de mesma seção
@@ -93,7 +93,7 @@ Fora de escopo:
 """
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2026-03-31-v3"
+CACHE_BUSTER = "2026-03-31-v4"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -460,8 +460,9 @@ def get_drive_client(_v=CACHE_BUSTER):
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    # Modelo multilíngue — muito superior ao MiniLM-L6 para português
-    return SentenceTransformer("intfloat/multilingual-e5-base")
+    # MiniLM: estável e já testado. Para upgrade futuro, testar
+    # intfloat/multilingual-e5-base em ambiente de staging primeiro.
+    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
@@ -800,8 +801,8 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
 
     sbert = get_sbert_model()
 
-    # E5 exige prefixo "passage: " para documentos
-    texts = [f"passage: {b['texto']}" for b in grouped]
+    # Textos para embedding (sem prefixo — MiniLM não usa)
+    texts = [b["texto"] for b in grouped]
 
     @st.cache_data(show_spinner=False)
     def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
@@ -834,9 +835,8 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
     sbert = get_sbert_model()
 
     query_for_embed = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
-    # E5 exige prefixo "query: " para consultas
     q = sbert.encode(
-        [f"query: {query_for_embed}"],
+        [query_for_embed],
         convert_to_numpy=True,
         normalize_embeddings=True,
     )[0]
@@ -983,7 +983,7 @@ def auditar_base_conhecimento():
         linhas.append("Auditoria da base de conhecimento (v2)")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
         linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
-        linhas.append(f"Embedding model: intfloat/multilingual-e5-base")
+        linhas.append(f"Embedding model: sentence-transformers/all-MiniLM-L6-v2")
         linhas.append(f"RELEVANCE_THRESHOLD: {RELEVANCE_THRESHOLD}")
         linhas.append(f"TOP_N_ANN: {TOP_N_ANN} | TOP_K: {TOP_K}")
         linhas.append("")
@@ -1045,13 +1045,19 @@ def auditar_base_conhecimento():
         return f"Erro ao auditar base: {e}"
 
 def _is_negative_feedback(text: str) -> bool:
-    """Detecta se o usuário está dizendo que a resposta anterior está errada."""
+    """Detecta se o usuário está dizendo que a resposta anterior está errada
+    ou insistindo que o documento existe."""
     t = _strip_accents((text or "").lower().strip())
     markers = [
         "incorret", "errad", "nao era isso", "não era isso",
         "resposta errad", "resposta incorret", "documento errad",
         "link errad", "nao e isso", "não é isso", "tá errad", "ta errad",
         "wrong", "nao esta certo", "não está certo",
+        # Meta-feedback: usuário insiste que o documento existe
+        "tem o documento", "tem na base", "tem na memoria", "tem na memória",
+        "voce tem esse", "você tem esse", "ja respondi isso", "já respondi isso",
+        "mas existe", "mas tem", "documento existe",
+        "tenta de novo", "tente novamente", "busca de novo", "busque de novo",
     ]
     return any(m in t for m in markers)
 
