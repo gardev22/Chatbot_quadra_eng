@@ -39,14 +39,14 @@ TEMPERATURE = 0.30
 HISTORY_TURNS = 3
 
 # ========= EMBEDDING MODEL =========
-# intfloat/multilingual-e5-base: melhor modelo multilíngue custo/benefício
+# multilingual-e5-small: multilíngue de alta qualidade, leve (~470MB)
 # Requer prefixo "query: " para queries e "passage: " para documentos
-EMBED_MODEL_NAME = "intfloat/multilingual-e5-base"
+EMBED_MODEL_NAME = "intfloat/multilingual-e5-small"
 EMBED_QUERY_PREFIX = "query: "
 EMBED_PASSAGE_PREFIX = "passage: "
 
 # ========= CROSS-ENCODER =========
-# Modelo de reranking treinado em português (mMARCO)
+# Modelo de reranking multilíngue (mMARCO — treinado com dados em PT)
 CE_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
@@ -81,7 +81,7 @@ ESTILO:
 - Finalize com "Em resumo," reforçando o que o colaborador deve fazer."""
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2026-04-01-v7-multilingual-e5"
+CACHE_BUSTER = "2026-04-01-v7-e5-small"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -329,17 +329,71 @@ def get_drive_client(_v=CACHE_BUSTER):
     )
     return build('drive', 'v3', credentials=creds)
 
+# ========= FALLBACK MODELS (caso o principal falhe) =========
+EMBED_FALLBACK_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBED_FALLBACK_QUERY_PREFIX = ""   # esse modelo não precisa de prefixo
+EMBED_FALLBACK_PASSAGE_PREFIX = ""
+CE_FALLBACK_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# Flags globais — ajustadas automaticamente se o modelo principal falhar
+_active_embed_model = EMBED_MODEL_NAME
+_active_query_prefix = EMBED_QUERY_PREFIX
+_active_passage_prefix = EMBED_PASSAGE_PREFIX
+
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
+    global _active_embed_model, _active_query_prefix, _active_passage_prefix
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(EMBED_MODEL_NAME)
+
+    # Tenta modelo principal
+    try:
+        model = SentenceTransformer(EMBED_MODEL_NAME)
+        # Teste rápido para validar que o tokenizer funciona
+        model.encode(["teste de validação"], normalize_embeddings=True)
+        _active_embed_model = EMBED_MODEL_NAME
+        _active_query_prefix = EMBED_QUERY_PREFIX
+        _active_passage_prefix = EMBED_PASSAGE_PREFIX
+        print(f"[QD-BOT] Embedding carregado: {EMBED_MODEL_NAME}")
+        return model
+    except Exception as e:
+        print(f"[QD-BOT] AVISO: Falha ao carregar {EMBED_MODEL_NAME}: {e}")
+        print(f"[QD-BOT] Usando fallback: {EMBED_FALLBACK_NAME}")
+
+    # Fallback robusto
+    model = SentenceTransformer(EMBED_FALLBACK_NAME)
+    model.encode(["teste de validação"], normalize_embeddings=True)
+    _active_embed_model = EMBED_FALLBACK_NAME
+    _active_query_prefix = EMBED_FALLBACK_QUERY_PREFIX
+    _active_passage_prefix = EMBED_FALLBACK_PASSAGE_PREFIX
+    print(f"[QD-BOT] Embedding fallback carregado: {EMBED_FALLBACK_NAME}")
+    return model
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
     if not USE_CE:
         return None
+
     from sentence_transformers import CrossEncoder
-    return CrossEncoder(CE_MODEL_NAME, max_length=512)
+
+    # Tenta modelo principal (multilíngue PT)
+    try:
+        ce = CrossEncoder(CE_MODEL_NAME, max_length=512)
+        ce.predict([("teste", "validação")])
+        print(f"[QD-BOT] Cross-encoder carregado: {CE_MODEL_NAME}")
+        return ce
+    except Exception as e:
+        print(f"[QD-BOT] AVISO: Falha ao carregar {CE_MODEL_NAME}: {e}")
+        print(f"[QD-BOT] Usando fallback: {CE_FALLBACK_NAME}")
+
+    # Fallback
+    try:
+        ce = CrossEncoder(CE_FALLBACK_NAME, max_length=512)
+        ce.predict([("teste", "validação")])
+        print(f"[QD-BOT] Cross-encoder fallback carregado: {CE_FALLBACK_NAME}")
+        return ce
+    except Exception as e2:
+        print(f"[QD-BOT] AVISO: Cross-encoder indisponível: {e2}. Continuando sem reranking.")
+        return None
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _drive_list_all(drive_service, query: str, fields: str):
@@ -611,9 +665,11 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
 
     sbert = get_sbert_model()
 
-    # ── CORREÇÃO: título do doc prefixado + prefixo "passage: " para e5 ──
+    # ── Título do doc prefixado + prefixo do modelo ativo ──
+    # Garante que use o prefixo correto mesmo se caiu no fallback
+    _prefix = _active_passage_prefix
     texts = [
-        f"{EMBED_PASSAGE_PREFIX}{_texto_para_embedding(b)}"
+        f"{_prefix}{_texto_para_embedding(b)}"
         for b in grouped
     ]
 
@@ -648,9 +704,9 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
 
     sbert = get_sbert_model()
 
-    # ── Query com expansion leve + prefixo "query: " para e5 ──
+    # ── Query com expansion leve + prefixo do modelo ativo ──
     query_expanded = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
-    query_for_embed = f"{EMBED_QUERY_PREFIX}{query_expanded}"
+    query_for_embed = f"{_active_query_prefix}{query_expanded}"
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
@@ -762,9 +818,11 @@ def auditar_base_conhecimento():
         linhas.append("Auditoria da base de conhecimento")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
         linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
-        linhas.append(f"EMBED_MODEL: {EMBED_MODEL_NAME}")
+        linhas.append(f"EMBED_MODEL (config): {EMBED_MODEL_NAME}")
+        linhas.append(f"EMBED_MODEL (ativo): {_active_embed_model}")
         linhas.append(f"CE_MODEL: {CE_MODEL_NAME}")
         linhas.append(f"USE_CE: {USE_CE}")
+        linhas.append(f"TOP_N_ANN: {TOP_N_ANN} | TOP_K: {TOP_K} | DEDUP: {DEDUP_MAX_OVERLAP}")
         linhas.append("")
 
         linhas.append(f"JSON/JSONL encontrados (apos filtro): {len(files_json)}")
