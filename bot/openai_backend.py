@@ -1,6 +1,10 @@
-# openai_backend.py — RAG conversacional v7 (todas as correções aplicadas)
-# Correções: embedding multilíngue, título no chunk, cross-encoder PT,
-#            query expansion leve, dedup de resultados, prompt enxuto
+# openai_backend.py — RAG conversacional v8.2
+# Ajustes principais:
+#   1. Leitura robusta de JSON, JSONL e objeto JSON único
+#   2. Suporte a DoclingDocument (.json/.jsonl novos)
+#   3. Auditoria preservada, agora refletindo corretamente blocos vindos dos JSONs novos
+#   4. Pipeline de RAG mantido (ANN + boosts + cross-encoder + prompt final)
+#   5. Logs de diagnóstico por arquivo no parse JSON
 
 import os
 import io
@@ -8,7 +12,7 @@ import re
 import json
 import time
 import unicodedata
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 import requests
@@ -23,11 +27,13 @@ MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = True  # ← LIGADO: cross-encoder para reranking
+USE_CE = True  # mMARCO multilíngue
 
-TOP_N_ANN = 15       # candidatos iniciais (aumentado para dar margem à dedup)
-TOP_K = 5            # blocos finais enviados ao LLM
-DEDUP_MAX_OVERLAP = 0.70  # limiar de deduplicação
+TOP_N_ANN = 15
+TOP_K = 5
+DEDUP_MAX_OVERLAP = 0.75
+MIN_SCORE_THRESHOLD = 0.25
+RELATIVE_SCORE_CUTOFF = 0.60
 
 MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
@@ -39,15 +45,12 @@ TEMPERATURE = 0.30
 HISTORY_TURNS = 3
 
 # ========= EMBEDDING MODEL =========
-# multilingual-e5-small: multilíngue de alta qualidade, leve (~470MB)
-# Requer prefixo "query: " para queries e "passage: " para documentos
-EMBED_MODEL_NAME = "intfloat/multilingual-e5-small"
-EMBED_QUERY_PREFIX = "query: "
-EMBED_PASSAGE_PREFIX = "passage: "
+EMBED_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-# ========= CROSS-ENCODER =========
-# Modelo de reranking multilíngue (mMARCO — treinado com dados em PT)
+# ========= CROSS-ENCODER MODEL =========
 CE_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+CE_WEIGHT = 0.45
+EMB_WEIGHT = 0.55
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -65,7 +68,7 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT (enxuto e assertivo) =========
+# ========= SYSTEM PROMPT =========
 SYSTEM_PROMPT_RAG = """Você é o QD Bot, assistente interno da Quadra Engenharia. Fale sempre em português do Brasil.
 
 REGRAS INVIOLÁVEIS:
@@ -81,7 +84,7 @@ ESTILO:
 - Finalize com "Em resumo," reforçando o que o colaborador deve fazer."""
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2026-04-01-v7-e5-small"
+CACHE_BUSTER = "2026-04-01-v8.2-docling-json"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -166,6 +169,32 @@ def _is_off_domain_reply(text: str) -> bool:
     ).lower()
     return gatilho[:60] in t
 
+def _safe_get_first_page_no(item: dict) -> Optional[int]:
+    try:
+        prov = item.get("prov") or []
+        if prov and isinstance(prov, list):
+            page_no = prov[0].get("page_no")
+            if page_no is not None:
+                return int(page_no)
+    except Exception:
+        pass
+    return None
+
+def _normalize_spaces(text: str) -> str:
+    text = re.sub(r"[ \t]+", " ", text or "")
+    text = re.sub(r"\s+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+def _looks_like_docling_document(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    if obj.get("schema_name") == "DoclingDocument":
+        return True
+    if "texts" in obj and "body" in obj:
+        return True
+    return False
+
 # ========================= ROTAS PESSOAS/RH: OBRA x ADMIN =========================
 HR_TIPO_OBRA = "obra"
 HR_TIPO_ADMIN = "administrativo"
@@ -175,7 +204,7 @@ def _is_people_process_question(q: str) -> bool:
     termos = [
         "colaborador", "colaboradores", "funcionario", "funcionarios",
         "empregado", "empregados", "clt",
-        "contrat", "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "entrevista",
+        "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "entrevista",
         "aso", "documentos admissionais", "documentacao admissional",
         "experiencia", "periodo de experiencia", "contrato de experiencia",
         "avaliacao", "desempenho", "feedback", "pdi", "metas", "performance",
@@ -190,6 +219,18 @@ def _is_people_process_question(q: str) -> bool:
     if re.search(r"\bdp\b", t) or re.search(r"\bpp\b", t) or re.search(r"\brh\b", t):
         return True
     return any(x in t for x in termos)
+
+def _is_contract_question(q: str) -> bool:
+    t = _strip_accents((q or "").lower())
+    sinais = [
+        "aditivo", "medicao", "medição", "medicoes", "medições",
+        "boletim", "fornecedor", "terceirizado", "terceirizados",
+        "gestao de terceirizados", "gestão de terceirizados",
+        "clausula", "cláusula", "contratual", "contratuais",
+        "contrato de fornecedor", "contratos e medicoes", "contratos e medições",
+        "sienge", "tratto",
+    ]
+    return any(x in t for x in sinais)
 
 def _parse_tipo_contratacao(texto: str) -> Optional[str]:
     t_raw = (texto or "").strip()
@@ -232,20 +273,39 @@ def _tipo_boost(block: dict, tipo: str) -> float:
         return 0.20 if any(k in hay for k in chaves) else 0.0
     return 0.0
 
+# ========================= BOOST POR DOMÍNIO DO DOCUMENTO =========================
+def _domain_boost(query: str, block: dict) -> float:
+    pagina = _strip_accents((block.get("pagina") or "")).lower()
+
+    if _is_contract_question(query):
+        sinais_compras = ["compra", "po.07", "po 07"]
+        if any(s in pagina for s in sinais_compras):
+            return -0.25
+
+        sinais_contrato = ["contrato", "medicao", "medicoes", "aditivo",
+                           "terceirizado", "gestao de terceirizados", "boletim"]
+        if any(s in pagina for s in sinais_contrato):
+            return 0.35
+
+        sinais_fora = ["pessoal", "po.08", "po 08", "po.06", "po 06"]
+        if any(s in pagina for s in sinais_fora):
+            return -0.20
+
+    if _is_people_process_question(query) and not _is_contract_question(query):
+        if "pessoal" in pagina or "pessoas" in pagina or "po.08" in pagina or "po.06" in pagina:
+            return 0.25
+        if any(s in pagina for s in ["contrato", "medicao", "compra", "po.07"]):
+            return -0.15
+
+    return 0.0
+
 # ========================= QUERY EXPANSION (LEVE) =========================
 def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> str:
-    """Expansão LEVE para embedding — poucos termos de alto sinal.
-    Expansão pesada vai no prompt, não no vetor."""
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    # Contratos/medições
-    sinais_contrato = ["aditivo", "medicao", "medição", "boletim", "fornecedor",
-                       "terceirizado", "clausula", "cláusula", "contratual"]
-    eh_contrato = any(x in q_norm for x in sinais_contrato)
-
-    if eh_contrato:
-        extras.append("contratos medições aditivo contratual")
+    if _is_contract_question(query):
+        extras.append("gestão contratual medições aditivo boletim obra terceirizados")
     elif _is_people_process_question(query):
         extras.append("procedimento pessoal rotina interna")
         if tipo_contratacao == HR_TIPO_OBRA:
@@ -253,18 +313,11 @@ def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> 
         elif tipo_contratacao == HR_TIPO_ADMIN:
             extras.append("administrativo pessoas performance PO.06")
 
-    if "experiên" in q_norm or "experien" in q_norm:
-        if not eh_contrato:
-            extras.append("periodo experiencia avaliacao desempenho")
-
-    if "deslig" in q_norm or "demiss" in q_norm or "rescis" in q_norm:
-        extras.append("desligamento rescisão aviso prévio")
-
     if "toner" in q_norm:
         extras.append("material expediente cartucho impressora compras")
 
     if "gestao de terceirizados" in q_norm or "gestão de terceirizados" in q_norm:
-        extras.append("gestão terceirizados avaliação portaria controle")
+        extras.append("gestão terceirizados avaliação portaria supervisão")
 
     if extras:
         return query + " " + " ".join(extras)
@@ -329,70 +382,27 @@ def get_drive_client(_v=CACHE_BUSTER):
     )
     return build('drive', 'v3', credentials=creds)
 
-# ========= FALLBACK MODELS (caso o principal falhe) =========
-EMBED_FALLBACK_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-EMBED_FALLBACK_QUERY_PREFIX = ""   # esse modelo não precisa de prefixo
-EMBED_FALLBACK_PASSAGE_PREFIX = ""
-CE_FALLBACK_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-
-# Flags globais — ajustadas automaticamente se o modelo principal falhar
-_active_embed_model = EMBED_MODEL_NAME
-_active_query_prefix = EMBED_QUERY_PREFIX
-_active_passage_prefix = EMBED_PASSAGE_PREFIX
-
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
-    global _active_embed_model, _active_query_prefix, _active_passage_prefix
     from sentence_transformers import SentenceTransformer
-
-    # Tenta modelo principal
-    try:
-        model = SentenceTransformer(EMBED_MODEL_NAME)
-        # Teste rápido para validar que o tokenizer funciona
-        model.encode(["teste de validação"], normalize_embeddings=True)
-        _active_embed_model = EMBED_MODEL_NAME
-        _active_query_prefix = EMBED_QUERY_PREFIX
-        _active_passage_prefix = EMBED_PASSAGE_PREFIX
-        print(f"[QD-BOT] Embedding carregado: {EMBED_MODEL_NAME}")
-        return model
-    except Exception as e:
-        print(f"[QD-BOT] AVISO: Falha ao carregar {EMBED_MODEL_NAME}: {e}")
-        print(f"[QD-BOT] Usando fallback: {EMBED_FALLBACK_NAME}")
-
-    # Fallback robusto
-    model = SentenceTransformer(EMBED_FALLBACK_NAME)
-    model.encode(["teste de validação"], normalize_embeddings=True)
-    _active_embed_model = EMBED_FALLBACK_NAME
-    _active_query_prefix = EMBED_FALLBACK_QUERY_PREFIX
-    _active_passage_prefix = EMBED_FALLBACK_PASSAGE_PREFIX
-    print(f"[QD-BOT] Embedding fallback carregado: {EMBED_FALLBACK_NAME}")
+    model = SentenceTransformer(EMBED_MODEL_NAME)
+    model.encode(["teste"], normalize_embeddings=True)
+    print(f"[QD-BOT v8.2] Embedding carregado: {EMBED_MODEL_NAME}")
     return model
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
     if not USE_CE:
         return None
-
     from sentence_transformers import CrossEncoder
-
-    # Tenta modelo principal (multilíngue PT)
     try:
         ce = CrossEncoder(CE_MODEL_NAME, max_length=512)
-        ce.predict([("teste", "validação")])
-        print(f"[QD-BOT] Cross-encoder carregado: {CE_MODEL_NAME}")
+        score = ce.predict([("aditivo de contrato", "procedimento para aditivo contratual")])
+        score0 = float(np.atleast_1d(score)[0])
+        print(f"[QD-BOT v8.2] Cross-encoder carregado: {CE_MODEL_NAME} (teste={score0:.3f})")
         return ce
     except Exception as e:
-        print(f"[QD-BOT] AVISO: Falha ao carregar {CE_MODEL_NAME}: {e}")
-        print(f"[QD-BOT] Usando fallback: {CE_FALLBACK_NAME}")
-
-    # Fallback
-    try:
-        ce = CrossEncoder(CE_FALLBACK_NAME, max_length=512)
-        ce.predict([("teste", "validação")])
-        print(f"[QD-BOT] Cross-encoder fallback carregado: {CE_FALLBACK_NAME}")
-        return ce
-    except Exception as e2:
-        print(f"[QD-BOT] AVISO: Cross-encoder indisponível: {e2}. Continuando sem reranking.")
+        print(f"[QD-BOT v8.2] Cross-encoder falhou: {e} — continuando sem CE")
         return None
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
@@ -452,7 +462,7 @@ def _download_bytes(drive_service, file_id):
 def _download_text(drive_service, file_id) -> str:
     return _download_bytes(drive_service, file_id).decode("utf-8", errors="ignore")
 
-# ========================= PARSE DOCX/JSON =========================
+# ========================= PARSE DOCX =========================
 def _split_text_blocks(text, max_words=MAX_WORDS_PER_BLOCK):
     words = text.split()
     return [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
@@ -465,41 +475,204 @@ def _docx_to_blocks(file_bytes, file_name, file_id, max_words=MAX_WORDS_PER_BLOC
         for chunk in _split_text_blocks(text, max_words=max_words) if chunk.strip()
     ]
 
-def _records_from_json_text(text: str):
+# ========================= PARSE JSON / JSONL / DOCLING =========================
+def _load_jsonish(text: str) -> Any:
+    """
+    Tenta ler:
+    - JSON array
+    - JSON objeto único
+    - JSONL (um objeto por linha)
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return []
+
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+
     recs = []
-    t = text.lstrip()
-    if t.startswith("["):
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
         try:
-            data = json.loads(t)
-            if isinstance(data, list):
-                recs = data
+            recs.append(json.loads(line))
         except Exception:
-            pass
-    else:
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                recs.append(json.loads(line))
-            except Exception:
-                continue
+            continue
     return recs
 
-def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
+def _flatten_simple_json_records(obj: Any):
+    """
+    Normaliza para lista de registros simples quando possível.
+    """
+    if obj is None:
+        return []
+
+    if isinstance(obj, list):
+        return obj
+
+    if isinstance(obj, dict):
+        if any(k in obj for k in ("pagina", "page", "doc", "texto", "text", "content")):
+            return [obj]
+
+        for key in ("records", "items", "data", "chunks", "blocks"):
+            val = obj.get(key)
+            if isinstance(val, list):
+                return val
+
+    return []
+
+def _extract_blocks_from_docling_document(doc_obj: dict, fallback_name: str, file_id: str):
+    """
+    Extrai blocos úteis de um DoclingDocument.
+    Estratégia:
+    - lê doc_obj["texts"]
+    - ignora mobiliário/cabeçalhos/rodapés e textos vazios
+    - agrupa por página
+    - mantém headers, list_items e textos do corpo
+    """
+    texts = doc_obj.get("texts") or []
+    if not isinstance(texts, list) or not texts:
+        return []
+
+    doc_name = (
+        doc_obj.get("name")
+        or (doc_obj.get("origin") or {}).get("filename")
+        or fallback_name
+    )
+    doc_name = sanitize_doc_name(doc_name)
+
+    allowed_labels = {
+        "section_header",
+        "text",
+        "list_item",
+        "title",
+        "caption",
+        "subtitle",
+    }
+    ignored_labels = {
+        "page_header",
+        "page_footer",
+    }
+    ignored_content_layers = {
+        "furniture",
+    }
+
+    noise_texts = {
+        "imprimir/salvar comopdf",
+        "quadra",
+        "engenharia",
+        "en genharia",
+        "e n g e nharia",
+        "en g e nharia",
+        "-",
+    }
+
+    pages: dict[int, list[str]] = {}
+
+    for t in texts:
+        if not isinstance(t, dict):
+            continue
+
+        label = (t.get("label") or "").strip()
+        content_layer = (t.get("content_layer") or "").strip()
+        txt = (t.get("text") or t.get("orig") or "").strip()
+        page_no = _safe_get_first_page_no(t)
+
+        if not txt:
+            continue
+        if label in ignored_labels:
+            continue
+        if content_layer in ignored_content_layers:
+            continue
+        if label and label not in allowed_labels:
+            # Mantém por tolerância; há textos úteis com labels irregulares em alguns exports
+            pass
+
+        txt_norm = _strip_accents(txt.lower())
+        if txt_norm in noise_texts:
+            continue
+
+        if page_no is None:
+            page_no = 1
+
+        pages.setdefault(page_no, []).append(txt)
+
+    out = []
+    for page_no in sorted(pages):
+        joined = "\n".join(pages[page_no])
+        joined = _normalize_spaces(joined)
+        if not joined:
+            continue
+
+        pagina_nome = f"{doc_name} [p.{page_no}]"
+        for chunk in _split_text_blocks(joined, max_words=MAX_WORDS_PER_BLOCK):
+            chunk = _normalize_spaces(chunk)
+            if chunk:
+                out.append({
+                    "pagina": pagina_nome,
+                    "texto": chunk,
+                    "file_id": file_id
+                })
+
+    return out
+
+def _extract_blocks_from_docling_list(doc_list: list, fallback_name: str, file_id: str):
+    out = []
+    for idx, obj in enumerate(doc_list, start=1):
+        if _looks_like_docling_document(obj):
+            blocks = _extract_blocks_from_docling_document(
+                obj,
+                fallback_name=f"{sanitize_doc_name(fallback_name)} #{idx}",
+                file_id=file_id
+            )
+            out.extend(blocks)
+    return out
+
+def _json_records_to_blocks(obj: Any, fallback_name: str, file_id: str):
+    """
+    Converte o conteúdo JSON carregado em blocos.
+    Suporta:
+    - lista de registros simples
+    - objeto simples
+    - DoclingDocument
+    - lista de DoclingDocuments
+    """
+    if obj is None:
+        return []
+
+    if _looks_like_docling_document(obj):
+        return _extract_blocks_from_docling_document(obj, fallback_name=fallback_name, file_id=file_id)
+
+    if isinstance(obj, list) and obj and any(_looks_like_docling_document(x) for x in obj if isinstance(x, dict)):
+        return _extract_blocks_from_docling_list(obj, fallback_name=fallback_name, file_id=file_id)
+
+    recs = _flatten_simple_json_records(obj)
+
     out = []
     for r in recs:
+        if not isinstance(r, dict):
+            continue
+
         pagina = r.get("pagina") or r.get("page") or r.get("doc") or fallback_name
         texto = r.get("texto") or r.get("text") or r.get("content") or ""
         fid = r.get("file_id") or r.get("source_id") or file_id
+
         if str(texto).strip():
-            out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
+            for chunk in _split_text_blocks(str(texto), max_words=MAX_WORDS_PER_BLOCK):
+                if chunk.strip():
+                    out.append({
+                        "pagina": str(pagina),
+                        "texto": str(chunk),
+                        "file_id": fid
+                    })
+
     return out
 
 # ========================= TEXTO PARA EMBEDDING =========================
 def _texto_para_embedding(block: dict) -> str:
-    """Prefixa o nome do documento no texto para dar contexto ao embedding.
-    Isso permite que o modelo saiba DE QUAL documento o trecho veio."""
     pagina = sanitize_doc_name(block.get("pagina", ""))
     texto = block.get("texto", "")
     if pagina:
@@ -532,8 +705,11 @@ def _parse_docx_cached(file_id: str, md5: str, name: str):
 @st.cache_data(show_spinner=False)
 def _parse_json_cached(file_id: str, md5: str, name: str):
     drive = get_drive_client()
-    recs = _records_from_json_text(_download_text(drive, file_id))
-    return _json_records_to_blocks(recs, fallback_name=name, file_id=file_id)
+    raw_text = _download_text(drive, file_id)
+    loaded = _load_jsonish(raw_text)
+    blocks = _json_records_to_blocks(loaded, fallback_name=name, file_id=file_id)
+    print(f"[QD-BOT v8.2] JSON parseado: {name} -> {len(blocks)} blocos")
+    return blocks
 
 @st.cache_data(show_spinner=False, ttl=600)
 def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
@@ -542,18 +718,27 @@ def _download_and_parse_blocks(signature: str, folder_id: str, _v=CACHE_BUSTER):
     files_docx = sources.get("docx", []) or []
 
     blocks = []
+
     for f in files_json:
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
-            blocks.extend(_parse_json_cached(f["id"], md5, f["name"]))
-        except Exception:
+            parsed = _parse_json_cached(f["id"], md5, f["name"])
+            if parsed:
+                blocks.extend(parsed)
+        except Exception as e:
+            print(f"[QD-BOT v8.2] Falha ao parsear JSON {f.get('name')}: {e}")
             continue
+
     for f in files_docx:
         try:
             md5 = f.get("md5Checksum", f.get("modifiedTime", ""))
-            blocks.extend(_parse_docx_cached(f["id"], md5, f["name"]))
-        except Exception:
+            parsed = _parse_docx_cached(f["id"], md5, f["name"])
+            if parsed:
+                blocks.extend(parsed)
+        except Exception as e:
+            print(f"[QD-BOT v8.2] Falha ao parsear DOCX {f.get('name')}: {e}")
             continue
+
     return blocks
 
 def load_all_blocks_cached(folder_id: str):
@@ -594,10 +779,8 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
 
     return grouped
 
-# ========================= DEDUPLICAÇÃO DE RESULTADOS =========================
+# ========================= DEDUPLICAÇÃO =========================
 def _deduplicate_results(results: list, max_overlap: float = DEDUP_MAX_OVERLAP) -> list:
-    """Remove resultados cujo texto é muito similar a um já selecionado.
-    Garante diversidade de documentos nos top-K."""
     if not results:
         return results
     selected = [results[0]]
@@ -606,7 +789,6 @@ def _deduplicate_results(results: list, max_overlap: float = DEDUP_MAX_OVERLAP) 
         is_dup = False
         for s in selected:
             s_txt = s["block"].get("texto", "")
-            # Checa overlap nos dois sentidos
             o1 = _overlap_score(txt, s_txt)
             o2 = _overlap_score(s_txt, txt)
             if max(o1, o2) > max_overlap:
@@ -642,7 +824,8 @@ def _load_precomputed_index(_v=CACHE_BUSTER):
             f.write(faiss_index_bytes)
         index = faiss.read_index(tmp_path)
         return {"blocks": blocks, "emb": vectors, "index": index, "use_faiss": True}
-    except Exception:
+    except Exception as e:
+        print(f"[QD-BOT v8.2] Falha ao carregar índice pré-computado: {e}")
         return None
 
 def try_import_faiss():
@@ -664,19 +847,17 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
     sbert = get_sbert_model()
-
-    # ── Título do doc prefixado + prefixo do modelo ativo ──
-    # Garante que use o prefixo correto mesmo se caiu no fallback
-    _prefix = _active_passage_prefix
-    texts = [
-        f"{_prefix}{_texto_para_embedding(b)}"
-        for b in grouped
-    ]
+    texts = [_texto_para_embedding(b) for b in grouped]
 
     @st.cache_data(show_spinner=False)
     def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
-        return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True,
-                            show_progress_bar=False, batch_size=64)
+        return sbert.encode(
+            texts_,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+            batch_size=64
+        )
 
     emb = _embed_texts_cached(texts, signature)
 
@@ -695,7 +876,7 @@ def get_vector_index():
     _blocks, signature = load_all_blocks_cached(FOLDER_ID)
     return build_vector_index(signature)
 
-# ========================= BUSCA ANN + RERANKING =========================
+# ========================= BUSCA ANN =========================
 def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = None):
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
@@ -704,10 +885,8 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
 
     sbert = get_sbert_model()
 
-    # ── Query com expansion leve + prefixo do modelo ativo ──
     query_expanded = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
-    query_for_embed = f"{_active_query_prefix}{query_expanded}"
-    q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
+    q = sbert.encode([query_expanded], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
         D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
@@ -727,30 +906,54 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
         lex = _lexical_overlap(query_text, block.get("texto", ""))
         pagina_lex = _lexical_overlap(query_text, block.get("pagina", ""))
         b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
-        adj_score = float(s) + 0.20 * lex + 0.25 * pagina_lex + b_tipo
+        b_domain = _domain_boost(query_text, block)
+
+        adj_score = float(s) + 0.20 * lex + 0.30 * pagina_lex + b_tipo + b_domain
         results.append({"idx": i, "score": adj_score, "block": block})
 
     results.sort(key=lambda x: x["score"], reverse=True)
-
-    # ── CROSS-ENCODER RERANKING (stage 2) ──
-    ce = get_cross_encoder()
-    if ce is not None and results:
-        pairs = [(query_text, r["block"].get("texto", "")) for r in results]
-        ce_scores = ce.predict(pairs, show_progress_bar=False)
-        # Normalizar ce_scores para [0, 1] para combinar com embedding score
-        ce_min = float(min(ce_scores))
-        ce_max = float(max(ce_scores))
-        ce_range = ce_max - ce_min if ce_max > ce_min else 1.0
-        for r, ce_s in zip(results, ce_scores):
-            ce_norm = (float(ce_s) - ce_min) / ce_range
-            # 45% embedding/lexical + 55% cross-encoder
-            r["score"] = 0.45 * r["score"] + 0.55 * ce_norm
-        results.sort(key=lambda x: x["score"], reverse=True)
-
-    # ── DEDUPLICAÇÃO ──
     results = _deduplicate_results(results)
 
+    results = [r for r in results if r["score"] >= MIN_SCORE_THRESHOLD]
+
+    if len(results) >= 2:
+        best = results[0]["score"]
+        if best > 0:
+            results = [r for r in results if r["score"] >= best * RELATIVE_SCORE_CUTOFF]
+
     return results[:top_n]
+
+# ========================= RERANKING COM CROSS-ENCODER =========================
+def _rerank_with_ce(query: str, candidates: list, top_k: int) -> list:
+    ce = get_cross_encoder()
+    if ce is None or not candidates:
+        return candidates[:top_k]
+
+    t0 = time.perf_counter()
+
+    pairs = [(query, r["block"].get("texto", "")[:512]) for r in candidates]
+
+    try:
+        ce_scores = ce.predict(pairs, show_progress_bar=False)
+    except Exception as e:
+        print(f"[QD-BOT v8.2] CE predict falhou: {e}")
+        return candidates[:top_k]
+
+    ce_min = float(min(ce_scores))
+    ce_max = float(max(ce_scores))
+    ce_range = ce_max - ce_min if ce_max > ce_min else 1.0
+
+    for r, cs in zip(candidates, ce_scores):
+        ce_norm = (float(cs) - ce_min) / ce_range
+        r["ce_score"] = float(cs)
+        r["score_combined"] = EMB_WEIGHT * r["score"] + CE_WEIGHT * ce_norm
+
+    candidates.sort(key=lambda x: x["score_combined"], reverse=True)
+
+    t1 = time.perf_counter()
+    print(f"[QD-BOT v8.2] CE rerank: {t1 - t0:.2f}s | {len(pairs)} pares")
+
+    return candidates[:top_k]
 
 # ========================= PROMPT RAG =========================
 def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
@@ -815,46 +1018,38 @@ def auditar_base_conhecimento():
         grouped = agrupar_blocos(blocks_raw, janela=GROUP_WINDOW)
 
         linhas = []
-        linhas.append("Auditoria da base de conhecimento")
+        linhas.append("=== Auditoria da base de conhecimento ===")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
         linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
-        linhas.append(f"EMBED_MODEL (config): {EMBED_MODEL_NAME}")
-        linhas.append(f"EMBED_MODEL (ativo): {_active_embed_model}")
+        linhas.append(f"EMBED_MODEL: {EMBED_MODEL_NAME}")
         linhas.append(f"CE_MODEL: {CE_MODEL_NAME}")
         linhas.append(f"USE_CE: {USE_CE}")
         linhas.append(f"TOP_N_ANN: {TOP_N_ANN} | TOP_K: {TOP_K} | DEDUP: {DEDUP_MAX_OVERLAP}")
+        linhas.append(f"MIN_SCORE: {MIN_SCORE_THRESHOLD} | REL_CUTOFF: {RELATIVE_SCORE_CUTOFF}")
         linhas.append("")
 
-        linhas.append(f"JSON/JSONL encontrados (apos filtro): {len(files_json)}")
+        linhas.append(f"JSON/JSONL encontrados: {len(files_json)}")
         for f in sorted(files_json, key=lambda x: x.get("name", "").lower()):
-            linhas.append(
-                f"  [JSON] {f.get('name')} | id={f.get('id')} | modified={f.get('modifiedTime')}"
-            )
+            linhas.append(f"[JSON] {f.get('name')} | id={f.get('id')}")
 
         linhas.append("")
         linhas.append(f"DOCX encontrados: {len(files_docx)}")
         for f in sorted(files_docx, key=lambda x: x.get("name", "").lower()):
-            linhas.append(
-                f"  [DOCX] {f.get('name')} | id={f.get('id')} | modified={f.get('modifiedTime')}"
-            )
+            linhas.append(f"[DOCX] {f.get('name')} | id={f.get('id')}")
 
         linhas.append("")
-        linhas.append(f"Total de blocos brutos carregados: {len(blocks_raw)}")
-        linhas.append(f"Total de blocos agrupados: {len(grouped)}")
+        linhas.append(f"Total blocos brutos: {len(blocks_raw)}")
+        linhas.append(f"Total blocos agrupados: {len(grouped)}")
 
-        contagem_por_documento = {}
+        contagem = {}
         for b in blocks_raw:
             nome = b.get("pagina", "?")
-            contagem_por_documento[nome] = contagem_por_documento.get(nome, 0) + 1
+            contagem[nome] = contagem.get(nome, 0) + 1
 
         linhas.append("")
-        linhas.append(f"Documentos presentes nos blocos: {len(contagem_por_documento)}")
-        for nome in sorted(contagem_por_documento):
-            linhas.append(f"  -> {nome} ({contagem_por_documento[nome]} blocos)")
-
-        linhas.append("")
-        linhas.append("Previa da signature:")
-        linhas.append(signature[:1200] + ("..." if len(signature) > 1200 else ""))
+        linhas.append(f"Documentos nos blocos: {len(contagem)}")
+        for nome in sorted(contagem):
+            linhas.append(f"-> {nome} ({contagem[nome]} blocos)")
 
         return "\n".join(linhas)
 
@@ -863,7 +1058,7 @@ def auditar_base_conhecimento():
 
 # ========================= PRINCIPAL =========================
 def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
-                        model_id: str = MODEL_ID, history: list[dict] = None):
+                       model_id: str = MODEL_ID, history: list[dict] = None):
     t0 = time.perf_counter()
     try:
         pergunta = (pergunta or "").strip().replace("\n", " ").replace("\r", " ")
@@ -879,21 +1074,33 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
         _state_set("awaiting_rh_tipo", False)
         _state_pop("pending_rh_question", None)
 
+        # Fase 1: Busca vetorial + boosts
         candidates = ann_search(pergunta, top_n=TOP_N_ANN, tipo_contratacao=tipo_contratacao)
+
         if not candidates:
+            print(f"[QD-BOT v8.2] Nenhum candidato passou os filtros para: '{pergunta[:60]}'")
             resp = gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
             _append_to_history("user", pergunta)
             _append_to_history("assistant", resp)
             return resp
 
-        reranked = candidates[:top_k]
+        t_search = time.perf_counter()
+
+        # Fase 2: Reranking com cross-encoder
+        reranked = _rerank_with_ce(pergunta, candidates, top_k)
         blocos_relevantes = [r["block"] for r in reranked]
 
-        t_rag = time.perf_counter()
+        if not blocos_relevantes:
+            resp = gerar_resposta_fallback_interativa(pergunta, api_key, model_id)
+            _append_to_history("user", pergunta)
+            _append_to_history("assistant", resp)
+            return resp
 
+        t_rerank = time.perf_counter()
+
+        # Fase 3: Montar prompt e chamar LLM
         prompt = montar_prompt_rag(pergunta, blocos_relevantes, tipo_contratacao=tipo_contratacao)
 
-        # --- Monta mensagens COM histórico de conversa ---
         messages = [{"role": "system", "content": SYSTEM_PROMPT_RAG}]
 
         conv_history = history if history is not None else _get_conversation_history()
@@ -952,10 +1159,18 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
         _append_to_history("assistant", resposta)
 
         t_end = time.perf_counter()
+        top_docs = [sanitize_doc_name(r["block"].get("pagina", "?")) for r in reranked]
+        top_scores_emb = [f"{r['score']:.3f}" for r in reranked]
+        top_scores_ce = [f"{r.get('ce_score', 0):.3f}" for r in reranked]
+        top_scores_final = [f"{r.get('score_combined', r['score']):.3f}" for r in reranked]
         print(
-            f"[QD-BOT v7] embed={EMBED_MODEL_NAME} | ce={USE_CE} | "
-            f"RAG: {t_rag - t0:.2f}s | LLM: {t_end - t_rag:.2f}s | "
-            f"Total: {t_end - t0:.2f}s | candidates={len(candidates)} top_k={top_k}"
+            f"[QD-BOT v8.2] Query: '{pergunta[:60]}'\n"
+            f"  Search: {t_search - t0:.2f}s | CE: {t_rerank - t_search:.2f}s | "
+            f"LLM: {t_end - t_rerank:.2f}s | Total: {t_end - t0:.2f}s\n"
+            f"  Docs:       {top_docs}\n"
+            f"  Emb+boost:  {top_scores_emb}\n"
+            f"  CE raw:     {top_scores_ce}\n"
+            f"  Final:      {top_scores_final}"
         )
 
         return resposta
@@ -965,17 +1180,17 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
 # ========================= CLI =========================
 if __name__ == "__main__":
-    print(f"\nQD-Bot v7 | Embed: {EMBED_MODEL_NAME} | CE: {CE_MODEL_NAME}")
+    print(f"\nQD-Bot v8.2 | Embed: {EMBED_MODEL_NAME} | CE: {CE_MODEL_NAME} ({USE_CE})")
     print("Digite sua pergunta (ou 'sair'):\n")
     cli_history = []
     while True:
         q = input("Pergunta: ").strip()
         if q.lower() in ("sair", "exit", "quit"):
             break
-        print("\nResposta:\n" + "=" * 20)
+        print("\nResposta:\n" + "=" * 40)
         r = responder_pergunta(q, history=cli_history)
         print(r)
-        print("=" * 20 + "\n")
+        print("=" * 40 + "\n")
         cli_history.append({"role": "user", "content": q})
         cli_history.append({"role": "assistant", "content": r})
         if len(cli_history) > HISTORY_TURNS * 2:
