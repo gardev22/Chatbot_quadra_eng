@@ -1,7 +1,6 @@
-# openai_backend.py — RAG conversacional detalhado + link do POP correto
-# (Atualizado: desambiguação inteligente para processos de Pessoas/RH:
-#  Obra (Departamento Pessoal / PO.08) vs Administrativo (Pessoas & Performance / PO.06))
-# + Histórico de conversa para follow-ups
+# openai_backend.py — RAG conversacional v7 (todas as correções aplicadas)
+# Correções: embedding multilíngue, título no chunk, cross-encoder PT,
+#            query expansion leve, dedup de resultados, prompt enxuto
 
 import os
 import io
@@ -24,10 +23,11 @@ MODEL_ID = "gpt-4o"
 
 # ========= PERFORMANCE & QUALIDADE =========
 USE_JSONL = True
-USE_CE = False
+USE_CE = True  # ← LIGADO: cross-encoder para reranking
 
-TOP_N_ANN = 12
-TOP_K = 5
+TOP_N_ANN = 15       # candidatos iniciais (aumentado para dar margem à dedup)
+TOP_K = 5            # blocos finais enviados ao LLM
+DEDUP_MAX_OVERLAP = 0.70  # limiar de deduplicação
 
 MAX_WORDS_PER_BLOCK = 180
 GROUP_WINDOW = 2
@@ -36,7 +36,18 @@ MAX_TOKENS = 750
 REQUEST_TIMEOUT = 60
 TEMPERATURE = 0.30
 
-HISTORY_TURNS = 3  # pares (user+assistant) mantidos no contexto
+HISTORY_TURNS = 3
+
+# ========= EMBEDDING MODEL =========
+# intfloat/multilingual-e5-base: melhor modelo multilíngue custo/benefício
+# Requer prefixo "query: " para queries e "passage: " para documentos
+EMBED_MODEL_NAME = "intfloat/multilingual-e5-base"
+EMBED_QUERY_PREFIX = "query: "
+EMBED_PASSAGE_PREFIX = "passage: "
+
+# ========= CROSS-ENCODER =========
+# Modelo de reranking treinado em português (mMARCO)
+CE_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
 # ========= ÍNDICE PRÉ-COMPUTADO (opcional) =========
 PRECOMP_FAISS_NAME = "faiss.index"
@@ -54,49 +65,23 @@ FALLBACK_MSG = (
     "Departamento de Estratégia & Inovação."
 )
 
-# ========= SYSTEM PROMPT =========
-SYSTEM_PROMPT_RAG = """
-Você é o QD Bot, assistente virtual interno da Quadra Engenharia.
+# ========= SYSTEM PROMPT (enxuto e assertivo) =========
+SYSTEM_PROMPT_RAG = """Você é o QD Bot, assistente interno da Quadra Engenharia. Fale sempre em português do Brasil.
 
-Seu papel:
-- Ajudar colaboradores a entender POPs, políticas e procedimentos internos.
-- Falar SEMPRE em português do Brasil.
-- Manter tom profissional e técnico, mas acessível.
+REGRAS INVIOLÁVEIS:
+1. Responda APENAS com base nos trechos de documentos fornecidos. Nunca invente informações, etapas, prazos, formulários ou responsáveis que não estejam nos trechos.
+2. Se os trechos não cobrem a pergunta, diga: "Os documentos disponíveis não detalham esse ponto específico. Recomendo consultar o setor responsável."
+3. Sempre identifique o documento fonte (ex: "Conforme o PO.08 - Controle de Pessoal R.02..." ou "De acordo com o documento Contratos e Medições R.02...").
+4. Use SOMENTE os trechos do documento mais relevante para o assunto perguntado. Não misture informações de documentos diferentes.
+5. Se a pergunta foge de procedimentos internos, responda: "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
 
-Estilo de resposta (muito importante):
-- Evite respostas curtas. Quando o contexto trouxer um procedimento detalhado, descreva-o de forma igualmente detalhada.
-- Estruture a resposta de forma parecida com um manual interno bem escrito.
-- Sempre identifique DE QUAL DOCUMENTO/POP veio a informação (ex: "Conforme o PO.08 - Controle de Pessoal..." ou "De acordo com o documento Contratos e Medições...").
-
-Regras de conteúdo (CRÍTICO):
-- Use APENAS as informações dos trechos de documentos fornecidos no contexto.
-- NÃO invente etapas, prazos, formulários ou responsáveis que NÃO estejam nos trechos.
-- Se os trechos NÃO contêm informação suficiente, diga: "Os documentos disponíveis não detalham esse ponto específico. Recomendo consultar o setor responsável."
-- Quando o contexto trouxer regras gerais (por exemplo, compras de materiais de expediente ou gestão de férias),
-  aplique essas regras ao caso específico perguntado (por exemplo, toner, benefício, formulário), mesmo que a palavra exata não apareça.
-- Se os trechos vieram de DOCUMENTOS DIFERENTES, não misture as informações. Responda com base no documento mais relevante para a pergunta.
-
-Interpretação de perguntas de Pessoas/RH (muito importante):
-- Se a pergunta indicar temas como admissão/contratação de funcionários, período de experiência, avaliação de desempenho,
-  desligamento/rescisão, férias, ponto/folha, ASO, documentos admissionais, benefícios ou rotinas de pessoal,
-  interprete SEMPRE como dúvida sobre procedimentos internos da Quadra Engenharia.
-- Nesses casos, NÃO trate como assunto externo. Use os POPs e documentos internos do contexto
-  para descrever o fluxo (responsáveis, formulários, prazos, etapas, aprovações etc.).
-
-Interpretação de perguntas sobre contratos/medições/aditivos:
-- Se a pergunta mencionar aditivo, contrato de fornecedor, medição, boletim de medição, terceirizado ou cláusulas contratuais,
-  interprete como dúvida sobre GESTÃO DE CONTRATOS (não sobre contratação de funcionários).
-- Use os trechos do documento de Contratos e Medições, não de Controle de Pessoal.
-
-Fora de escopo:
-- Se a pergunta fugir totalmente de procedimentos internos, você NÃO deve tentar responder sobre assunto externo.
-  Nesses casos, responda curto e educado, começando com a frase exata:
-
-  "Meu foco é ajudar com procedimentos operacionais padrão (POPs), políticas e rotinas internas da Quadra Engenharia."
-"""
+ESTILO:
+- Respostas detalhadas e estruturadas como manual interno.
+- Descreva etapas, responsáveis, formulários e prazos quando presentes nos trechos.
+- Finalize com "Em resumo," reforçando o que o colaborador deve fazer."""
 
 # ========= CACHE BUSTER =========
-CACHE_BUSTER = "2026-03-31-v6"
+CACHE_BUSTER = "2026-04-01-v7-multilingual-e5"
 
 # ========= HTTP SESSION =========
 session = requests.Session()
@@ -144,16 +129,14 @@ def _lexical_overlap(query: str, text: str) -> float:
     t_tokens = set(_tokenize(text))
     if not q_tokens or not t_tokens:
         return 0.0
-    inter = len(q_tokens & t_tokens)
-    return inter / len(q_tokens)
+    return len(q_tokens & t_tokens) / len(q_tokens)
 
 def _overlap_score(a: str, b: str) -> float:
     ta = set(_tokenize(a))
     tb = set(_tokenize(b))
     if not ta or not tb:
         return 0.0
-    inter = len(ta & tb)
-    return inter / max(1.0, len(ta))
+    return len(ta & tb) / max(1.0, len(ta))
 
 def _escolher_bloco_para_link(pergunta: str, resposta: str, blocos: list[dict]):
     if not blocos:
@@ -190,20 +173,21 @@ HR_TIPO_ADMIN = "administrativo"
 def _is_people_process_question(q: str) -> bool:
     t = _strip_accents((q or "").lower())
     termos = [
-        "colaborador", "colaboradores", "funcionario", "funcionarios", "funcionário", "funcionários",
+        "colaborador", "colaboradores", "funcionario", "funcionarios",
         "empregado", "empregados", "clt",
-        "contrat", "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "currículo", "entrevista",
-        "aso", "documentos admissionais", "documentacao admissional", "documentação admissional",
-        "experiencia", "experiência", "periodo de experiencia", "período de experiência", "contrato de experiencia",
-        "avaliacao", "avaliação", "desempenho", "feedback", "pdi", "metas", "performance",
-        "deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato",
-        "férias", "ferias", "ponto", "banco de horas", "folha", "holerite", "salario", "salário",
-        "atestado", "afastamento", "beneficio", "benefícios", "vr", "vt", "vale transporte", "vale refeicao", "vale refeição",
+        "contrat", "admiss", "admit", "recrut", "sele", "vaga", "curriculo", "entrevista",
+        "aso", "documentos admissionais", "documentacao admissional",
+        "experiencia", "periodo de experiencia", "contrato de experiencia",
+        "avaliacao", "desempenho", "feedback", "pdi", "metas", "performance",
+        "deslig", "demiss", "rescis", "aviso previo", "termino de contrato",
+        "ferias", "ponto", "banco de horas", "folha", "holerite", "salario",
+        "atestado", "afastamento", "beneficio", "beneficios", "vr", "vt",
+        "vale transporte", "vale refeicao",
         "epi", "epis", "uniforme",
-        "departamento pessoal", " dp", "pessoas e performance", "pessoas & performance", " pp", "rh",
+        "departamento pessoal", "pessoas e performance", "pessoas & performance",
         "po.06", "po 06", "po.08", "po 08",
     ]
-    if re.search(r"\bdp\b", t) or re.search(r"\bpp\b", t):
+    if re.search(r"\bdp\b", t) or re.search(r"\bpp\b", t) or re.search(r"\brh\b", t):
         return True
     return any(x in t for x in termos)
 
@@ -241,63 +225,47 @@ def _tipo_boost(block: dict, tipo: str) -> float:
     hay = f"{pagina}\n{texto}"
 
     if tipo == HR_TIPO_OBRA:
-        chaves = ["po.08", "po 08", "controle de pessoal", "departamento pessoal", " dp ", "obra", "r.02", "r 02"]
+        chaves = ["po.08", "po 08", "controle de pessoal", "departamento pessoal", " dp ", "r.02", "r 02"]
         return 0.20 if any(k in hay for k in chaves) else 0.0
     if tipo == HR_TIPO_ADMIN:
         chaves = ["po.06", "po 06", "pessoas e performance", "pessoas & performance", "recrutamento", "selecao", "seleção"]
         return 0.20 if any(k in hay for k in chaves) else 0.0
     return 0.0
 
+# ========================= QUERY EXPANSION (LEVE) =========================
 def _expand_query_for_hr(query: str, tipo_contratacao: Optional[str] = None) -> str:
+    """Expansão LEVE para embedding — poucos termos de alto sinal.
+    Expansão pesada vai no prompt, não no vetor."""
     q_norm = _strip_accents(query.lower())
     extras = []
 
-    if _is_people_process_question(query):
-        extras.append(
-            "rotinas de pessoas rh procedimentos internos pop quadra "
-            "controle de pessoal pessoas e performance departamento pessoal "
-            "formularios prazos responsaveis aprovacao fluxo"
-        )
-    if "experien" in q_norm or "experiên" in q_norm:
-        extras.append(
-            "periodo de experiencia contrato de experiencia 45 dias 90 dias "
-            "avaliacao de desempenho feedback ficha de avaliacao F.90 F.99"
-        )
-    # "contrat" SÓ expande para RH se NÃO tiver sinais de contrato de fornecedor/obra
-    sinais_contrato_fornecedor = ["aditivo", "medicao", "medição", "medicoes", "medições",
-                                   "boletim", "fornecedor", "terceirizado", "tratto", "clausula",
-                                   "cláusula", "contratual", "contratuais", "r.01", "r 01"]
-    eh_contrato_fornecedor = any(x in q_norm for x in sinais_contrato_fornecedor)
+    # Contratos/medições
+    sinais_contrato = ["aditivo", "medicao", "medição", "boletim", "fornecedor",
+                       "terceirizado", "clausula", "cláusula", "contratual"]
+    eh_contrato = any(x in q_norm for x in sinais_contrato)
 
-    if any(x in q_norm for x in ["contrat", "admiss", "admit", "recrut", "sele", "vaga", "curricul", "entrevist"]):
-        if eh_contrato_fornecedor:
-            # Contrato de fornecedor/terceirizado — NÃO expandir com termos de RH
-            extras.append(
-                "aditivo contratual contratos e medições boletim de medição "
-                "fornecedor terceirizado modelo tratto quadra cláusulas "
-                "ajustes contratuais escopo prazos valores penalidades"
-            )
-        else:
-            extras.append(
-                "contratação de funcionários admissão de colaboradores "
-                "processo de admissão recrutamento seleção de candidatos "
-                "documentos admissionais aso cadastro de colaborador"
-            )
-    if any(x in q_norm for x in ["deslig", "demiss", "rescis", "aviso previo", "aviso prévio", "termino de contrato", "término de contrato"]):
-        extras.append(
-            "procedimento de desligamento rescisao documentos rescisorios "
-            "controle de aviso previo ficha avaliacao prazos dp"
-        )
-    if tipo_contratacao == HR_TIPO_OBRA:
-        extras.append("Obra canteiro Departamento Pessoal DP PO.08 Controle de Pessoal R.02")
-    elif tipo_contratacao == HR_TIPO_ADMIN:
-        extras.append("Administrativo sede escritório Pessoas e Performance PO.06 Pessoas e Performance")
+    if eh_contrato:
+        extras.append("contratos medições aditivo contratual")
+    elif _is_people_process_question(query):
+        extras.append("procedimento pessoal rotina interna")
+        if tipo_contratacao == HR_TIPO_OBRA:
+            extras.append("obra departamento pessoal PO.08")
+        elif tipo_contratacao == HR_TIPO_ADMIN:
+            extras.append("administrativo pessoas performance PO.06")
+
+    if "experiên" in q_norm or "experien" in q_norm:
+        if not eh_contrato:
+            extras.append("periodo experiencia avaliacao desempenho")
+
+    if "deslig" in q_norm or "demiss" in q_norm or "rescis" in q_norm:
+        extras.append("desligamento rescisão aviso prévio")
+
     if "toner" in q_norm:
-        extras.append(
-            "material de expediente suprimentos de escritório cartucho de impressão "
-            "cartucho de impressora toner de impressora compras de materiais de expediente "
-            "procedimento de solicitação de material de expediente F.18 F.45 Departamento de Compras"
-        )
+        extras.append("material expediente cartucho impressora compras")
+
+    if "gestao de terceirizados" in q_norm or "gestão de terceirizados" in q_norm:
+        extras.append("gestão terceirizados avaliação portaria controle")
+
     if extras:
         return query + " " + " ".join(extras)
     return query
@@ -312,12 +280,10 @@ def gerar_resposta_fallback_interativa(pergunta: str,
             "nos documentos internos ou POPs da Quadra Engenharia.\n\n"
             "Sua tarefa:\n"
             "1. Cumprimente o usuário de forma cordial.\n"
-            "2. Explique que você é um assistente treinado principalmente com documentos internos "
-            "   (procedimentos, POPs, rotinas, fluxos da Quadra) e que não localizou nada específico "
-            "   sobre essa pergunta nos documentos.\n"
-            "3. Ajude o usuário a continuar: sugira que ele reformule a dúvida focando em processos, "
-            "   políticas, POPs, rotinas ou documentos da Quadra, com uma pergunta final amigável.\n"
-            "4. Use um tom profissional, mas próximo e amigável, em português do Brasil.\n\n"
+            "2. Explique que você é um assistente treinado com documentos internos "
+            "   e que não localizou nada específico sobre essa pergunta.\n"
+            "3. Sugira que ele reformule focando em processos, POPs ou rotinas da Quadra.\n"
+            "4. Tom profissional mas amigável, português do Brasil.\n\n"
             f"Pergunta do usuário:\n\"{pergunta}\""
         )
         payload = {
@@ -366,16 +332,14 @@ def get_drive_client(_v=CACHE_BUSTER):
 @st.cache_resource(show_spinner=False)
 def get_sbert_model(_v=CACHE_BUSTER):
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    return SentenceTransformer(EMBED_MODEL_NAME)
 
 @st.cache_resource(show_spinner=False)
 def get_cross_encoder(_v=CACHE_BUSTER):
     if not USE_CE:
         return None
-    import torch
     from sentence_transformers import CrossEncoder
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=device)
+    return CrossEncoder(CE_MODEL_NAME, max_length=512)
 
 # ========================= DRIVE LIST/DOWNLOAD =========================
 def _drive_list_all(drive_service, query: str, fields: str):
@@ -478,6 +442,16 @@ def _json_records_to_blocks(recs, fallback_name: str, file_id: str):
             out.append({"pagina": str(pagina), "texto": str(texto), "file_id": fid})
     return out
 
+# ========================= TEXTO PARA EMBEDDING =========================
+def _texto_para_embedding(block: dict) -> str:
+    """Prefixa o nome do documento no texto para dar contexto ao embedding.
+    Isso permite que o modelo saiba DE QUAL documento o trecho veio."""
+    pagina = sanitize_doc_name(block.get("pagina", ""))
+    texto = block.get("texto", "")
+    if pagina:
+        return f"{pagina}. {texto}"
+    return texto
+
 # ========================= CACHE DE FONTES =========================
 @st.cache_data(show_spinner=False, ttl=600)
 def _list_sources_cached(folder_id: str, _v=CACHE_BUSTER):
@@ -566,6 +540,28 @@ def agrupar_blocos(blocos, janela=GROUP_WINDOW):
 
     return grouped
 
+# ========================= DEDUPLICAÇÃO DE RESULTADOS =========================
+def _deduplicate_results(results: list, max_overlap: float = DEDUP_MAX_OVERLAP) -> list:
+    """Remove resultados cujo texto é muito similar a um já selecionado.
+    Garante diversidade de documentos nos top-K."""
+    if not results:
+        return results
+    selected = [results[0]]
+    for r in results[1:]:
+        txt = r["block"].get("texto", "")
+        is_dup = False
+        for s in selected:
+            s_txt = s["block"].get("texto", "")
+            # Checa overlap nos dois sentidos
+            o1 = _overlap_score(txt, s_txt)
+            o2 = _overlap_score(s_txt, txt)
+            if max(o1, o2) > max_overlap:
+                is_dup = True
+                break
+        if not is_dup:
+            selected.append(r)
+    return selected
+
 # ========================= ÍNDICE / EMBEDDINGS =========================
 def _list_named_files_map():
     drive = get_drive_client()
@@ -614,11 +610,17 @@ def build_vector_index(signature: str, _v=CACHE_BUSTER):
         return {"blocks": [], "emb": None, "index": None, "use_faiss": False}
 
     sbert = get_sbert_model()
-    texts = [b["texto"] for b in grouped]
+
+    # ── CORREÇÃO: título do doc prefixado + prefixo "passage: " para e5 ──
+    texts = [
+        f"{EMBED_PASSAGE_PREFIX}{_texto_para_embedding(b)}"
+        for b in grouped
+    ]
 
     @st.cache_data(show_spinner=False)
     def _embed_texts_cached(texts_, sig: str, _v2=CACHE_BUSTER):
-        return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True)
+        return sbert.encode(texts_, convert_to_numpy=True, normalize_embeddings=True,
+                            show_progress_bar=False, batch_size=64)
 
     emb = _embed_texts_cached(texts, signature)
 
@@ -637,7 +639,7 @@ def get_vector_index():
     _blocks, signature = load_all_blocks_cached(FOLDER_ID)
     return build_vector_index(signature)
 
-# ========================= BUSCA ANN =========================
+# ========================= BUSCA ANN + RERANKING =========================
 def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = None):
     vecdb = get_vector_index()
     blocks = vecdb["blocks"]
@@ -646,12 +648,13 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
 
     sbert = get_sbert_model()
 
-    query_for_embed = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
+    # ── Query com expansion leve + prefixo "query: " para e5 ──
+    query_expanded = _expand_query_for_hr(query_text, tipo_contratacao=tipo_contratacao)
+    query_for_embed = f"{EMBED_QUERY_PREFIX}{query_expanded}"
     q = sbert.encode([query_for_embed], convert_to_numpy=True, normalize_embeddings=True)[0]
 
     if vecdb["use_faiss"]:
-        import numpy as _np
-        D, I = vecdb["index"].search(q.reshape(1, -1).astype(_np.float32), top_n)
+        D, I = vecdb["index"].search(q.reshape(1, -1).astype(np.float32), top_n)
         idxs = I[0].tolist()
         scores = D[0].tolist()
     else:
@@ -666,20 +669,31 @@ def ann_search(query_text: str, top_n: int, tipo_contratacao: Optional[str] = No
             continue
         block = blocks[i]
         lex = _lexical_overlap(query_text, block.get("texto", ""))
-
-        # Boost por título/pagina — se o nome do doc bate com a pergunta, prioriza
         pagina_lex = _lexical_overlap(query_text, block.get("pagina", ""))
-
         b_tipo = _tipo_boost(block, tipo_contratacao) if tipo_contratacao else 0.0
-        adj_score = float(s) + 0.25 * lex + 0.30 * pagina_lex + b_tipo
-
-        results.append({
-            "idx": i,
-            "score": adj_score,
-            "block": block,
-        })
+        adj_score = float(s) + 0.20 * lex + 0.25 * pagina_lex + b_tipo
+        results.append({"idx": i, "score": adj_score, "block": block})
 
     results.sort(key=lambda x: x["score"], reverse=True)
+
+    # ── CROSS-ENCODER RERANKING (stage 2) ──
+    ce = get_cross_encoder()
+    if ce is not None and results:
+        pairs = [(query_text, r["block"].get("texto", "")) for r in results]
+        ce_scores = ce.predict(pairs, show_progress_bar=False)
+        # Normalizar ce_scores para [0, 1] para combinar com embedding score
+        ce_min = float(min(ce_scores))
+        ce_max = float(max(ce_scores))
+        ce_range = ce_max - ce_min if ce_max > ce_min else 1.0
+        for r, ce_s in zip(results, ce_scores):
+            ce_norm = (float(ce_s) - ce_min) / ce_range
+            # 45% embedding/lexical + 55% cross-encoder
+            r["score"] = 0.45 * r["score"] + 0.55 * ce_norm
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+    # ── DEDUPLICAÇÃO ──
+    results = _deduplicate_results(results)
+
     return results[:top_n]
 
 # ========================= PROMPT RAG =========================
@@ -688,15 +702,13 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
         return (
             "Nenhum trecho de POP relevante foi encontrado para a pergunta abaixo.\n"
             "Explique educadamente que não há informação disponível nos documentos internos "
-            "e convide o usuário a reformular a dúvida com foco em processos, políticas ou rotinas da Quadra.\n\n"
+            "e convide o usuário a reformular com foco em processos, políticas ou rotinas da Quadra.\n\n"
             f"Pergunta do colaborador: {pergunta}"
         )
 
     contexto_parts = []
     for i, b in enumerate(blocos, start=1):
-        texto = b.get("texto") or ""
-        if len(texto) > 3000:
-            texto = texto[:3000]
+        texto = (b.get("texto") or "")[:3000]
         pagina = b.get("pagina", "?")
         contexto_parts.append(f"[Trecho {i} – {pagina}]\n{texto}")
 
@@ -704,41 +716,31 @@ def montar_prompt_rag(pergunta, blocos, tipo_contratacao: Optional[str] = None):
 
     tipo_txt = ""
     if tipo_contratacao == HR_TIPO_OBRA:
-        tipo_txt = "Contexto informado: OBRA (Departamento Pessoal – PO.08 - Controle de Pessoal R.02)."
+        tipo_txt = "\nContexto informado pelo usuário: processo de OBRA (Departamento Pessoal – PO.08)."
     elif tipo_contratacao == HR_TIPO_ADMIN:
-        tipo_txt = "Contexto informado: ADMINISTRATIVO (Pessoas & Performance – PO.06 - Pessoas e Performance)."
+        tipo_txt = "\nContexto informado pelo usuário: processo ADMINISTRATIVO (Pessoas & Performance – PO.06)."
 
-    prompt_usuario = (
-        "Abaixo estão trechos de documentos internos e POPs da Quadra Engenharia.\n"
-        "Você deve usar ESSES trechos para responder à pergunta sobre processos, políticas ou rotinas internas.\n\n"
-        "ATENÇÃO: Cada trecho indica de qual documento veio (entre colchetes). "
-        "Use PRIORITARIAMENTE os trechos do documento cujo nome mais combina com o assunto da pergunta. "
-        "Se a pergunta é sobre 'aditivo de contrato', use trechos de 'Contratos e Medições', não de 'Controle de Pessoal'.\n\n"
+    return (
+        f"TRECHOS DOS DOCUMENTOS INTERNOS DA QUADRA ENGENHARIA:\n\n"
+        f"{contexto_str}\n"
         f"{tipo_txt}\n\n"
-        "Instruções para montar a resposta:\n"
-        "1. Identifique claramente qual processo está sendo descrito e DE QUAL DOCUMENTO/POP ele vem.\n"
-        "2. Se o contexto trouxer diferenças entre Sede/Escritório e Obras, organize a resposta em seções numeradas.\n"
-        "3. Dentro de cada seção, escreva por extenso, em frases completas.\n"
-        "   Você pode usar o símbolo ou parágrafos separados para destacar prazos, responsáveis, formulários e etapas.\n"
-        "4. Finalize com 'Em resumo,' reforçando o que o colaborador deve fazer na prática.\n"
-        "5. Se os trechos NÃO contêm informação suficiente sobre o assunto perguntado, diga claramente em vez de inventar.\n\n"
-        f"Trechos de contexto dos POPs:\n{contexto_str}\n\n"
-        f"Pergunta do colaborador: {pergunta}"
+        f"PERGUNTA DO COLABORADOR: {pergunta}\n\n"
+        "INSTRUÇÕES:\n"
+        "- Responda com base APENAS nos trechos acima.\n"
+        "- Priorize os trechos do documento cujo nome mais combina com o assunto da pergunta.\n"
+        "- Identifique claramente o documento fonte no início da resposta.\n"
+        "- Se houver etapas, responsáveis, formulários ou prazos nos trechos, descreva cada um.\n"
+        "- Finalize com 'Em resumo,' reforçando o que o colaborador deve fazer na prática."
     )
-
-    return prompt_usuario
 
 # ========================= HISTÓRICO DE CONVERSA =========================
 def _get_conversation_history() -> list[dict]:
-    """Recupera últimas N trocas do session_state."""
     history = _state_get("chat_history", [])
     if not history:
         return []
-    recent = history[-(HISTORY_TURNS * 2):]
-    return recent
+    return history[-(HISTORY_TURNS * 2):]
 
 def _append_to_history(role: str, content: str):
-    """Adiciona mensagem ao histórico."""
     history = _state_get("chat_history", [])
     history.append({"role": role, "content": content})
     if len(history) > 20:
@@ -760,6 +762,9 @@ def auditar_base_conhecimento():
         linhas.append("Auditoria da base de conhecimento")
         linhas.append(f"FOLDER_ID: {FOLDER_ID}")
         linhas.append(f"CACHE_BUSTER: {CACHE_BUSTER}")
+        linhas.append(f"EMBED_MODEL: {EMBED_MODEL_NAME}")
+        linhas.append(f"CE_MODEL: {CE_MODEL_NAME}")
+        linhas.append(f"USE_CE: {USE_CE}")
         linhas.append("")
 
         linhas.append(f"JSON/JSONL encontrados (apos filtro): {len(files_json)}")
@@ -835,10 +840,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
         conv_history = history if history is not None else _get_conversation_history()
         if conv_history:
-            # Adiciona histórico resumido (só texto curto pra não estourar contexto)
             for msg in conv_history:
                 content = msg.get("content", "")
-                # Limita cada mensagem do histórico a 500 chars
                 if len(content) > 500:
                     content = content[:500] + "..."
                 messages.append({"role": msg["role"], "content": content})
@@ -887,12 +890,15 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
                     link = f"https://drive.google.com/file/d/{doc_id}/view?usp=sharing"
                     resposta += f"\n\nDocumento relacionado: {doc_nome}\n{link}"
 
-        # Salva no histórico
         _append_to_history("user", pergunta)
         _append_to_history("assistant", resposta)
 
         t_end = time.perf_counter()
-        print(f"[DEBUG QD-BOT] RAG: {t_rag - t0:.2f}s | Total responder_pergunta: {t_end - t0:.2f}s")
+        print(
+            f"[QD-BOT v7] embed={EMBED_MODEL_NAME} | ce={USE_CE} | "
+            f"RAG: {t_rag - t0:.2f}s | LLM: {t_end - t_rag:.2f}s | "
+            f"Total: {t_end - t0:.2f}s | candidates={len(candidates)} top_k={top_k}"
+        )
 
         return resposta
 
@@ -901,7 +907,8 @@ def responder_pergunta(pergunta, top_k: int = TOP_K, api_key: str = API_KEY,
 
 # ========================= CLI =========================
 if __name__ == "__main__":
-    print("\nDigite sua pergunta (ou 'sair'):\n")
+    print(f"\nQD-Bot v7 | Embed: {EMBED_MODEL_NAME} | CE: {CE_MODEL_NAME}")
+    print("Digite sua pergunta (ou 'sair'):\n")
     cli_history = []
     while True:
         q = input("Pergunta: ").strip()
